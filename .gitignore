@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+
+# Large raw datasets (curated subsets live under src/problems/data/)
+data/crossword/*.csv
+data/crossword/*.csv.gz
+data/crossword/*.parquet
+data/moral/*.jsonl
+data/moral/*.jsonl.zst
+data/moral/*.zst
+data/proof/*.json
+data/proof/*.jsonl
+data/proof/*.parquet
+!data/proof/README.md
+!data/crossword/README.md
+
+# Local Python envs used only for dataset curation
+.venv/
+.venv-tmp/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

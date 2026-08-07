@@ -1,0 +1,1294 @@
+{
+  "source": {
+    "name": "Reddit Ethics",
+    "huggingface": "agentlans/reddit-ethics",
+    "split": "train",
+    "license": "cc-by-4.0",
+    "url": "https://huggingface.co/datasets/agentlans/reddit-ethics",
+    "note": "Curated open-ended ethical dilemmas. Sample answers/resolutions from the source are not used as gold labels."
+  },
+  "curatedAt": "2026-08-07",
+  "count": 80,
+  "items": [
+    {
+      "id": "reddit_ethics_0001",
+      "sourceIndex": 0,
+      "title": "Birthday Boundaries and Family Expectations: The Ethics of Prioritizing Self-Care",
+      "description": "A 30-year-old woman feels overwhelmed and unheard on her birthday. Her family and husband plan a surprise party without her input, and her sick mother cancels dinner plans without asking. She wants space and to prioritize self-care.",
+      "issues": [
+        "Self-Care vs. Family Obligation",
+        "Assertiveness vs. Respect",
+        "Expectations vs. Boundaries"
+      ],
+      "question": "Is it reasonable to expect family to respect personal boundaries, especially on special occasions?",
+      "alternateQuestions": [
+        "What are the ethics of asserting oneself in situations where others prioritize their own agendas?",
+        "How should we balance self-care with family obligations and responsibilities?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0002",
+      "sourceIndex": 121,
+      "title": "Fuel and Friendship: The Ethics of Recompense for a Ride",
+      "description": "A friend offers to walk home, but her friend drives instead. Days later, she presents a fuel receipt for reimbursement, leading to tension and conflict.",
+      "issues": [
+        "Reciprocity vs. Fairness",
+        "Expectations vs. Offers",
+        "Apology vs. Anger"
+      ],
+      "question": "Is the friend morally obligated to repay for the fuel?",
+      "alternateQuestions": [
+        "How should expectations for repayment be managed in friendships?",
+        "What role does communication play in resolving conflicts?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0003",
+      "sourceIndex": 242,
+      "title": "Friendship, Parenting, and Substance Use: Navigating Differing Values",
+      "description": "A couple in a close-knit friend group smokes weed openly around their toddler. The friends are uncomfortable, leading to a conflict about values and parenting.",
+      "issues": [
+        "Personal Values vs. Peer Pressure",
+        "Parental Responsibility vs. Substance Use",
+        "Comfort vs. Acceptance"
+      ],
+      "question": "Is it reasonable to be uncomfortable with substance use around children?",
+      "alternateQuestions": [
+        "What are the parents' responsibilities in exposing their child to marijuana?",
+        "How do we balance personal values with friendship and social norms?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0004",
+      "sourceIndex": 363,
+      "title": "Community College, Tutoring, and Teacher Responsibilities: A Student's Dilemma",
+      "description": "A tutor is left to manage a class when the teacher is absent. The tutor's actions and decisions are questioned by the teacher, leading to a debate on responsibility and accountability.",
+      "issues": [
+        "Responsibility Distribution",
+        "Authority and Delegation",
+        "Communication and Expectation Management"
+      ],
+      "question": "Was the tutor morally responsible for finding the teacher during his absence?",
+      "alternateQuestions": [
+        "Should the tutor bear the blame for the teacher's unavailability?",
+        "What are the teacher's responsibilities in maintaining a smooth class experience?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0005",
+      "sourceIndex": 484,
+      "title": "Family Tensions and Safety Concerns: The Ethics of Confronting a Loved One’s Addiction",
+      "description": "A man struggles with his girlfriend’s brother’s addiction and reckless behavior, threatening their safety and relationship.",
+      "issues": [
+        "Love vs. Safety",
+        "Personal Boundaries vs. Family Obligation",
+        "Intervention vs. Confrontation"
+      ],
+      "question": "Is it the man’s responsibility to address his girlfriend’s brother’s behavior?",
+      "alternateQuestions": [
+        "What are the moral obligations when confronting someone’s addiction and safety risks?",
+        "How do we balance love and safety in situations like this?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0006",
+      "sourceIndex": 605,
+      "title": "Roommate Conflict and Noise Complaints: A Dilemma of Privacy and Tolerance",
+      "description": "A renter faces eviction after refusing potential roommates. They're upset about a new roommate's noise disturbances and consider filing a noise complaint.",
+      "issues": [
+        "Privacy vs. Tolerance",
+        "Eviction vs. New Roommate Discomfort",
+        "Noise Control vs. Personal Boundaries"
+      ],
+      "question": "Is filing a noise complaint a reasonable response to noise disturbances?",
+      "alternateQuestions": [
+        "What are the landlord's responsibilities in maintaining a peaceful living environment?",
+        "How can roommates navigate conflicts without escalating to authorities?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0007",
+      "sourceIndex": 726,
+      "title": "Moral Boundaries with a Struggling Friend: Homelessness, Autonomy, and Respect",
+      "description": "A young person is approached by a 23-year-old homeless friend of a friend who wants to stay with them. However, the young person is hesitant due to their living situation and the friend's behavior.",
+      "issues": [
+        "Responsibility vs. Personal Boundaries",
+        "Vulnerability vs. Autonomy",
+        "Respect vs. Enabling"
+      ],
+      "question": "What are the moral implications of refusing to help someone in need?",
+      "alternateQuestions": [
+        "How can we balance responsibility with personal boundaries?",
+        "What are the differences between enabling and supporting someone in crisis?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0008",
+      "sourceIndex": 847,
+      "title": "Oil Change Etiquette: The Ethics of Disputing a Wait and Doing It Yourself",
+      "description": "A loyal customer wants a special treatment in a busy shop. When denied, he decides to change his car’s oil himself, causing a mess. The shop owner finds humor in the situation, but an employee remains embarrassed.",
+      "issues": [
+        "Special Treatment vs. Equal Treatment",
+        "Customer Rights vs. Business Efficiency",
+        "Discretion vs. Openness"
+      ],
+      "question": "Was it morally justifiable to change the oil in the parking lot, despite the mess?",
+      "alternateQuestions": [
+        "How should customers navigate special treatment requests and business efficiency?",
+        "What are the ethical implications of disregarding an employee’s instructions?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0009",
+      "sourceIndex": 968,
+      "title": "Friendship, Romance, and Boundaries: Navigating Changing Dynamics",
+      "description": "A 17-year-old boy faces complications in his friendship with a girl who has dropped out of school. She invites him to hang out with her and her boyfriend, causing him to question his feelings and boundaries.",
+      "issues": [
+        "Friendship vs. Romance",
+        "Boundaries vs. Comfort",
+        "Authenticity vs. Misinterpretation"
+      ],
+      "question": "How should the boy communicate his boundaries and feelings to the girl?",
+      "alternateQuestions": [
+        "What are the implications of hiding or misinterpreting feelings in friendships?",
+        "How can honesty and authenticity be balanced with tact and empathy?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0010",
+      "sourceIndex": 1089,
+      "title": "Travel, Budgets, and Relationships: The Ethics of Separate Trips",
+      "description": "A couple debates whether the partner should go on a solo trip to Japan, given budget constraints and past experiences. The partner feels guilty about not wanting to include their partner.",
+      "issues": [
+        "Budgets vs. Relationship Obligations",
+        "Personal Desires vs. Partner's Needs",
+        "Guilt vs. Independence"
+      ],
+      "question": "Is it selfish to prioritize personal travel goals over the partner's desires?",
+      "alternateQuestions": [
+        "How can couples balance individual needs with relationship obligations?",
+        "What role does guilt play in relationship decisions?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0011",
+      "sourceIndex": 1210,
+      "title": "Roommate Boundaries and Trust: The Ethics of Surveillance",
+      "description": "A roommate sets a trap to deter unauthorized entry into his room. The guest, avoiding an ex, is caught snooping. The roommate feels violated, but the guest claims innocence.",
+      "issues": [
+        "Trust vs. Privacy",
+        "Boundaries vs. Hospitality",
+        "Respect vs. Entitlement"
+      ],
+      "question": "Is the roommate morally justified in setting a trap?",
+      "alternateQuestions": [
+        "What are the guest's responsibilities when staying in a private residence?",
+        "How should the roommate handle the situation to restore trust?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0012",
+      "sourceIndex": 1331,
+      "title": "Parental Restrictions, Fake News, and Racial Bias: A Conflict of Trust and Freedom",
+      "description": "A teenager wants to attend a rap concert, but their parents deny permission. They present fake news articles to support their decision, while also making racial comments. The teenager questions whose fault it is in the conflict.",
+      "issues": [
+        "Parental Authority vs. Teenage Autonomy",
+        "Trust vs. Manipulation",
+        "Racism vs. Respect"
+      ],
+      "question": "Is it acceptable for parents to deny permission based on fake news?",
+      "alternateQuestions": [
+        "How can parents balance protection with trust and respect for their teenager's autonomy?",
+        "What role does racism play in this conflict, and how should it be addressed?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0013",
+      "sourceIndex": 1452,
+      "title": "Rural Ethics: The Decision to Disclose in a Sensitive Situation",
+      "description": "After witnessing a fatal car accident involving a dog, the narrator chooses to inform the owners of the situation. They wonder if they should have downplayed the dog's suffering for the family's emotional well-being.",
+      "issues": [
+        "Honesty vs. Sensitivity",
+        "Moral Duty vs. Empathy",
+        "Action vs. Omission"
+      ],
+      "question": "Was the narrator’s honesty ethically justified in this situation?",
+      "alternateQuestions": [
+        "What are the moral implications of withholding information about the dog's suffering?",
+        "How do we balance the need for sensitivity with the duty to be truthful?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0014",
+      "sourceIndex": 1573,
+      "title": "Music Education and Emotional Dissonance: A Student's Dilemma",
+      "description": "A harp student faces criticism and dismissal by the school principal due to a lack of passion, practice, and musical understanding. The student reflects on their own responsibility and the principal's reaction.",
+      "issues": [
+        "Responsibility vs. Accountability",
+        "Emotional Well-Being vs. Professionalism",
+        "Self-Expression vs. Authority"
+      ],
+      "question": "Is it fair for the principal to dismiss the student due to their lack of passion and practice?",
+      "alternateQuestions": [
+        "How should the student respond to the principal's criticism and dismissal?",
+        "What are the moral implications of the principal's reaction on the student's emotional well-being?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0015",
+      "sourceIndex": 1694,
+      "title": "Friendship, Authority, and Workplace Conflict: The Ethics of Disciplinary Action",
+      "description": "A manager must discipline a long-time friend and colleague for unprofessional behavior. Loyalty and authority clash, straining their relationship and the workplace.",
+      "issues": [
+        "Friendship vs. Professionalism",
+        "Authority vs. Loyalty",
+        "Conflict Resolution vs. Personal Ties"
+      ],
+      "question": "Is it wrong to discipline a friend when you're their manager?",
+      "alternateQuestions": [
+        "How should managers balance personal relationships with professional obligations?",
+        "What are the ethical implications of prioritizing workplace harmony over individual relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0016",
+      "sourceIndex": 1815,
+      "title": "Allergies, Obligations, and Restaurant Etiquette: The Ethics of a Diner's Behavior",
+      "description": "A server at Olive Garden follows protocols for a customer with a garlic allergy. Despite warnings, the customer orders garlic-heavy dishes, becomes agitated, and leaves without tipping.",
+      "issues": [
+        "Server Responsibility vs. Customer Obligation",
+        "Allergy Awareness vs. Restaurant Limitations",
+        "Customer Etiquette vs. Server Expectations"
+      ],
+      "question": "Is the server morally responsible for the diner’s allergic reaction?",
+      "alternateQuestions": [
+        "What are the customer's obligations when informed of potential allergens?",
+        "How do we weigh server diligence against customer expectations?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0017",
+      "sourceIndex": 1936,
+      "title": "Social Anxiety, Party Dynamics, and Ethical Expectations: A Complex Encounter",
+      "description": "A woman with social anxiety attends a party with atmosphere models. Despite her efforts, she's excluded and mocked. She questions if her expectations were reasonable.",
+      "issues": [
+        "Social Skills vs. Anxiety",
+        "Inclusion vs. Exclusion",
+        "Professionalism vs. Social Norms"
+      ],
+      "question": "Was the woman's expectation for social interaction reasonable?",
+      "alternateQuestions": [
+        "What are the moral obligations of party professionals towards guests?",
+        "How can we balance social norms with individual needs in complex situations?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0018",
+      "sourceIndex": 2057,
+      "title": "Patience, Math, and Warehouse Etiquette: A Forklift Operator's Dilemma",
+      "description": "A forklift operator becomes frustrated with a co-worker's lack of basic math skills. They struggle to help him, fearing he might make costly mistakes. They wonder if they should report his abilities to management.",
+      "issues": [
+        "Patience vs. Frustration",
+        "Job Skills vs. Personal Support",
+        "Confidentiality vs. Workplace Safety"
+      ],
+      "question": "How far should one go in helping a co-worker with basic job skills?",
+      "alternateQuestions": [
+        "What’s the balance between supporting co-workers and preventing dependency?",
+        "Is it appropriate to report concerns about a co-worker’s abilities to management?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0019",
+      "sourceIndex": 2178,
+      "title": "Teenage Perspective and Family Dynamics: Navigating Parental Conflict and Well-being",
+      "description": "A teenager wants their parents to divorce due to chronic arguing and emotional distress. They intervene in arguments, expressing frustration and concern. The parents are unhappy and argue constantly.",
+      "issues": [
+        "Parental Conflict vs. Teenage Intervention",
+        "Agency vs. Well-being",
+        "Personal Beliefs vs. Family Secrets"
+      ],
+      "question": "Is it appropriate for a teenager to intervene in parental conflicts?",
+      "alternateQuestions": [
+        "How can teenagers balance their own well-being with respecting their parents’ privacy?",
+        "What are the potential consequences of pushing for a divorce on family dynamics?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0020",
+      "sourceIndex": 2299,
+      "title": "Compassion, Spontaneity, and Spousal Trust: The Ethics of Unsolicited Pet Adoption",
+      "description": "A shopper adopts a puppy from a struggling pet store, driven by compassion and a desire to save a life. The spouse feels blindsided and upset about the unsolicited expense.",
+      "issues": [
+        "Spontaneity vs. Shared Decision-Making",
+        "Compassion vs. Financial Consideration",
+        "Trust vs. Empathy"
+      ],
+      "question": "Is the wife morally justified in adopting the puppy without consulting her husband?",
+      "alternateQuestions": [
+        "How should the husband respond to his wife's actions, balancing his feelings with compassion for the puppy?",
+        "What is the appropriate balance between individual compassion and shared decision-making in a relationship?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0021",
+      "sourceIndex": 2420,
+      "title": "Parental Visitation, Financial Support, and Relationship Dynamics",
+      "description": "A couple receives financial help from the boyfriend's parents, but the grandparents rarely see the baby. This causes tension, and the boyfriend suggests a link between financial support and visitation rights, sparking conflict.",
+      "issues": [
+        "Family Expectations vs. Personal Boundaries",
+        "Financial Aid vs. Relationship Dynamics",
+        "Parental Rights vs. Adult Child Responsibilities"
+      ],
+      "question": "Should financial aid influence visitation rights?",
+      "alternateQuestions": [
+        "How do grandparents' expectations affect the couple's relationship dynamics?",
+        "What are the adult child's responsibilities toward their parents?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0022",
+      "sourceIndex": 2541,
+      "title": "Bulimia, Friendship, and Boundaries: Navigating a Difficult Decision",
+      "description": "A student ends a friendship after discovering their friend’s bulimia and triggering behaviors. They now worry about their friend’s well-being.",
+      "issues": [
+        "Support vs. Boundaries",
+        "Empathy vs. Safety",
+        "Patience vs. Self-Protection"
+      ],
+      "question": "Is it ever justifiable to prioritize one’s own mental health over supporting a friend with a mental health issue?",
+      "alternateQuestions": [
+        "How can friends navigate the balance between empathy and self-protection?",
+        "What responsibilities come with knowing someone’s private struggles?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0023",
+      "sourceIndex": 2662,
+      "title": "Post-Breakup, Post-Living: The Ethics of Discarded Property",
+      "description": "A friend moves out of his host's house, leaving belongings behind. The host gives away the items, causing conflict with the friend's new partner and ex-girlfriend.",
+      "issues": [
+        "Property Rights vs. Host Obligation",
+        "Boundaries vs. Care",
+        "Responsibility vs. Abandonment"
+      ],
+      "question": "What obligations does a host have toward a guest's property when they leave abruptly?",
+      "alternateQuestions": [
+        "How do we balance generosity with personal boundaries in shared living situations?",
+        "What are the consequences of neglecting property disputes in relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0024",
+      "sourceIndex": 2783,
+      "title": "Food, Expectations, and Restaurant Etiquette: A Case of Sent-Back Dishes",
+      "description": "A diner shares their experiences of sending back food due to unexpected flavors, claiming they read menu descriptions and asked for modifications. They expect a refund.",
+      "issues": [
+        "Menu Clarity vs. Diner Expectations",
+        "Food Quality vs. Taste",
+        "Restaurant Policies vs. Customer Rights"
+      ],
+      "question": "Is it fair to expect a refund for sent-back food due to unexpected flavors?",
+      "alternateQuestions": [
+        "What are the diner's responsibilities when ordering food with modifications?",
+        "How do restaurants balance customer satisfaction with their own policies and financial concerns?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0025",
+      "sourceIndex": 2904,
+      "title": "City Living and Friendship: The Ethics of Sharing Space",
+      "description": "A college graduate debates signing a lease with friends. Concerns arise about living with an acquaintance and the process's rushed pace.",
+      "issues": [
+        "Trust vs. Caution",
+        "Decision-Making vs. Group Pressure",
+        "Autonomy vs. Social Obligation"
+      ],
+      "question": "Is it reasonable to rush into a major decision due to social pressure?",
+      "alternateQuestions": [
+        "What are the ethical responsibilities in a shared living situation?",
+        "How do we balance individual needs with group commitment?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0026",
+      "sourceIndex": 3025,
+      "title": "Disease, Depression, and Dialogue: A Couple's Communication Conundrum",
+      "description": "A woman with neurodegenerative disease, depression, and anxiety wants space to process her emotions. Her caring husband encourages open dialogue, but she feels overwhelmed and angry by his persistence.",
+      "issues": [
+        "Privacy vs. Emotional Support",
+        "Emotional Expression vs. Retaliation",
+        "Autonomy vs. Relationship Expectations"
+      ],
+      "question": "Is it selfish for the woman to withdraw from emotional discussions amid her struggles?",
+      "alternateQuestions": [
+        "How can the couple balance emotional support with respecting her boundaries?",
+        "What are the implications of forcing emotional expression on someone who feels overwhelmed?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0027",
+      "sourceIndex": 3146,
+      "title": "Food Sharing, Self-Respect, and Homelessness",
+      "description": "A person offers leftover food to a homeless man, but he requests money instead. The offer is withdrawn, and the giver is criticized for their actions.",
+      "issues": [
+        "Empathy vs. Self-Protection",
+        "Giving vs. Taking",
+        "Expectations vs. Reality"
+      ],
+      "question": "Is it wrong to expect gratitude or respect for an act of kindness?",
+      "alternateQuestions": [
+        "What are the boundaries of generosity and empathy in a situation like this?",
+        "How do we balance self-care with a desire to help others?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0028",
+      "sourceIndex": 3267,
+      "title": "Resentment, Communication, and Co-Existing Relationships: The Ethics of Discomfort",
+      "description": "A partner has concerns about a roommate from their past relationship, whom they want to avoid. The partner feels irritated when the other person complains about the roommate. They wonder if they're being unreasonable.",
+      "issues": [
+        "Resentment vs. Empathy",
+        "Personal Comfort vs. Relationship Communication",
+        "Trust vs. Avoidance"
+      ],
+      "question": "Is the partner's discomfort with the roommate reasonable or unreasonable?",
+      "alternateQuestions": [
+        "What are the partner's obligations regarding their partner's experiences and feelings?",
+        "How can a couple balance empathy and setting boundaries in their communication?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0029",
+      "sourceIndex": 3388,
+      "title": "Romantic Interests and Friendship: Balancing Brotherly Love with Potential Romance",
+      "description": "A man discovers a coworker's interest in him, but his brother has been talking to her. He must weigh loyalty and friendship against potentially pursuing a romantic connection.",
+      "issues": [
+        "Brotherly Love vs. Romantic Interest",
+        "Loyalty vs. Self-Interest",
+        "Friendship vs. Potential Romance"
+      ],
+      "question": "Is the man morally obligated to prioritize his brother's feelings over his own romantic interests?",
+      "alternateQuestions": [
+        "How can he balance loyalty to his brother with his own desires?",
+        "What is the best approach to communicate his intentions and avoid hurting feelings?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0030",
+      "sourceIndex": 3509,
+      "title": "Love, Distance, and Family Ties: The Ethics of Prioritizing Relationships",
+      "description": "A college student considers leaving their family to pursue a relationship with a woman they met abroad. They weigh personal happiness against familial ties.",
+      "issues": [
+        "Prioritizing Love vs. Family Obligations",
+        "Loyalty vs. Self-Interest",
+        "Geographical Distance vs. Emotional Connection"
+      ],
+      "question": "Is prioritizing personal happiness in a relationship morally justifiable?",
+      "alternateQuestions": [
+        "What are the moral implications of leaving one's family for love?",
+        "How do we balance self-interest with loyalty to family and friends?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0031",
+      "sourceIndex": 3630,
+      "title": "Drug Use, Friendship, and Honesty: The Ethics of Confrontation",
+      "description": "A friend posts about using drugs on social media, contradicting previous claims of sobriety. The concerned friend confronts the behavior, but the situation escalates into a disagreement about honesty and values.",
+      "issues": [
+        "Honesty vs. Deception",
+        "Trust vs. Betrayal",
+        "Well-Being vs. Judgment"
+      ],
+      "question": "Was the concerned friend justified in confronting the friend about their drug use and lying?",
+      "alternateQuestions": [
+        "How should honesty and empathy be balanced in these situations?",
+        "What are the implications of judgment and criticism in friendships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0032",
+      "sourceIndex": 3751,
+      "title": "Family Conflict and Personal Boundaries: The Ethics of Cutting Ties",
+      "description": "A 25-year-old cuts off contact with her sisters over feeling ignored and mistreated. They accuse her of being selfish and spending time with her boyfriend.",
+      "issues": [
+        "Personal Boundaries vs. Family Expectations",
+        "Self-Care vs. Family Obligation",
+        "Trust vs. Toxicity"
+      ],
+      "question": "Is it ever justifiable to cut off contact with family members?",
+      "alternateQuestions": [
+        "How should we balance personal needs with family obligations?",
+        "What are the moral implications of prioritizing self-care over family ties?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0033",
+      "sourceIndex": 3872,
+      "title": "Mental Health, Betrayal, and Ultimatums: The Ethics of Confrontation",
+      "description": "A partner confronts their spouse about continued contact with an ex-cheater, citing a need for mental health support and family preservation.",
+      "issues": [
+        "Betrayal vs. Vulnerability",
+        "Ultimatums vs. Support",
+        "Prioritizing Needs"
+      ],
+      "question": "Is it ethical to confront a partner about infidelity, especially in the context of mental health?",
+      "alternateQuestions": [
+        "What are the implications of an ultimatum in addressing relationship issues?",
+        "How should we balance support for mental health with demands for accountability?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0034",
+      "sourceIndex": 3993,
+      "title": "Boundary Setting and Friendship Boundaries: The Ethics of Directness",
+      "description": "A student feels uncomfortable with a new classmate who oversteps boundaries, shares personal stories, touches them without consent, and steals their phone. They want to set boundaries without being seen as harsh.",
+      "issues": [
+        "Directness vs. Sensitivity",
+        "Boundary Setting vs. Social Expectations",
+        "Assertiveness vs. Aggression"
+      ],
+      "question": "What are the ethical considerations when setting boundaries with someone who oversteps them?",
+      "alternateQuestions": [
+        "How can directness be balanced with sensitivity and kindness?",
+        "What are the consequences of not setting boundaries and what are the potential benefits of doing so?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0035",
+      "sourceIndex": 4114,
+      "title": "Laptop Etiquette and Family Dynamics: The Ethics of Personal Space",
+      "description": "A teenager confronts an uncle for using their laptop without permission during a family gathering. The uncle feels disrespected, and the family expects an apology.",
+      "issues": [
+        "Personal Property Rights vs. Social Expectations",
+        "Respect vs. Entitlement",
+        "Boundaries vs. Family Harmony"
+      ],
+      "question": "Is it wrong to confront someone for using personal property without permission?",
+      "alternateQuestions": [
+        "How should family members balance personal space with social expectations?",
+        "What are the implications of not apologizing when someone feels disrespected?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0036",
+      "sourceIndex": 4235,
+      "title": "Hookup Culture and Emotional Disentanglement",
+      "description": "A man engages in a casual hookup with a woman, but later ignores her advances, leading to her feeling hurt and misunderstood.",
+      "issues": [
+        "Consent vs. Exploitation",
+        "Honesty vs. Disengagement",
+        "Respect vs. Indifference"
+      ],
+      "question": "Is it ethical to ignore someone after a hookup, especially if they seem attached?",
+      "alternateQuestions": [
+        "What are the implications of ignoring someone who may be vulnerable?",
+        "How can we balance respect with personal boundaries in casual encounters?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0037",
+      "sourceIndex": 4356,
+      "title": "Post-Breakup Boundaries and Emotional Recovery: The Ethics of Reconnection",
+      "description": "A teenager navigates post-breakup emotions and sets boundaries with an ex. They eventually forgive but decide against reconnection. The ex calls them selfish for not trying to be friends.",
+      "issues": [
+        "Boundaries vs. Reconciliation",
+        "Emotional Readiness vs. Obligation",
+        "Self-Respect vs. Relational Expectations"
+      ],
+      "question": "Is it selfish to set boundaries after a breakup, especially when the other person initiates friendship?",
+      "alternateQuestions": [
+        "How do we balance the desire to reconnect with the need for emotional recovery?",
+        "What role does self-respect play in post-breakup decision-making?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0038",
+      "sourceIndex": 4477,
+      "title": "Supporting a Colleague’s Struggle: Balancing Empathy and Urgency",
+      "description": "A student teacher's internship experience turns sour, with a teacher exploiting the intern for personal gain. The fiance feels beaten down but is unsure whether to report the issue to their professor.",
+      "issues": [
+        "Empathy vs. Urgency",
+        "Support vs. Intervention",
+        "Personal Well-being vs. Professional Development"
+      ],
+      "question": "Should the fiance report the teacher’s behavior for the sake of others or to protect their own well-being?",
+      "alternateQuestions": [
+        "What responsibilities come with being a supportive partner in this situation?",
+        "How can the couple balance empathy with advocating for the fiance’s rights?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0039",
+      "sourceIndex": 4598,
+      "title": "Gym Etiquette and Respect: A Dispute Over Conversation",
+      "description": "A cyclist in a HIIT class politely but firmly asks a stranger to stop talking during a workout. The stranger is offended, leading to further conflict.",
+      "issues": [
+        "Gym Etiquette vs. Social Interaction",
+        "Respect for Boundaries vs. Personal Space",
+        "Conflict Resolution vs. Confrontation"
+      ],
+      "question": "Is it reasonable to expect respect for personal space during a workout?",
+      "alternateQuestions": [
+        "How should we balance social interaction with individual needs in a group fitness setting?",
+        "What are the most effective ways to communicate boundaries in a gym or fitness class?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0040",
+      "sourceIndex": 4719,
+      "title": "Marriage, Family, and Boundaries: The Ethics of Supporting Extended Family",
+      "description": "A couple faces financial and emotional burdens from the groom’s fiancée’s family, particularly her mother. They must navigate the line between caring for loved ones and prioritizing their own future.",
+      "issues": [
+        "Family Obligation vs. Personal Priorities",
+        "Financial Support vs. Independence",
+        "Boundaries vs. Compassion"
+      ],
+      "question": "Is it selfish to limit financial support for extended family?",
+      "alternateQuestions": [
+        "How can the couple balance family obligation with their own aspirations?",
+        "What are the limits of family care and support?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0041",
+      "sourceIndex": 4840,
+      "title": "Worry and Trust: Balancing Safety Concerns and Independence in Relationships",
+      "description": "A couple navigates the wife's worry and the husband's need for solo walks. The wife asks for occasional check-ins, but the husband feels controlled.",
+      "issues": [
+        "Trust vs. Worry",
+        "Independence vs. Safety",
+        "Control vs. Consent"
+      ],
+      "question": "Is it reasonable for a partner to ask for check-ins during solo activities?",
+      "alternateQuestions": [
+        "How can couples balance trust with safety concerns in daily life?",
+        "What are the implications of perceiving requests as controlling versus supportive?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0042",
+      "sourceIndex": 4961,
+      "title": "Love, Commitment, and Financial Obligations: The Ethics of Relationship Dynamics",
+      "description": "A partner's financial expectations shift after losing a job, causing distress and a reevaluation of the relationship. The couple must navigate changing circumstances and past agreements.",
+      "issues": [
+        "Trust vs. Financial Fairness",
+        "Autonomy vs. Interdependence",
+        "Commitment vs. Change"
+      ],
+      "question": "Is it fair to expect the partner to cover costs they initially agreed not to?",
+      "alternateQuestions": [
+        "How can the couple navigate financial changes while maintaining trust and commitment?",
+        "What are the implications of not upholding past agreements in a relationship?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0043",
+      "sourceIndex": 5082,
+      "title": "Supporting a Loved One’s Health: The Ethics of Surprise Intervention",
+      "description": "A wife considers gifting her husband a gym membership to address his obesity and related health issues. She's sensitive to his self-deprecation but feels a moral obligation to encourage change.",
+      "issues": [
+        "Respect for Autonomy vs. Concern for Well-Being",
+        "Support vs. Control",
+        "Moral Obligation vs. Personal Boundaries"
+      ],
+      "question": "Is it the wife’s duty to intervene, given her husband’s health issues and self-awareness of his weight?",
+      "alternateQuestions": [
+        "How can the wife balance respect for her husband’s autonomy with her concern for his health?",
+        "What are the potential benefits and drawbacks of a surprise gym membership?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0044",
+      "sourceIndex": 5203,
+      "title": "Cheating, Loyalty, and Confrontation: The Ethics of Exposing Infidelity",
+      "description": "A friend is torn between loyalty and exposing a friend's infidelity. The group debates whether to inform the cheater's boyfriend, considering his right to know versus the potential harm of revealing private information.",
+      "issues": [
+        "Honesty vs. Privacy",
+        "Loyalty vs. Justice",
+        "Confrontation vs. Compassion"
+      ],
+      "question": "Is it ever justifiable to expose someone's infidelity without their consent?",
+      "alternateQuestions": [
+        "How should the group balance loyalty to their friend with their duty to inform the affected partner?",
+        "What are the potential consequences of revealing private information?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0045",
+      "sourceIndex": 5324,
+      "title": "Relationship Trust and Social Life: The Ethics of Withholding Information",
+      "description": "A college student spends time with a female friend without informing his girlfriend, who becomes jealous upon finding out. He wonders if he’s at fault.",
+      "issues": [
+        "Transparency vs. Trust",
+        "Social Freedom vs. Relationship Expectations",
+        "Jealousy vs. Self-Reflection"
+      ],
+      "question": "Is the student obligated to inform his girlfriend about all social interactions?",
+      "alternateQuestions": [
+        "How can the girlfriend improve her reaction to perceived threats to the relationship?",
+        "What strategies can the couple use to maintain trust and social freedom?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0046",
+      "sourceIndex": 5445,
+      "title": "Citizenship, Property, and Animal Welfare: The Ethics of Reporting a Neighbor's Neglect",
+      "description": "A resident documents a neighbor's property neglect, including potential health hazards, and considers reporting it to authorities.",
+      "issues": [
+        "Civic Duty vs. Personal Safety",
+        "Property Rights vs. Public Safety",
+        "Animal Welfare vs. Property Owner's Autonomy"
+      ],
+      "question": "Is it the resident’s responsibility to report the property neglect?",
+      "alternateQuestions": [
+        "How do we balance individual property rights with public safety and animal welfare?",
+        "What are the resident’s obligations when confronting potential hostility from the neighbor?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0047",
+      "sourceIndex": 5566,
+      "title": "Airplane Etiquette: A Clash of Volume and Respect",
+      "description": "A passenger is disturbed by another’s loud device use, and they engage in a heated exchange. The situation escalates with the introduction of music.",
+      "issues": [
+        "Respect vs. Entitlement",
+        "Noise Levels vs. Personal Preference",
+        "Social Norms vs. Assertiveness"
+      ],
+      "question": "How should passengers navigate device use in public spaces?",
+      "alternateQuestions": [
+        "What are the boundaries between personal preferences and social norms?",
+        "How can we balance individual rights with collective comfort?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0048",
+      "sourceIndex": 5687,
+      "title": "Relationship Dynamics and Accountability: The Ethics of Confronting Past Mistakes",
+      "description": "A couple navigates past infidelity and differing cultural attitudes. The partner who cheated feels judged and hurt, while the other feels disrespected. They struggle with accountability, trust, and personal growth.",
+      "issues": [
+        "Accountability vs. Forgiveness",
+        "Trust vs. Past Mistakes",
+        "Self-Respect vs. Partner Expectations"
+      ],
+      "question": "How should the cheating partner account for their past actions and impact on the relationship?",
+      "alternateQuestions": [
+        "What are the responsibilities of the partner who feels hurt and disrespected?",
+        "How can the couple navigate their differences and promote mutual respect?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0049",
+      "sourceIndex": 5808,
+      "title": "Manipulation, Loyalty, and Friendship: The Ethical Dilemma of Pretending to be Friends",
+      "description": "A person maintains a friendship with someone who manipulated and lied to them for personal gain. They fear repercussions if they cut ties.",
+      "issues": [
+        "Self-Respect vs. Fear",
+        "Loyalty vs. Manipulation",
+        "Authenticity vs. Pretense"
+      ],
+      "question": "Is it ethical to maintain a friendship with someone who manipulated and lied?",
+      "alternateQuestions": [
+        "How should one balance self-respect with fear of consequences?",
+        "What are the implications of pretending to be friends out of self-interest?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0050",
+      "sourceIndex": 5929,
+      "title": "Burnout, Ethics, and Family Expectations: A Caregiver's Dilemma",
+      "description": "A former palliative nurse quits due to job-related stress, causing family and friends to question their loyalty to their family's caregiving legacy. They feel blamed for their own burnout and trust is shaken.",
+      "issues": [
+        "Burnout vs. Family Expectations",
+        "Autonomy vs. Legacy",
+        "Trust vs. Self-Respect"
+      ],
+      "question": "Is the nurse morally obligated to maintain their job for family expectations?",
+      "alternateQuestions": [
+        "How should caregivers balance their own well-being with family responsibilities?",
+        "What is the significance of acknowledging and addressing burnout in maintaining trust?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0051",
+      "sourceIndex": 6050,
+      "title": "Breakups, Forgiveness, and Reconnections: Ethics of a Second Chance",
+      "description": "After a boyfriend breaks up via text, the girl goes out and has a one-night stand. He then apologizes and wants to get back together. She's unsure whether to forgive or move on.",
+      "issues": [
+        "Forgiveness vs. Closure",
+        "Reconnection vs. Self-Respect",
+        "Trust vs. Emotional Investment"
+      ],
+      "question": "Is it right to forgive someone who broke up via text without an apology?",
+      "alternateQuestions": [
+        "How should the girl weigh her emotional investment against her self-respect?",
+        "What does it mean to forgive someone in a relationship?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0052",
+      "sourceIndex": 6171,
+      "title": "Love, Beauty, and Compatibility: The Ethics of Relationship Realization",
+      "description": "A bi individual reflects on their relationship with a straight partner. They feel their partner's limited view of beauty is disappointing and incompatible with their own. They ponder whether it's wrong to break up over aesthetic differences.",
+      "issues": [
+        "Compatibility vs. Compromise",
+        "Personal Standards vs. Relationship Expectations",
+        "Authenticity vs. Accommodation"
+      ],
+      "question": "Is it ethical to prioritize personal taste in beauty over a relationship?",
+      "alternateQuestions": [
+        "How can individuals communicate and respect differences in aesthetic preferences?",
+        "What are the responsibilities in a relationship when one partner's desires conflict with the other's values?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0053",
+      "sourceIndex": 6292,
+      "title": "Family Expectations and Personal Property: The Ethics of Shared Gaming",
+      "description": "A teenager saves money to buy a PS4 but is expected by their family to share it with a younger sibling who has a history of damaging electronics. The sibling also expects the older sibling to buy games suitable for them.",
+      "issues": [
+        "Personal Property vs. Family Expectations",
+        "Autonomy vs. Generational Obligation",
+        "Responsibility vs. Fairness"
+      ],
+      "question": "Is it morally obligatory to share personal property with family members?",
+      "alternateQuestions": [
+        "How should the older sibling balance their autonomy with the family's expectations and the younger sibling's needs?",
+        "What are the responsibilities of each family member in this situation?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0054",
+      "sourceIndex": 6413,
+      "title": "Host Family Dynamics and Sensitivity: A Conflict of Needs and Expectations",
+      "description": "A student living with a host family notices a disruption caused by their host mom's early morning coffee routine, leading to strained communication and perceived disloyalty.",
+      "issues": [
+        "Respect vs. Convenience",
+        "Communication vs. Misunderstanding",
+        "Loyalty vs. Personal Autonomy"
+      ],
+      "question": "Is the student's concern about noise an unreasonable request?",
+      "alternateQuestions": [
+        "How can host families navigate conflicting schedules and preferences?",
+        "What can be done to rebuild trust after a perceived slight?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0055",
+      "sourceIndex": 6534,
+      "title": "Kitchen Responsibilities and Roommate Tensions: A Study in Fairness and Communication",
+      "description": "A roommate accuses the other of not contributing to cleaning up a pile of dishes, despite their past efforts. The accused feels justified in refusing to help with dishes not their responsibility.",
+      "issues": [
+        "Responsibility Distribution",
+        "Communication Breakdown",
+        "Fairness and Expectations"
+      ],
+      "question": "Is it fair for one roommate to refuse to help with dishes they believe are not their responsibility?",
+      "alternateQuestions": [
+        "What are the roommate's responsibilities in maintaining a clean kitchen?",
+        "How can roommates resolve this conflict and restore a sense of fairness and respect?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0056",
+      "sourceIndex": 6655,
+      "title": "Racial Sensitivity and Workplace Dynamics: The Ethics of Microaggressions",
+      "description": "A white male coworker feels uncomfortable when his colleague discusses how to accommodate a new black team member. He questions the assumption that he might make insensitive comments.",
+      "issues": [
+        "Racial Sensitivity vs. Personal Freedom",
+        "Microaggressions vs. Open Dialogue",
+        "Workplace Expectations vs. Personal Beliefs"
+      ],
+      "question": "Is it reasonable for Jane to anticipate and address potential microaggressions?",
+      "alternateQuestions": [
+        "Should the coworker be held responsible for comments that might be misinterpreted as insensitive?",
+        "What are the boundaries of workplace sensitivity, and how can they be communicated effectively?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0057",
+      "sourceIndex": 6776,
+      "title": "Grad School Encounters: Managing Creepy and Persistent Interest",
+      "description": "A graduate student encounters a persistent classmate from their undergraduate days who sent inappropriate messages, made creepy gestures, and now tries to flirt despite clear disinterest.",
+      "issues": [
+        "Consent vs. Persistence",
+        "Respect vs. Inappropriateness",
+        "Autonomy vs. Harassment"
+      ],
+      "question": "How should the student handle ongoing and unwanted interest from this classmate?",
+      "alternateQuestions": [
+        "What is the classmate's responsibility in respecting boundaries?",
+        "How can the student prioritize their own comfort and well-being?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0058",
+      "sourceIndex": 6897,
+      "title": "Birthday Plans, Family, and Relationships: The Ethics of Inclusion",
+      "description": "A man plans a birthday party to spend time with his son, who only lives with him half the time. His girlfriend is upset, feeling left out and possibly jealous of the ex-wife's involvement.",
+      "issues": [
+        "Family Obligations vs. Romantic Relationships",
+        "Transparency vs. Expectations",
+        "Inclusion vs. Exclusion"
+      ],
+      "question": "Is the father justified in planning a party to spend time with his son, even if it involves his ex-wife?",
+      "alternateQuestions": [
+        "How should the girlfriend react to the party plans, and what are her rights in this situation?",
+        "What role does transparency play in managing relationships and family dynamics?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0059",
+      "sourceIndex": 7018,
+      "title": "Designer Bags and Workplace Dynamics: The Ethics of Displaying Wealth",
+      "description": "A company employee considers bringing a designer bag to work, concerned about being perceived as flaunting wealth or being insensitive to colleagues' financial struggles.",
+      "issues": [
+        "Display of Wealth vs. Sensitivity",
+        "Nepotism vs. Individual Expression",
+        "Practicality vs. Perception"
+      ],
+      "question": "Is it wrong to display wealth in the workplace?",
+      "alternateQuestions": [
+        "How can employees balance personal expression with workplace sensitivity?",
+        "What are the implications of displaying designer items in a setting with financial disparities?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0060",
+      "sourceIndex": 7139,
+      "title": "Financial Stress, Gaming, and Relationship Dynamics",
+      "description": "A girlfriend covers expenses while her boyfriend is unemployed. He spends money on an in-game reward, causing tension due to financial strain. The girlfriend feels let down, while the boyfriend feels judged.",
+      "issues": [
+        "Financial Support vs. Personal Spending",
+        "Emotional Well-Being vs. Hobbies",
+        "Trust vs. Expectations"
+      ],
+      "question": "Is it fair to expect a partner to prioritize financial contributions over personal interests?",
+      "alternateQuestions": [
+        "How can partners communicate about their spending habits and financial expectations?",
+        "What are the implications of not discussing personal spending on relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0061",
+      "sourceIndex": 7260,
+      "title": "Office Etiquette and the Ethics of Public Shaming",
+      "description": "A worker posts a picture of office nail clippings on Slack to address a gross behavior. They regret it, feeling it was a form of public shaming.",
+      "issues": [
+        "Etiquette vs. Directness",
+        "Respect vs. Humor",
+        "Personal Boundaries vs. Office Rules"
+      ],
+      "question": "Was the post a justified response to the behavior, or an overreaction?",
+      "alternateQuestions": [
+        "How should etiquette and directness balance in addressing office issues?",
+        "What are the consequences of public shaming in the workplace?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0062",
+      "sourceIndex": 7381,
+      "title": "Dorm Living and Animal Welfare: The Ethics of Challenging a Roommate’s Pet",
+      "description": "A student confronts a roommate about her poorly behaved emotional support dog, leading to potential action from the apartment manager. The student grapples with guilt and uncertainty.",
+      "issues": [
+        "Animal Welfare vs. Roommate Dynamics",
+        "Emotional Support vs. Public Impact",
+        "Confrontation vs. Empathy"
+      ],
+      "question": "Is it morally justifiable to challenge a roommate about their emotional support animal’s behavior?",
+      "alternateQuestions": [
+        "What are the ethical responsibilities towards the animal’s welfare and the roommate’s rights?",
+        "How can a student balance empathy with the need to address problematic behavior?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0063",
+      "sourceIndex": 7502,
+      "title": "Child Safety and Family Fallout: The Ethics of Blame and Responsibility",
+      "description": "A caretaker loses a child in a grocery store and is harshly criticized by the child's father. The caretaker feels blamed, belittled, and judged.",
+      "issues": [
+        "Responsibility vs. Accountability",
+        "Blame vs. Support",
+        "Personal Identity vs. Criticism"
+      ],
+      "question": "Is the caretaker entirely responsible for the child's safety in a crowded store?",
+      "alternateQuestions": [
+        "How should criticism be balanced with understanding and support?",
+        "What are the implications of personal attacks on the caretaker's identity and self-worth?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0064",
+      "sourceIndex": 7623,
+      "title": "Conflict on the Road: Unintentional Insult and Dispute",
+      "description": "A young man, trying to impress his girlfriend's father, faces an angry reaction when he sneaks a snack. The father's reaction escalates into a verbal and physical confrontation, ending with the young man being abandoned.",
+      "issues": [
+        "Respect vs. Disregard",
+        "Communication vs. Silence",
+        "Anger vs. Abuse"
+      ],
+      "question": "Was the young man morally in the wrong for eating a snack?",
+      "alternateQuestions": [
+        "How should conflicts be handled, especially in inter-family situations?",
+        "What are the limits of anger and how can it be expressed ethically?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0065",
+      "sourceIndex": 7744,
+      "title": "Business, Emotions, and Relationship: The Ethical Quagmire of Shared Interests",
+      "description": "A business owner, unable to reconcile with his ex-partner, grapples with whether to grant her ownership of the business. He fears losing his son's mother, but also his business.",
+      "issues": [
+        "Personal Feelings vs. Business Objectivity",
+        "Emotional Labor vs. Financial Responsibility",
+        "Partnership vs. Independence"
+      ],
+      "question": "Is the business owner obligated to grant ownership to his ex-partner for the sake of their child and shared history?",
+      "alternateQuestions": [
+        "What is the fair balance between personal feelings and business decisions?",
+        "How should the business owner navigate the emotional labor of shared ownership?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0066",
+      "sourceIndex": 7865,
+      "title": "Sex, Communication, and Relationship Dynamics: The Ethics of Safety and Consent",
+      "description": "A couple in a long-term relationship discusses birth control and safer sex practices. The woman feels disregarded when her partner prefers not to use condoms due to lack of sensation.",
+      "issues": [
+        "Consent vs. Comfort",
+        "Safety vs. Pleasure",
+        "Communication vs. Assumptions"
+      ],
+      "question": "How can partners balance pleasure with safety and responsibility in their sexual relationship?",
+      "alternateQuestions": [
+        "What are the implications of prioritizing pleasure over safety, and how can this be addressed in communication?",
+        "How can couples maintain respect and empathy when navigating differing opinions on safety practices?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0067",
+      "sourceIndex": 7986,
+      "title": "Expensive Vacuum and Unexpected Desire: The Ethics of Commitment and Consumerism",
+      "description": "A husband and wife host a vacuum cleaner demo, initially without the intention of purchasing. After seeing the demo, the wife wants to buy it, but the husband says no, feeling deceived and pressured.",
+      "issues": [
+        "Honesty vs. Deception",
+        "Commitment vs. Consumerism",
+        "Financial Fairness vs. Emotional Pressure"
+      ],
+      "question": "Is it wrong to change one's mind after seeing a demo without warning the other person?",
+      "alternateQuestions": [
+        "How should couples navigate differing desires for luxury goods?",
+        "What role does honesty play in consumer decisions?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0068",
+      "sourceIndex": 8107,
+      "title": "Sibling Rivalry and Adult Intervention: The Ethics of Blame and Anger",
+      "description": "A teenager gets angry after a playful sibling act goes awry, spilling grape juice. Their mom blames the teenager, not the child, for the mess and anger.",
+      "issues": [
+        "Blame vs. Accountability",
+        "Adult Intervention",
+        "Teen Anger vs. Parent Response"
+      ],
+      "question": "Should the teenager be held responsible for the spill?",
+      "alternateQuestions": [
+        "How can parents balance teaching responsibility with understanding sibling dynamics?",
+        "What are the implications of shifting blame from the child to the adult?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0069",
+      "sourceIndex": 8228,
+      "title": "Roommate Stress and Financial Obligation: A Study in Frustration",
+      "description": "A roommate faces stress and frustration due to the mother's and son's unreliability regarding paying the internet bill. The roommate feels responsible for the business and must make a decision.",
+      "issues": [
+        "Responsibility vs. Reliance",
+        "Boundaries vs. Compassion",
+        "Practicality vs. Emotional Toll"
+      ],
+      "question": "Is the roommate morally obligated to wait for the son to pay the bill?",
+      "alternateQuestions": [
+        "What are the responsibilities of the roommate and the mother in this situation?",
+        "How should the roommate navigate their emotional toll and the mother's expectations?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0070",
+      "sourceIndex": 8349,
+      "title": "Boundary Setting and Family Dynamics: The Ethics of Emotional Manipulation",
+      "description": "A son refuses to provide photos of himself in uniform to his mother, who is using them as leverage to display his wedding photos with his ex-wife. The son feels manipulated and hurt, leading to tension and conflict.",
+      "issues": [
+        "Boundary Setting vs. Family Obligation",
+        "Emotional Manipulation vs. Respect",
+        "Pride vs. Forgiveness"
+      ],
+      "question": "Is the son justified in refusing to provide photos to appease his mother?",
+      "alternateQuestions": [
+        "How should the mother handle the son’s boundary request?",
+        "What are the consequences of emotional manipulation in family relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0071",
+      "sourceIndex": 8470,
+      "title": "Roommate’s Behavior: The Ethical Dilemma of Informing the Landlord",
+      "description": "A tenant suspects their roommate is hosting drug-related activities and seeks advice on whether to inform the landlord.",
+      "issues": [
+        "Privacy vs. Safety",
+        "Personal Rights vs. Shared Space",
+        "Loyalty vs. Well-being"
+      ],
+      "question": "Is it reasonable to inform the landlord about suspected drug-related activities?",
+      "alternateQuestions": [
+        "How can the tenant navigate the balance between privacy and safety concerns?",
+        "What are the tenant’s obligations when living with problematic roommates?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0072",
+      "sourceIndex": 8591,
+      "title": "Spring Break and Family Visits: Balancing Love, Guilt, and Expectations",
+      "description": "A couple visits long-distance family with young children for Spring Break. The wife feels overwhelmed, guilty, and trapped, while the husband loves the quality time.",
+      "issues": [
+        "Guilt vs. Honesty",
+        "Expectations vs. Realities",
+        "Needs vs. Obligations"
+      ],
+      "question": "Is the wife obligated to hide her true feelings to maintain harmony?",
+      "alternateQuestions": [
+        "How can the couple balance their needs and expectations during family visits?",
+        "What is the value of honesty in navigating complex family relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0073",
+      "sourceIndex": 8712,
+      "title": "Navigating Unwanted Attention and Boundaries: The Ethics of Blocking and Self-Protection",
+      "description": "A woman feels uncomfortable and harassed by a man who persistently asks personal questions, compliments her in an unsettling way, and pushes for a date. She wants to block him but feels guilty.",
+      "issues": [
+        "Personal Safety vs. Guilt",
+        "Boundaries vs. Empathy",
+        "Self-Protection vs. Social Pressure"
+      ],
+      "question": "Is it morally justifiable to block someone who makes her uncomfortable?",
+      "alternateQuestions": [
+        "How can she assert her boundaries without causing unnecessary guilt or harm?",
+        "What are the ethical considerations when dealing with someone who may have mental health issues?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0074",
+      "sourceIndex": 8833,
+      "title": "Conditional Support and Family Expectations: The Ethics of Engagement Well-Wishes",
+      "description": "A family member is skeptical about a friend's engagement due to the relationship's tumultuous history. Their lukewarm response is met with criticism from family members who feel obligated to be enthusiastic and supportive.",
+      "issues": [
+        "Authenticity vs. Social Norms",
+        "Personal Judgment vs. Family Loyalty",
+        "Supportive Behavior vs. Moral Truth"
+      ],
+      "question": "Is it wrong to express reservations about an engagement if concerns exist?",
+      "alternateQuestions": [
+        "What are the responsibilities of family and friends when it comes to supporting relationships?",
+        "How can we balance loyalty with honesty in sensitive situations?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0075",
+      "sourceIndex": 8954,
+      "title": "Crossing Lines: Friendship, Love, and Betrayal",
+      "description": "A long-term friend confesses romantic feelings after years of friendship. The friend feels betrayed and now has low contact. They question their role in the situation.",
+      "issues": [
+        "Blurred Boundaries",
+        "Authenticity vs. Manipulation",
+        "Trust vs. Betrayal"
+      ],
+      "question": "Was the friend morally obligated to disclose their romantic feelings?",
+      "alternateQuestions": [
+        "Did the friend contribute to the blurred boundaries in the relationship?",
+        "How can we distinguish between genuine love and manipulation in relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0076",
+      "sourceIndex": 9075,
+      "title": "Financial Frustration and Impulse Buying: A Test of Marriage and Responsibility",
+      "description": "A working husband feels overwhelmed by his wife's impulse buying, which depletes their savings. Despite repeated discussions, she continues to make purchases without his consent.",
+      "issues": [
+        "Impulse Control vs. Spousal Trust",
+        "Financial Responsibility vs. Personal Freedom",
+        "Open Communication vs. Frustration"
+      ],
+      "question": "Is the wife’s behavior a legitimate concern in the marriage?",
+      "alternateQuestions": [
+        "What are the moral implications of limiting her access to funds or online shopping?",
+        "How can the couple find a balance between financial responsibility and personal freedom?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0077",
+      "sourceIndex": 9196,
+      "title": "In-Laws, Privacy, and Trust: A Collision of Expectations",
+      "description": "The author's fiancé's parents search her luggage, mistaking soap for a controlled substance. She reacts strongly, leading to a strained family relationship.",
+      "issues": [
+        "Privacy vs. Parental Authority",
+        "Trust vs. Suspicion",
+        "Respect vs. Misunderstanding"
+      ],
+      "question": "Is it ever justified for in-laws to search personal belongings without consent?",
+      "alternateQuestions": [
+        "What can the author do to rebuild trust with her fiancé's parents after this incident?",
+        "How should misunderstandings be addressed in family relationships?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0078",
+      "sourceIndex": 9317,
+      "title": "Interpersonal Loyalty and Conflict: Navigating Friendships and Relationships",
+      "description": "A trusted friend is asked to mediate a dispute between two couples, where one couple feels threatened by the other's living arrangement. The mediator is torn between loyalty to each friend.",
+      "issues": [
+        "Confidentiality vs. Mediation",
+        "Loyalty vs. Fairness",
+        "Personal Ties vs. Impartiality"
+      ],
+      "question": "Is the mediator obligated to remain impartial in this situation?",
+      "alternateQuestions": [
+        "How can the mediator balance loyalty to each friend without taking sides?",
+        "What role does confidentiality play in maintaining trust and facilitating resolution?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0079",
+      "sourceIndex": 9438,
+      "title": "Relationship Breakdown and Abandonment Fears: The Ethics of Holding On vs. Letting Go",
+      "description": "A college student breaks up with his girlfriend after she suggests putting their relationship on hold due to academic pressures. His abandonment fears and emotional unpreparedness for a long separation lead to conflict.",
+      "issues": [
+        "Abandonment Fears vs. Relationship Realism",
+        "Emotional Readiness vs. Compromise",
+        "Honesty vs. Empathy"
+      ],
+      "question": "Is it reasonable to expect a relationship to go on hold indefinitely?",
+      "alternateQuestions": [
+        "How can partners navigate differing emotional readiness levels in a relationship?",
+        "What is the moral duty when faced with a partner's emotional unpreparedness?"
+      ]
+    },
+    {
+      "id": "reddit_ethics_0080",
+      "sourceIndex": 9559,
+      "title": "Asexuality, Friendship, and Authenticity: The Ethics of Silence and Support",
+      "description": "A student is uncertain about a friend's asexuality and chooses not to show interest or support. The friend feels judged and accuses them of being bigoted.",
+      "issues": [
+        "Silence vs. Support",
+        "Authenticity vs. Indifference",
+        "Respect vs. Judgment"
+      ],
+      "question": "Is it morally obligatory to support and validate someone’s identity?",
+      "alternateQuestions": [
+        "What is the appropriate response to a friend’s revelation about their identity?",
+        "How do we navigate uncertainty about another person’s experience?"
+      ]
+    }
+  ]
+}

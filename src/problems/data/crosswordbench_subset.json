@@ -1,0 +1,5402 @@
+{
+  "source": {
+    "name": "CrossWordBench",
+    "huggingface": "CrossWordBenchEval/CrossWordBench",
+    "config": "english",
+    "split": "7x7",
+    "paper": "CrossWordBench: Evaluating the Reasoning Capabilities of LLMs and LVLMs with Controllable Puzzle Generation (Leng et al., arXiv:2504.00043)",
+    "url": "https://huggingface.co/datasets/CrossWordBenchEval/CrossWordBench",
+    "paperUrl": "https://arxiv.org/abs/2504.00043",
+    "note": "Vendored full-puzzle subset (English 7x7). Reference solutions stored for evaluation only and never included in agent prompts. CrosswordQA clue-pairs are not used."
+  },
+  "curatedAt": "2026-08-07",
+  "count": 40,
+  "items": [
+    {
+      "id": "crosswordbench_0001",
+      "sourceId": 1,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...#...",
+        ".#..#.#",
+        "...#...",
+        ".###.#.",
+        ".....#.",
+        "#.#.##.",
+        "#.#...#"
+      ],
+      "solution": [
+        "ACE#AMS",
+        "D#EM#M#",
+        "AAR#GEE",
+        "S###P#T",
+        "HORNS#A",
+        "#P#E##S",
+        "#Q#WON#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Top of a suit?",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "ACE"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "When half of rush hours occur: Abbr.",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "AMS"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "\"The Age of Anxiety\" poet",
+          "row": 1,
+          "col": 2,
+          "length": 2,
+          "answer": "EM"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "River forming the Handegg waterfall",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "AAR"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "\"Is that so!\"",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "GEE"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Centers of steering wheels",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "HORNS"
+        },
+        {
+          "number": 12,
+          "direction": "across",
+          "clue": "Triumphed",
+          "row": 6,
+          "col": 3,
+          "length": 3,
+          "answer": "WON"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Not much, in cookery",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "ADASH"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Ending with ballad",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "EER"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Bovary's title: Abbr.",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "MME"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Dashboard-mounted gadget, for short",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "GPS"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Some P.A. announcements",
+          "row": 2,
+          "col": 6,
+          "length": 4,
+          "answer": "ETAS"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "Alphabetic trio",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "OPQ"
+        },
+        {
+          "number": 11,
+          "direction": "down",
+          "clue": "Wet behind the ears",
+          "row": 4,
+          "col": 3,
+          "length": 3,
+          "answer": "NEW"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0002",
+      "sourceId": 3,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##....#",
+        "...##.#",
+        "##.#...",
+        "..##.#.",
+        ".#.#...",
+        ".....#.",
+        ".#.#..#"
+      ],
+      "solution": [
+        "##ADOS#",
+        "FAM##T#",
+        "##Y#ARP",
+        "OH##D#R",
+        "P#A#HSI",
+        "TONTO#M",
+        "S#N#CO#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Hornets' nests",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "ADOS"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Grp. of relatives",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "FAM"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Painter Jean",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "ARP"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Bucolic bundle",
+          "row": 3,
+          "col": 0,
+          "length": 2,
+          "answer": "OH"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Coop sound",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "HSI"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Scout's rider",
+          "row": 5,
+          "col": 0,
+          "length": 5,
+          "answer": "TONTO"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Diane to Woody, often",
+          "row": 6,
+          "col": 4,
+          "length": 2,
+          "answer": "CO"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "\"Brooklyn Bridge\" actress Aquino",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "AMY"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Series",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "STR"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Having only one purpose",
+          "row": 2,
+          "col": 4,
+          "length": 5,
+          "answer": "ADHOC"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Buttoned-up all the way",
+          "row": 2,
+          "col": 6,
+          "length": 4,
+          "answer": "PRIM"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Gets off the fence, so to speak",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "OPTS"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Country singer Lee ___ Womack",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "ANN"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0003",
+      "sourceId": 6,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##.####",
+        "....#..",
+        ".#.#.#.",
+        ".##....",
+        "....#.#",
+        "#.#....",
+        "....#.#"
+      ],
+      "solution": [
+        "##P####",
+        "ONER#AR",
+        "D#I#A#O",
+        "O##DAVE",
+        "RAYE#A#",
+        "#P#CYST",
+        "LEAK#T#"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Lulu",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "ONER"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "First name in folk",
+          "row": 1,
+          "col": 5,
+          "length": 2,
+          "answer": "AR"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Actor Franco of \"Now You See Me\"",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "DAVE"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Martha in denture ads",
+          "row": 4,
+          "col": 0,
+          "length": 4,
+          "answer": "RAYE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Dermatologist's diagnosis",
+          "row": 5,
+          "col": 3,
+          "length": 4,
+          "answer": "CYST"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Plumbing problem",
+          "row": 6,
+          "col": 0,
+          "length": 4,
+          "answer": "LEAK"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "\"Dictionary of Linguistics\" linguist",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "PEI"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "One may be disagreeable",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "ODOR"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Potential pike",
+          "row": 1,
+          "col": 6,
+          "length": 3,
+          "answer": "ROE"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Overseas",
+          "row": 2,
+          "col": 4,
+          "length": 2,
+          "answer": "AA"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Really wallop",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "DECK"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Like the Great Plains",
+          "row": 3,
+          "col": 5,
+          "length": 4,
+          "answer": "VAST"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Do an impression of",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "APE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0004",
+      "sourceId": 8,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "####...",
+        "....#.#",
+        "#.#...#",
+        "....##.",
+        ".#.#...",
+        "...#.#.",
+        ".#....#"
+      ],
+      "solution": [
+        "####SET",
+        "DANA#A#",
+        "#W#CPU#",
+        "LENA##K",
+        "A#A#ASE",
+        "NIP#B#N",
+        "E#SHED#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Broadway background",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "SET"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "\"Two Years Before the Mast\" author",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "DANA"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "I.B.M. \"brain\"",
+          "row": 2,
+          "col": 3,
+          "length": 3,
+          "answer": "CPU"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Olin of \"Enemies, a Love Story\"",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "LENA"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Peer Gynt's mother",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "ASE"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Little belt",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "NIP"
+        },
+        {
+          "number": 12,
+          "direction": "across",
+          "clue": "Storage unit",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "SHED"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "It's bottled in Cannes",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "EAU"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Leave open-mouthed",
+          "row": 1,
+          "col": 1,
+          "length": 3,
+          "answer": "AWE"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Obama's signature health law, for short",
+          "row": 1,
+          "col": 3,
+          "length": 3,
+          "answer": "ACA"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Running track part",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "LANE"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Baby's quiet times",
+          "row": 3,
+          "col": 2,
+          "length": 4,
+          "answer": "NAPS"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "N.F.L. coach Whisenhunt",
+          "row": 3,
+          "col": 6,
+          "length": 3,
+          "answer": "KEN"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "\"Honest\" prez",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "ABE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0005",
+      "sourceId": 11,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...#.#.",
+        "##.#...",
+        "#....#.",
+        "..##.#.",
+        "#.....#",
+        "##.##.#",
+        "##....#"
+      ],
+      "solution": [
+        "ESS#K#R",
+        "##P#NRA",
+        "#RAGE#N",
+        "AE##L#I",
+        "#OCALA#",
+        "##O##V#",
+        "##ERIE#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Squad leader?",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "ESS"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Org. that fought the Brady bill",
+          "row": 1,
+          "col": 4,
+          "length": 3,
+          "answer": "NRA"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Road ___ (driver control problem)",
+          "row": 2,
+          "col": 1,
+          "length": 4,
+          "answer": "RAGE"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Big source of reality TV",
+          "row": 3,
+          "col": 0,
+          "length": 2,
+          "answer": "AE"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Seat of Marion County, Fla.",
+          "row": 4,
+          "col": 1,
+          "length": 5,
+          "answer": "OCALA"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Canal with 36 locks",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "ERIE"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Facial site",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "SPA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Sound at sundown",
+          "row": 0,
+          "col": 4,
+          "length": 5,
+          "answer": "KNELL"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Foreign princess",
+          "row": 0,
+          "col": 6,
+          "length": 4,
+          "answer": "RANI"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Old auto inits.",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "REO"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Olympic gold-medal runner Sebastian",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "COE"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "Michigan in Chicago: Abbr.",
+          "row": 4,
+          "col": 5,
+          "length": 3,
+          "answer": "AVE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0006",
+      "sourceId": 13,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".....##",
+        "#.#.#.#",
+        "....#.#",
+        "#.#.#.#",
+        ".#....#",
+        "...#.##",
+        ".#....."
+      ],
+      "solution": [
+        "RIVET##",
+        "#L#M#E#",
+        "REVE#F#",
+        "#T#E#L#",
+        "O#AREA#",
+        "MOB#S##",
+        "G#ALTAR"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "One of about a million on a jetliner",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "RIVET"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Topic de Freud",
+          "row": 2,
+          "col": 0,
+          "length": 4,
+          "answer": "REVE"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Party time, maybe",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "EVE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Something a line lacks",
+          "row": 4,
+          "col": 2,
+          "length": 4,
+          "answer": "AREA"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Stephen of \"Interview With the Vampire,\" 1994",
+          "row": 4,
+          "col": 3,
+          "length": 3,
+          "answer": "REA"
+        },
+        {
+          "number": 13,
+          "direction": "across",
+          "clue": "\"The Godfather\" crowd, with \"the\"",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "MOB"
+        },
+        {
+          "number": 14,
+          "direction": "across",
+          "clue": "Place for an exchange",
+          "row": 6,
+          "col": 2,
+          "length": 5,
+          "answer": "ALTAR"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "\"___the Stars Get in My Eyes\" (1953 country hit)",
+          "row": 0,
+          "col": 1,
+          "length": 4,
+          "answer": "ILET"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "OPEC V.I.P.",
+          "row": 0,
+          "col": 3,
+          "length": 5,
+          "answer": "EMEER"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Black key",
+          "row": 1,
+          "col": 5,
+          "length": 4,
+          "answer": "EFLA"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Suffix with command",
+          "row": 2,
+          "col": 3,
+          "length": 3,
+          "answer": "EER"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Fourth-most populous state, just after N.Y.",
+          "row": 2,
+          "col": 5,
+          "length": 3,
+          "answer": "FLA"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "\"u r KIDDING!\"",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "OMG"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "Counselors' org.",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "ABA"
+        },
+        {
+          "number": 12,
+          "direction": "down",
+          "clue": "Suffix with winning",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "EST"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0007",
+      "sourceId": 16,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#.....#",
+        "#.#.#.#",
+        "#.....#",
+        "##.#.#.",
+        "##.#...",
+        "#...##.",
+        "####..."
+      ],
+      "solution": [
+        "#GAYLE#",
+        "#E#T#D#",
+        "#MIDAS#",
+        "##N#L#I",
+        "##C#LAO",
+        "#CAB##N",
+        "####ASS"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Singer Crystal",
+          "row": 0,
+          "col": 1,
+          "length": 5,
+          "answer": "GAYLE"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "The original Goldfinger?",
+          "row": 2,
+          "col": 1,
+          "length": 5,
+          "answer": "MIDAS"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Southeast Asian",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "LAO"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Certain red wine, informally",
+          "row": 5,
+          "col": 1,
+          "length": 3,
+          "answer": "CAB"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Dolt",
+          "row": 6,
+          "col": 4,
+          "length": 3,
+          "answer": "ASS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Jewel",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "GEM"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Since 1/1",
+          "row": 0,
+          "col": 3,
+          "length": 3,
+          "answer": "YTD"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Wheels of Fortune, for short?",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "EDS"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Viracocha worshiper",
+          "row": 2,
+          "col": 2,
+          "length": 4,
+          "answer": "INCA"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Tie term",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "ALL"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Exchanged items, maybe",
+          "row": 3,
+          "col": 6,
+          "length": 4,
+          "answer": "IONS"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0008",
+      "sourceId": 18,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...####",
+        "#.#...#",
+        "...#.#.",
+        ".#.#...",
+        ".....#.",
+        ".#.#...",
+        "######."
+      ],
+      "solution": [
+        "CEO####",
+        "#A#GRE#",
+        "CUD#H#H",
+        "A#O#ETA",
+        "RIGHT#G",
+        "R#S#TOA",
+        "######R"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Subj. of a Fortune profile",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "CEO"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "It has an analytical writing component, for short",
+          "row": 1,
+          "col": 3,
+          "length": 3,
+          "answer": "GRE"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Chew it over",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "CUD"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Greek letter",
+          "row": 3,
+          "col": 4,
+          "length": 3,
+          "answer": "ETA"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Amendment subject",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "RIGHT"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Start of many an ode's title",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "TOA"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "_____ Claire. Wis.",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "EAU"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Bonnie Blue Butler's dad",
+          "row": 1,
+          "col": 4,
+          "length": 5,
+          "answer": "RHETT"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "\"It Must Be Him\" singer, 1967",
+          "row": 2,
+          "col": 0,
+          "length": 4,
+          "answer": "CARR"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Shih Tzus, e.g.",
+          "row": 2,
+          "col": 2,
+          "length": 4,
+          "answer": "DOGS"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Viking in a Dik Browne strip",
+          "row": 2,
+          "col": 6,
+          "length": 5,
+          "answer": "HAGAR"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0009",
+      "sourceId": 21,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#.....#",
+        "###.###",
+        "#....#.",
+        "#.#.##.",
+        "...#...",
+        ".#.#.#.",
+        ".#....."
+      ],
+      "solution": [
+        "#RHINO#",
+        "###B###",
+        "#FLAW#B",
+        "#U#R##E",
+        "ALL#DAL",
+        "C#E#O#L",
+        "E#SAHIB"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Heavy zoo critter",
+          "row": 0,
+          "col": 1,
+          "length": 5,
+          "answer": "RHINO"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Nick or chip",
+          "row": 2,
+          "col": 1,
+          "length": 4,
+          "answer": "FLAW"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "\"___ salute!\" (Italian drinking toast)",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "ALL"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Lentil dish at an Indian restaurant",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "DAL"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Term of address in Kipling",
+          "row": 6,
+          "col": 2,
+          "length": 5,
+          "answer": "SAHIB"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Flanged support",
+          "row": 0,
+          "col": 3,
+          "length": 4,
+          "answer": "IBAR"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Suffix with hand or fist",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "FUL"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Like some 70's trousers",
+          "row": 2,
+          "col": 6,
+          "length": 5,
+          "answer": "BELLB"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Not miss a thing on",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "ACE"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Article that may go with berets",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "LES"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Play-___ (kid's stuff)",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "DOH"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0010",
+      "sourceId": 23,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...#.#.",
+        ".#.....",
+        "...#.#.",
+        "#.#.#.#",
+        "....#.#",
+        ".##...#",
+        "....###"
+      ],
+      "solution": [
+        "TED#D#E",
+        "A#IDEST",
+        "GAP#A#E",
+        "#L#T#M#",
+        "PLEA#R#",
+        "E##OKS#",
+        "DIAS###"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Excellent adventurer with Bill",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "TED"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Explanatory words",
+          "row": 1,
+          "col": 2,
+          "length": 5,
+          "answer": "IDEST"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Deficiency",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "GAP"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Fund-raising letter, e.g.",
+          "row": 4,
+          "col": 0,
+          "length": 4,
+          "answer": "PLEA"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Consents",
+          "row": 5,
+          "col": 3,
+          "length": 3,
+          "answer": "OKS"
+        },
+        {
+          "number": 12,
+          "direction": "across",
+          "clue": "Domingo y lunes",
+          "row": 6,
+          "col": 0,
+          "length": 4,
+          "answer": "DIAS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Telephone ___",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "TAG"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Temporary falloff",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "DIP"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Org. involved in raids",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "DEA"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "When many get a St.-Tropez tan",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "ETE"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Completely",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "ALL"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Pueblo dweller",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "TAOS"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Fictional detective ___ Pym",
+          "row": 3,
+          "col": 5,
+          "length": 3,
+          "answer": "MRS"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "Bike part: Abbr.",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "PED"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0011",
+      "sourceId": 26,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".#....#",
+        "...##.#",
+        ".#.....",
+        ".####.#",
+        "...#.#.",
+        "#.##...",
+        ".....#."
+      ],
+      "solution": [
+        "R#ABBE#",
+        "EEN##A#",
+        "R#AHERO",
+        "A####P#",
+        "NAY#S#W",
+        "#C##OVA",
+        "SCALD#R"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "French religious title",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "ABBE"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Suffix with velvet",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "EEN"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "\"Don't be ___\"",
+          "row": 2,
+          "col": 2,
+          "length": 5,
+          "answer": "AHERO"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Demurral",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "NAY"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Plant gametes",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "OVA"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Almost boil",
+          "row": 6,
+          "col": 0,
+          "length": 5,
+          "answer": "SCALD"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Showed on TV again",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "RERAN"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Baptist leader?",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "ANA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Family name in the Old West",
+          "row": 0,
+          "col": 5,
+          "length": 4,
+          "answer": "EARP"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "U. of Md. is in it",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "ACC"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Golf course purchase, maybe",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "SOD"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "It's good for \"absolutely nothing\" according to a 1970 hit",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "WAR"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0012",
+      "sourceId": 28,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".#.#.##",
+        ".....#.",
+        ".#.#...",
+        ".##.##.",
+        "#.#....",
+        "#.#.#.#",
+        "....#.#"
+      ],
+      "solution": [
+        "E#M#I##",
+        "DIALS#C",
+        "G#R#THX",
+        "Y##I##V",
+        "#A#MALI",
+        "#P#A#O#",
+        "NORM#S#"
+      ],
+      "clues": [
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Dashboard array",
+          "row": 1,
+          "col": 0,
+          "length": 5,
+          "answer": "DIALS"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Quick expression of gratitude",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "THX"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Timbuktu's home",
+          "row": 4,
+          "col": 3,
+          "length": 4,
+          "answer": "MALI"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Unsurprising outcome",
+          "row": 6,
+          "col": 0,
+          "length": 4,
+          "answer": "NORM"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Like hip ads",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "EDGY"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Chip, maybe",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "MAR"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Suffix with cruciverbal",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "IST"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "116, in ancient Rome",
+          "row": 1,
+          "col": 6,
+          "length": 4,
+          "answer": "CXVI"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Descendant of Fatima, to Shiites",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "IMAM"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "S.F., for one",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "APO"
+        },
+        {
+          "number": 10,
+          "direction": "down",
+          "clue": "Acapulco article",
+          "row": 4,
+          "col": 5,
+          "length": 3,
+          "answer": "LOS"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0013",
+      "sourceId": 31,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "###....",
+        "#...#.#",
+        ".##....",
+        ".###.#.",
+        ".....#.",
+        "##.#.#.",
+        "##....#"
+      ],
+      "solution": [
+        "###DUTY",
+        "#CHE#I#",
+        "S##RAPT",
+        "A###T#A",
+        "PIPPA#N",
+        "##A#R#G",
+        "##RBIS#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Assigned task",
+          "row": 0,
+          "col": 3,
+          "length": 4,
+          "answer": "DUTY"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Think (over)",
+          "row": 1,
+          "col": 1,
+          "length": 3,
+          "answer": "CHE"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Totally absorbed (in)",
+          "row": 2,
+          "col": 3,
+          "length": 4,
+          "answer": "RAPT"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "\"___ Passes\" (Browning poem)",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "PIPPA"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Yount had 1,406 of them",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "RBIS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "\"___ Fuehrer's Face\"",
+          "row": 0,
+          "col": 3,
+          "length": 3,
+          "answer": "DER"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Tilt",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "TIP"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Chump",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "SAP"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Pong creator",
+          "row": 2,
+          "col": 4,
+          "length": 5,
+          "answer": "ATARI"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Bite",
+          "row": 2,
+          "col": 6,
+          "length": 4,
+          "answer": "TANG"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Links figure",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "PAR"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0014",
+      "sourceId": 33,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "####...",
+        "...##.#",
+        "#.#...#",
+        "...#.##",
+        ".#....#",
+        "...#.##",
+        "##...##"
+      ],
+      "solution": [
+        "####JOB",
+        "NIB##R#",
+        "#R#RTE#",
+        "FAB#W##",
+        "A#EPIC#",
+        "AIL#N##",
+        "##ABE##"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Butcher, baker or candlestick maker",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "JOB"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Quill point",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "NIB"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "A.A.A. map abbr.",
+          "row": 2,
+          "col": 3,
+          "length": 3,
+          "answer": "RTE"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "___ Four (Beatles)",
+          "row": 3,
+          "col": 0,
+          "length": 3,
+          "answer": "FAB"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "More than awesome",
+          "row": 4,
+          "col": 2,
+          "length": 4,
+          "answer": "EPIC"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Suffer",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "AIL"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Author Kobo of Japan",
+          "row": 6,
+          "col": 2,
+          "length": 3,
+          "answer": "ABE"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Mine extraction",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "ORE"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Where a pct. of one's income may go",
+          "row": 1,
+          "col": 1,
+          "length": 3,
+          "answer": "IRA"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Coil",
+          "row": 2,
+          "col": 4,
+          "length": 5,
+          "answer": "TWINE"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "J.F.K. watchdog",
+          "row": 3,
+          "col": 0,
+          "length": 3,
+          "answer": "FAA"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Jazz's ___ Fleck and the Flecktones",
+          "row": 3,
+          "col": 2,
+          "length": 4,
+          "answer": "BELA"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0015",
+      "sourceId": 36,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".....##",
+        ".#.###.",
+        "...#...",
+        ".#...#.",
+        "#.##...",
+        "#....#.",
+        "#.#####"
+      ],
+      "solution": [
+        "ALLOR##",
+        "B#I###A",
+        "ELM#URI",
+        "S#ESP#R",
+        "#E##CEE",
+        "#SKIS#R",
+        "#E#####"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "\"It's ___ nothing\"",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "ALLOR"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Symbol of liberty in the French Revolution",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "ELM"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "German-speaking Swiss canton",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "URI"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "More than a feeling",
+          "row": 3,
+          "col": 2,
+          "length": 3,
+          "answer": "ESP"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Middling grade",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "CEE"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "What one might attach to a vehicle after a snowstorm",
+          "row": 5,
+          "col": 1,
+          "length": 4,
+          "answer": "SKIS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Fortas and Lincoln",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "ABES"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "CaO",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "LIME"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Station, e.g.",
+          "row": 1,
+          "col": 6,
+          "length": 5,
+          "answer": "AIRER"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Market IDs",
+          "row": 2,
+          "col": 4,
+          "length": 4,
+          "answer": "UPCS"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Portland, Ore.-to-Boise dir.",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "ESE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0016",
+      "sourceId": 38,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "####...",
+        "#.#.#.#",
+        "#.....#",
+        "#.#.#.#",
+        "...#...",
+        ".#.#.#.",
+        ".#....."
+      ],
+      "solution": [
+        "####LIP",
+        "#M#N#G#",
+        "#EMAIL#",
+        "#T#N#O#",
+        "GST#MOS",
+        "A#O#I#E",
+        "G#ENROL"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Impudence",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "LIP"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Desktop communication",
+          "row": 2,
+          "col": 1,
+          "length": 5,
+          "answer": "EMAIL"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Astron. clock setting",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "GST"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Hip-hop's ___ Def",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "MOS"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Register, as for a class",
+          "row": 6,
+          "col": 2,
+          "length": 5,
+          "answer": "ENROL"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Dome-shaped home",
+          "row": 0,
+          "col": 5,
+          "length": 5,
+          "answer": "IGLOO"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Miracle workers of '69",
+          "row": 1,
+          "col": 1,
+          "length": 4,
+          "answer": "METS"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Chicken tikka go-with",
+          "row": 1,
+          "col": 3,
+          "length": 3,
+          "answer": "NAN"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Dribble glass, e.g.",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "GAG"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Ungulate's hoof, essentially",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "TOE"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Satellite launched in 1986",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "MIR"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Frites seasoning",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "SEL"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0017",
+      "sourceId": 41,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##.#...",
+        "...###.",
+        "##.....",
+        "...#.##",
+        ".###.#.",
+        "...#...",
+        ".#####."
+      ],
+      "solution": [
+        "##Q#NAH",
+        "ECU###S",
+        "##ABORT",
+        "SEL#O##",
+        "O###P#M",
+        "LOL#SEA",
+        "O#####S"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "\"No thanks\"",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "NAH"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Euro predecessor",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "ECU"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Scrub, as a mission",
+          "row": 2,
+          "col": 2,
+          "length": 5,
+          "answer": "ABORT"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Flandre flavoring",
+          "row": 3,
+          "col": 0,
+          "length": 3,
+          "answer": "SEL"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "E-guffaw",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "LOL"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Inland ___",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "SEA"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Kind of analysis: Abbr.",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "QUAL"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "V.P. between Wallace and Barkley",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "HST"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Cry over spilled milk",
+          "row": 2,
+          "col": 4,
+          "length": 4,
+          "answer": "OOPS"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Many an aria",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "SOLO"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Attachment to Christ?",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "MAS"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0018",
+      "sourceId": 43,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "....##.",
+        ".##....",
+        "....##.",
+        "###.###",
+        ".#....#",
+        "...#.##",
+        ".#.#..."
+      ],
+      "solution": [
+        "ASIA##N",
+        "H##STAR",
+        "ISAT##A",
+        "###R###",
+        "G#TALI#",
+        "TEE#P##",
+        "O#C#STY"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Siberia's site",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "ASIA"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Castor or Pollux",
+          "row": 1,
+          "col": 3,
+          "length": 4,
+          "answer": "STAR"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "\"Peace ___ hand\"",
+          "row": 2,
+          "col": 0,
+          "length": 4,
+          "answer": "ISAT"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Anklebones",
+          "row": 4,
+          "col": 2,
+          "length": 4,
+          "answer": "TALI"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Certain intersection",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "TEE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Sow's pen",
+          "row": 6,
+          "col": 4,
+          "length": 3,
+          "answer": "STY"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Sashimi fish",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "AHI"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Word in Kansas' motto",
+          "row": 0,
+          "col": 3,
+          "length": 5,
+          "answer": "ASTRA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "It has many arms: Abbr.",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "NRA"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "\"Yeah, yeah, little ___\" (1964 song refrain part)",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "GTO"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "P.I.",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "TEC"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Items found in jackets",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "LPS"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0019",
+      "sourceId": 46,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".....#.",
+        ".#.#...",
+        "...#.#.",
+        ".##....",
+        "....#.#",
+        "###.#.#",
+        "##....#"
+      ],
+      "solution": [
+        "DRYAS#P",
+        "E#A#PEA",
+        "COP#A#T",
+        "A##SMLE",
+        "FISH#A#",
+        "###I#N#",
+        "##INRE#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "___ dust (so-o-o boring)",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "DRYAS"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Soup bit",
+          "row": 1,
+          "col": 4,
+          "length": 3,
+          "answer": "PEA"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "One who handles bookings",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "COP"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Beam",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "SMLE"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Ichthyologist's study",
+          "row": 4,
+          "col": 0,
+          "length": 4,
+          "answer": "FISH"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Latin phrase on a memo",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "INRE"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Latte option",
+          "row": 0,
+          "col": 0,
+          "length": 5,
+          "answer": "DECAF"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Puppy's sound",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "YAP"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Too much of e-mail",
+          "row": 0,
+          "col": 4,
+          "length": 4,
+          "answer": "SPAM"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Crostini topping",
+          "row": 0,
+          "col": 6,
+          "length": 4,
+          "answer": "PATE"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Kind of splints",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "SHIN"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "A driver may change one",
+          "row": 3,
+          "col": 5,
+          "length": 4,
+          "answer": "LANE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0020",
+      "sourceId": 48,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#.....#",
+        "####.##",
+        "##.#...",
+        "#...##.",
+        ".#.#...",
+        "...#.##",
+        ".#...##"
+      ],
+      "solution": [
+        "#SLANT#",
+        "####A##",
+        "##N#TAT",
+        "#AAA##C",
+        "G#A#AIM",
+        "ARC#D##",
+        "S#PHD##"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Slope",
+          "row": 0,
+          "col": 1,
+          "length": 5,
+          "answer": "SLANT"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Bit of body art, in modern slang",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "TAT"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Towers, at times: Abbr.",
+          "row": 3,
+          "col": 1,
+          "length": 3,
+          "answer": "AAA"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Part of a mission statement",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "AIM"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Eyebrow's shape, roughly",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "ARC"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "___ candidate",
+          "row": 6,
+          "col": 2,
+          "length": 3,
+          "answer": "PHD"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "N.L.'er since 2005",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "NAT"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Rights org. co-founded by Mary White Ovington",
+          "row": 2,
+          "col": 2,
+          "length": 5,
+          "answer": "NAACP"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Cable sta. for cinema buffs",
+          "row": 2,
+          "col": 6,
+          "length": 3,
+          "answer": "TCM"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Fill-up filler",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "GAS"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Build on, with \"to\"",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "ADD"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0021",
+      "sourceId": 51,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "####.#.",
+        ".#.#...",
+        "...#.#.",
+        ".#....#",
+        ".##.#.#",
+        "....#.#",
+        "####..."
+      ],
+      "solution": [
+        "####T#E",
+        "A#F#OIL",
+        "ELI#V#L",
+        "G#TMEN#",
+        "I##O#E#",
+        "SCAB#H#",
+        "####PIE"
+      ],
+      "clues": [
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Big Alaska resource",
+          "row": 1,
+          "col": 4,
+          "length": 3,
+          "answer": "OIL"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "2008 Super Bowl M.V.P. Manning",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "ELI"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Eliot Ness and others",
+          "row": 3,
+          "col": 2,
+          "length": 4,
+          "answer": "TMEN"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "One who's not out on called strikes",
+          "row": 5,
+          "col": 0,
+          "length": 4,
+          "answer": "SCAB"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Easy as ___",
+          "row": 6,
+          "col": 4,
+          "length": 3,
+          "answer": "PIE"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Slithy one, to Carroll",
+          "row": 0,
+          "col": 4,
+          "length": 4,
+          "answer": "TOVE"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Wing",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "ELL"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Patronage",
+          "row": 1,
+          "col": 0,
+          "length": 5,
+          "answer": "AEGIS"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Working out well?",
+          "row": 1,
+          "col": 2,
+          "length": 3,
+          "answer": "FIT"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Surround, as fans might an idol",
+          "row": 3,
+          "col": 3,
+          "length": 3,
+          "answer": "MOB"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Radar's favorite drink on \"M*A*S*H\"",
+          "row": 3,
+          "col": 5,
+          "length": 4,
+          "answer": "NEHI"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0022",
+      "sourceId": 53,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#....#.",
+        "#.#.##.",
+        "#...##.",
+        ".##....",
+        "...#.##",
+        ".#.....",
+        "...####"
+      ],
+      "solution": [
+        "#ETNA#A",
+        "#D#E##X",
+        "#UZI##E",
+        "L##NEED",
+        "ICH#N##",
+        "R#ATEAM",
+        "ART####"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Vulcan's workshop, in myth",
+          "row": 0,
+          "col": 1,
+          "length": 4,
+          "answer": "ETNA"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Arm from a Mideast lad",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "UZI"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Must have",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "NEED"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "I, to Izaak",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "ICH"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "B. A. Baracus's group",
+          "row": 5,
+          "col": 2,
+          "length": 5,
+          "answer": "ATEAM"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "\"A veil, rather than a mirror,\" per Oscar Wilde",
+          "row": 6,
+          "col": 0,
+          "length": 3,
+          "answer": "ART"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "End of a professor's address?",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "EDU"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "\"No, mein Herr\"",
+          "row": 0,
+          "col": 3,
+          "length": 4,
+          "answer": "NEIN"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Gave the boot",
+          "row": 0,
+          "col": 6,
+          "length": 4,
+          "answer": "AXED"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Coin collected by a numismatico",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "LIRA"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "One way to fly: Abbr.",
+          "row": 3,
+          "col": 4,
+          "length": 3,
+          "answer": "ENE"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Ring-toss item?",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "HAT"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0023",
+      "sourceId": 56,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#...###",
+        "#.##...",
+        "#...#.#",
+        ".#.#...",
+        "....#.#",
+        ".##....",
+        "#...###"
+      ],
+      "solution": [
+        "#CTS###",
+        "#A##LAS",
+        "#BBS#T#",
+        "I#A#BOP",
+        "CLIC#N#",
+        "E##ICER",
+        "#FAN###"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Coppers: Abbr.",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "CTS"
+        },
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Singer's filler",
+          "row": 1,
+          "col": 4,
+          "length": 3,
+          "answer": "LAS"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Big shot? Hardly!",
+          "row": 2,
+          "col": 1,
+          "length": 3,
+          "answer": "BBS"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Punch",
+          "row": 3,
+          "col": 4,
+          "length": 3,
+          "answer": "BOP"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "___ Stic (retractable Bic pen)",
+          "row": 4,
+          "col": 0,
+          "length": 4,
+          "answer": "CLIC"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Cupcake finisher",
+          "row": 5,
+          "col": 3,
+          "length": 4,
+          "answer": "ICER"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Cool off",
+          "row": 6,
+          "col": 1,
+          "length": 3,
+          "answer": "FAN"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Hack's vehicle",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "CAB"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Make reparations",
+          "row": 1,
+          "col": 5,
+          "length": 5,
+          "answer": "ATONE"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Actress ___ Ling of \"The Crow\"",
+          "row": 2,
+          "col": 2,
+          "length": 3,
+          "answer": "BAI"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "___ cream",
+          "row": 3,
+          "col": 0,
+          "length": 3,
+          "answer": "ICE"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "The Bengals, on scoreboards",
+          "row": 4,
+          "col": 3,
+          "length": 3,
+          "answer": "CIN"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0024",
+      "sourceId": 58,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".######",
+        ".....##",
+        ".###...",
+        "#....#.",
+        ".#.#...",
+        "....##.",
+        ".###..."
+      ],
+      "solution": [
+        "E######",
+        "FREER##",
+        "T###ITO",
+        "#TACT#C",
+        "A#M#ARC",
+        "SPAR##U",
+        "S###SLR"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Less restrained",
+          "row": 1,
+          "col": 0,
+          "length": 5,
+          "answer": "FREER"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Four-time Japanese premier",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "ITO"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "\"The ability to describe others as they see themselves\": Lincoln",
+          "row": 3,
+          "col": 1,
+          "length": 4,
+          "answer": "TACT"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Kind of welder",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "ARC"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Trade punches",
+          "row": 5,
+          "col": 0,
+          "length": 4,
+          "answer": "SPAR"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Camera type, briefly",
+          "row": 6,
+          "col": 4,
+          "length": 3,
+          "answer": "SLR"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Young pond dweller",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "EFT"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Reporter Skeeter of Harry Potter novels",
+          "row": 1,
+          "col": 4,
+          "length": 4,
+          "answer": "RITA"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Take place",
+          "row": 2,
+          "col": 6,
+          "length": 5,
+          "answer": "OCCUR"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "\u201cI ___ Rock\u201d",
+          "row": 3,
+          "col": 2,
+          "length": 3,
+          "answer": "AMA"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Kiester",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "ASS"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0025",
+      "sourceId": 61,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##....#",
+        "...#.##",
+        "##.....",
+        "...###.",
+        ".###.#.",
+        ".##....",
+        "...#.##"
+      ],
+      "solution": [
+        "##MEAT#",
+        "FDA#L##",
+        "##SLIME",
+        "TET###L",
+        "R###I#L",
+        "O##SICA",
+        "NIT#I##"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Lamb, e.g.",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "MEAT"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Occasional medicine dropper?: Abbr.",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "FDA"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Guck",
+          "row": 2,
+          "col": 2,
+          "length": 5,
+          "answer": "SLIME"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "New Year abroad",
+          "row": 3,
+          "col": 0,
+          "length": 3,
+          "answer": "TET"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "\"The Bicycle Thief\" director Vittorio De ___",
+          "row": 5,
+          "col": 3,
+          "length": 4,
+          "answer": "SICA"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Unimportant flaw",
+          "row": 6,
+          "col": 0,
+          "length": 3,
+          "answer": "NIT"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Captain's ___ (naval disciplinary hearing)",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "MAST"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "The Fight of the Century fighter",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "ALI"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "First name in singing",
+          "row": 2,
+          "col": 6,
+          "length": 4,
+          "answer": "ELLA"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Sci-fi film with a 2010 sequel",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "TRON"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "A crowd, for Caesar?",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "III"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0026",
+      "sourceId": 63,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...#...",
+        ".#...#.",
+        ".#.#...",
+        "....#.#",
+        "###.#.#",
+        "##....#",
+        "###.###"
+      ],
+      "solution": [
+        "THE#ETE",
+        "A#TNT#A",
+        "C#T#STR",
+        "ORAL#A#",
+        "###E#T#",
+        "##IDOS#",
+        "###A###"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Start of many Batman villain names",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "THE"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "When Cannes heats up",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "ETE"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Cause of a big bang",
+          "row": 1,
+          "col": 2,
+          "length": 3,
+          "answer": "TNT"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Water channel: Abbr.",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "STR"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Like dental surgery",
+          "row": 3,
+          "col": 0,
+          "length": 4,
+          "answer": "ORAL"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Church exchange?",
+          "row": 5,
+          "col": 2,
+          "length": 4,
+          "answer": "IDOS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "This may have a hard or soft shell",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "TACO"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Rock and Roll Hall-of-Famer James",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "ETTA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Visitors from beyond",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "ETS"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Floppy rabbit feature",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "EAR"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Uses a bobbin",
+          "row": 2,
+          "col": 5,
+          "length": 4,
+          "answer": "TATS"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Clytemnestra's mother",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "LEDA"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0027",
+      "sourceId": 66,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...#...",
+        ".#...##",
+        "...#...",
+        "#.#.##.",
+        "#....#.",
+        "#.#.##.",
+        "##....."
+      ],
+      "solution": [
+        "AGO#AMA",
+        "B#BEN##",
+        "EMI#TUB",
+        "#A#T##A",
+        "#SKED#S",
+        "#S#A##E",
+        "##ALANS"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Before now",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "AGO"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "\"I ___ shepherd of those sheep\": Millay",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "AMA"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Pet rat in a 1972 #1 song",
+          "row": 1,
+          "col": 2,
+          "length": 3,
+          "answer": "BEN"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Decca rival",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "EMI"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Ice cream container",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "TUB"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "TV exec's work",
+          "row": 4,
+          "col": 1,
+          "length": 4,
+          "answer": "SKED"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Philosopher Watts and others",
+          "row": 6,
+          "col": 2,
+          "length": 5,
+          "answer": "ALANS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Nancy Hanks's boy",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "ABE"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Kimono closer",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "OBI"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Hill denizen",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "ANT"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Word with land or critical",
+          "row": 2,
+          "col": 1,
+          "length": 4,
+          "answer": "MASS"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Centers of operation",
+          "row": 2,
+          "col": 6,
+          "length": 5,
+          "answer": "BASES"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Old Crayola color akin to Tropical Rain Forest",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "TEAL"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0028",
+      "sourceId": 68,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".#...##",
+        "...##.#",
+        ".#....#",
+        "#.#.#.#",
+        "#.....#",
+        "#.#.#.#",
+        "....###"
+      ],
+      "solution": [
+        "C#JAR##",
+        "PSA##M#",
+        "A#MATE#",
+        "#S#L#T#",
+        "#OLLIE#",
+        "#S#E#D#",
+        "BALE###"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Funerary receptacle",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "JAR"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Free TV spot: Abbr.",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "PSA"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Second sock, say",
+          "row": 2,
+          "col": 2,
+          "length": 4,
+          "answer": "MATE"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Kukla's puppet pal",
+          "row": 4,
+          "col": 1,
+          "length": 5,
+          "answer": "OLLIE"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Fail a polygraph",
+          "row": 4,
+          "col": 3,
+          "length": 3,
+          "answer": "LIE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Farm block",
+          "row": 6,
+          "col": 0,
+          "length": 4,
+          "answer": "BALE"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Cruncher of nos.",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "CPA"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Toast topping",
+          "row": 0,
+          "col": 2,
+          "length": 3,
+          "answer": "JAM"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Doled (out)",
+          "row": 1,
+          "col": 5,
+          "length": 5,
+          "answer": "METED"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Formal avenue",
+          "row": 2,
+          "col": 3,
+          "length": 5,
+          "answer": "ALLEE"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "1998 home run race participant",
+          "row": 3,
+          "col": 1,
+          "length": 4,
+          "answer": "SOSA"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0029",
+      "sourceId": 71,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "....##.",
+        ".#.###.",
+        "...#...",
+        ".#.#.#.",
+        "#.....#",
+        "#.#.#.#",
+        "....#.#"
+      ],
+      "solution": [
+        "SOTO##E",
+        "L#R###V",
+        "ANI#USE",
+        "T#E#T#R",
+        "#ASPEN#",
+        "#L#I#A#",
+        "SECT#B#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "\"___ speak\"",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "SOTO"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "The Skywalker boy, for short",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "ANI"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Walk all over",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "USE"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Trembling tree",
+          "row": 4,
+          "col": 1,
+          "length": 5,
+          "answer": "ASPEN"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Splinter group",
+          "row": 6,
+          "col": 0,
+          "length": 4,
+          "answer": "SECT"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Narrow wood piece",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "SLAT"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Attempts",
+          "row": 0,
+          "col": 2,
+          "length": 5,
+          "answer": "TRIES"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Green leader?",
+          "row": 0,
+          "col": 6,
+          "length": 4,
+          "answer": "EVER"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Indian from whom a state name is derived",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "UTE"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "It may be pint-sized",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "ALE"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Poe story setting",
+          "row": 4,
+          "col": 3,
+          "length": 3,
+          "answer": "PIT"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Pinch, in a way",
+          "row": 4,
+          "col": 5,
+          "length": 3,
+          "answer": "NAB"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0030",
+      "sourceId": 73,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...####",
+        "#.#....",
+        "...#.##",
+        ".#.#...",
+        ".....#.",
+        ".###...",
+        "...###."
+      ],
+      "solution": [
+        "HUT####",
+        "#L#MARC",
+        "SEE#L##",
+        "L#M#TEN",
+        "UNITE#E",
+        "N###RIB",
+        "KIM###O"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Tribesman's home",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "HUT"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Latin singer Anthony",
+          "row": 1,
+          "col": 3,
+          "length": 4,
+          "answer": "MARC"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Center of religious authority",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "SEE"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Word after Big or top",
+          "row": 3,
+          "col": 4,
+          "length": 3,
+          "answer": "TEN"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Weld",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "UNITE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Roast slightly",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "RIB"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Most common Korean surname",
+          "row": 6,
+          "col": 0,
+          "length": 3,
+          "answer": "KIM"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Suffix with glob",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "ULE"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Refit",
+          "row": 1,
+          "col": 4,
+          "length": 5,
+          "answer": "ALTER"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Skulked",
+          "row": 2,
+          "col": 0,
+          "length": 5,
+          "answer": "SLUNK"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Former Big Four record company",
+          "row": 2,
+          "col": 2,
+          "length": 3,
+          "answer": "EMI"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Mountain where Moses died, in the Bible",
+          "row": 3,
+          "col": 6,
+          "length": 4,
+          "answer": "NEBO"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0031",
+      "sourceId": 76,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "####...",
+        "#...#.#",
+        "#.#....",
+        "#.#.#.#",
+        "...#...",
+        "#.##.#.",
+        "####..."
+      ],
+      "solution": [
+        "####THA",
+        "#ESC#U#",
+        "#A#DYER",
+        "#S#C#C#",
+        "CYD#TOO",
+        "#A##W#T",
+        "####PAC"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "\"___ Crossroads\" (1996 Grammy-winning rap song)",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "THA"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Corner key",
+          "row": 1,
+          "col": 1,
+          "length": 3,
+          "answer": "ESC"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Colorist",
+          "row": 2,
+          "col": 3,
+          "length": 4,
+          "answer": "DYER"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "One of Fred's partners",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "CYD"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "It may follow you or me",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "TOO"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Lobbying grp.",
+          "row": 6,
+          "col": 4,
+          "length": 3,
+          "answer": "PAC"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Texas-New Mexico range",
+          "row": 0,
+          "col": 5,
+          "length": 5,
+          "answer": "HUECO"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Soft course",
+          "row": 1,
+          "col": 1,
+          "length": 5,
+          "answer": "EASYA"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Govt. health agency",
+          "row": 1,
+          "col": 3,
+          "length": 3,
+          "answer": "CDC"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "County div.",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "TWP"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Kind of stock: Abbr.",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "OTC"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0032",
+      "sourceId": 78,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "...##.#",
+        ".#....#",
+        ".#.##.#",
+        "#....#.",
+        "#.##...",
+        "...#.#.",
+        "###...#"
+      ],
+      "solution": [
+        "TET##Y#",
+        "A#ENYA#",
+        "S#T##K#",
+        "#BENT#E",
+        "#O##HST",
+        "LYE#U#O",
+        "###IDA#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Occasion for dragon dances",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "TET"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Singer of the multimillion-selling album \"Watermark\"",
+          "row": 1,
+          "col": 2,
+          "length": 4,
+          "answer": "ENYA"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Out of alignment",
+          "row": 3,
+          "col": 1,
+          "length": 4,
+          "answer": "BENT"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Eleanor : F.D.R. :: Bess : ___",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "HST"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Ingredient in some cakes",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "LYE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Cider-sweet girl",
+          "row": 6,
+          "col": 3,
+          "length": 3,
+          "answer": "IDA"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Profs' backups",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "TAS"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "French noggin",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "TETE"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Chatter on and on",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "YAK"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "The \"B\" of B.S.A.",
+          "row": 3,
+          "col": 1,
+          "length": 3,
+          "answer": "BOY"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Graceless landing, say",
+          "row": 3,
+          "col": 4,
+          "length": 4,
+          "answer": "THUD"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Domain of the Normandy campaign: Abbr.",
+          "row": 3,
+          "col": 6,
+          "length": 3,
+          "answer": "ETO"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0033",
+      "sourceId": 81,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "###....",
+        "...#.##",
+        "#.#...#",
+        "#.#.##.",
+        ".....#.",
+        ".#.#...",
+        "...#.#."
+      ],
+      "solution": [
+        "###RIPE",
+        "SEN#I##",
+        "#D#MIV#",
+        "#E#E##O",
+        "ANTIC#L",
+        "K#K#OLD",
+        "ANT#P#S"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Ready to eat",
+          "row": 0,
+          "col": 3,
+          "length": 4,
+          "answer": "RIPE"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "One of 100 in D.C.",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "SEN"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Year in the rule of Ethelred the Unready",
+          "row": 2,
+          "col": 3,
+          "length": 3,
+          "answer": "MIV"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Shenanigan",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "ANTIC"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "Going way back, as friends",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "OLD"
+        },
+        {
+          "number": 11,
+          "direction": "across",
+          "clue": "Formicary inhabitant",
+          "row": 6,
+          "col": 0,
+          "length": 3,
+          "answer": "ANT"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "George ___, longest-reigning English king",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "III"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Pristine plot",
+          "row": 1,
+          "col": 1,
+          "length": 4,
+          "answer": "EDEN"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "\"Don't blame ___ voted for...\"",
+          "row": 2,
+          "col": 3,
+          "length": 3,
+          "answer": "MEI"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Ma and pa, with \"the\"",
+          "row": 3,
+          "col": 6,
+          "length": 4,
+          "answer": "OLDS"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Alias indication",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "AKA"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Box office purchase: Abbr.",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "TKT"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Steal",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "COP"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0034",
+      "sourceId": 83,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##.#...",
+        ".....##",
+        ".#.#...",
+        ".#...#.",
+        "...###.",
+        "#.##...",
+        "#...###"
+      ],
+      "solution": [
+        "##A#STP",
+        "MISDO##",
+        "E#I#ARC",
+        "D#ARP#A",
+        "SEN###R",
+        "#V##ORB",
+        "#ARE###"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Racing car product",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "STP"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Bungle",
+          "row": 1,
+          "col": 0,
+          "length": 5,
+          "answer": "MISDO"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Pendulum's path",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "ARC"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Dadaist painter Hans",
+          "row": 3,
+          "col": 2,
+          "length": 3,
+          "answer": "ARP"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Steppingstone to pres., maybe",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "SEN"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Earth, e.g.",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "ORB"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "\"We ___ the Champions\"",
+          "row": 6,
+          "col": 1,
+          "length": 3,
+          "answer": "ARE"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Like sherpas",
+          "row": 0,
+          "col": 2,
+          "length": 5,
+          "answer": "ASIAN"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "\"Days of Our Lives,\" for one",
+          "row": 0,
+          "col": 4,
+          "length": 4,
+          "answer": "SOAP"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Drugs, informally",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "MEDS"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Low-___ diet",
+          "row": 2,
+          "col": 6,
+          "length": 4,
+          "answer": "CARB"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Actress Mendes of \"Hitch\"",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "EVA"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0035",
+      "sourceId": 86,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "###....",
+        "....##.",
+        ".##....",
+        ".##.##.",
+        "##...##",
+        "...#.##",
+        "##....#"
+      ],
+      "solution": [
+        "###IHOP",
+        "MOON##E",
+        "O##DEAR",
+        "L##I##I",
+        "##LAP##",
+        "ALE#I##",
+        "##INTS#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "Place to order a stack, say",
+          "row": 0,
+          "col": 3,
+          "length": 4,
+          "answer": "IHOP"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Part of a syzygy",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "MOON"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Cupcake",
+          "row": 2,
+          "col": 3,
+          "length": 4,
+          "answer": "DEAR"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "Race unit",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "LAP"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Schooner filler",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "ALE"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Some exciting plays: Abbr.",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "INTS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Home of Bollywood",
+          "row": 0,
+          "col": 3,
+          "length": 5,
+          "answer": "INDIA"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Prefix with scope",
+          "row": 0,
+          "col": 6,
+          "length": 4,
+          "answer": "PERI"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Small particle: Abbr.",
+          "row": 1,
+          "col": 0,
+          "length": 3,
+          "answer": "MOL"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Luau favor",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "LEI"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Part of a theater",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "PIT"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0036",
+      "sourceId": 88,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "#...###",
+        "#.#.###",
+        ".....##",
+        "#.##.##",
+        ".#....#",
+        "...##.#",
+        ".#....#"
+      ],
+      "solution": [
+        "#BIB###",
+        "#E#A###",
+        "GEMMY##",
+        "#R##R##",
+        "F#INST#",
+        "OKS##I#",
+        "R#MAAM#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "It's hung around the neck",
+          "row": 0,
+          "col": 1,
+          "length": 3,
+          "answer": "BIB"
+        },
+        {
+          "number": 3,
+          "direction": "across",
+          "clue": "Glittering, like a diamond",
+          "row": 2,
+          "col": 0,
+          "length": 5,
+          "answer": "GEMMY"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Philadelphia\u2019s Franklin ___: Abbr.",
+          "row": 4,
+          "col": 2,
+          "length": 4,
+          "answer": "INST"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "They're not forbidding",
+          "row": 5,
+          "col": 0,
+          "length": 3,
+          "answer": "OKS"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "What a cowboy calls a lady",
+          "row": 6,
+          "col": 2,
+          "length": 4,
+          "answer": "MAAM"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Bud, maybe",
+          "row": 0,
+          "col": 1,
+          "length": 4,
+          "answer": "BEER"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Punch accompanier",
+          "row": 0,
+          "col": 3,
+          "length": 3,
+          "answer": "BAM"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Jr. et al.",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "YRS"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Voting to pass",
+          "row": 4,
+          "col": 0,
+          "length": 3,
+          "answer": "FOR"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "It might come after sex",
+          "row": 4,
+          "col": 2,
+          "length": 3,
+          "answer": "ISM"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "Actor Matheson or Allen",
+          "row": 4,
+          "col": 5,
+          "length": 3,
+          "answer": "TIM"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0037",
+      "sourceId": 91,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "....#.#",
+        ".##...#",
+        ".##.#.#",
+        "#.##...",
+        "#....#.",
+        "#.##.#.",
+        "#.....#"
+      ],
+      "solution": [
+        "ROWE#S#",
+        "O##LIE#",
+        "E##S#E#",
+        "#K##RPI",
+        "#EURO#I",
+        "#R##O#I",
+        "#RAFTS#"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "\"Tamerlane\" dramatist Nicholas",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "ROWE"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Large amount of fudge?",
+          "row": 1,
+          "col": 3,
+          "length": 3,
+          "answer": "LIE"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "School in Troy, N.Y.",
+          "row": 3,
+          "col": 4,
+          "length": 3,
+          "answer": "RPI"
+        },
+        {
+          "number": 8,
+          "direction": "across",
+          "clue": "Capital of Italy",
+          "row": 4,
+          "col": 1,
+          "length": 4,
+          "answer": "EURO"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "A whole bunch",
+          "row": 6,
+          "col": 1,
+          "length": 5,
+          "answer": "RAFTS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Name associated with anonymity",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "ROE"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Dallas center?",
+          "row": 0,
+          "col": 3,
+          "length": 3,
+          "answer": "ELS"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Osmose",
+          "row": 0,
+          "col": 5,
+          "length": 4,
+          "answer": "SEEP"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "The Galloping Gourmet",
+          "row": 3,
+          "col": 1,
+          "length": 4,
+          "answer": "KERR"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Dig like a pig",
+          "row": 3,
+          "col": 4,
+          "length": 4,
+          "answer": "ROOT"
+        },
+        {
+          "number": 7,
+          "direction": "down",
+          "clue": "\"Richard ___\"",
+          "row": 3,
+          "col": 6,
+          "length": 3,
+          "answer": "III"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0038",
+      "sourceId": 93,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        ".#.....",
+        ".#.#.#.",
+        "...#...",
+        "##...#.",
+        "#.#.##.",
+        "#....##",
+        "#.#.###"
+      ],
+      "solution": [
+        "B#LEARS",
+        "A#A#N#T",
+        "SPR#NRA",
+        "##AES#R",
+        "#A#E##T",
+        "#PELE##",
+        "#E#S###"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Some jets",
+          "row": 0,
+          "col": 2,
+          "length": 5,
+          "answer": "LEARS"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "May days?: Abbr.",
+          "row": 2,
+          "col": 0,
+          "length": 3,
+          "answer": "SPR"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Org. with the symbol Eddie Eagle",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "NRA"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "\"Call to Greatness\" writer, initially speaking",
+          "row": 3,
+          "col": 2,
+          "length": 3,
+          "answer": "AES"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "One-named athlete whose real first name is Edson",
+          "row": 5,
+          "col": 1,
+          "length": 4,
+          "answer": "PELE"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Undergrad degrees: Abbr.",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "BAS"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "___ Flynn Boyle of \"The Practice\"",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "LARA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Sheridan and others",
+          "row": 0,
+          "col": 4,
+          "length": 4,
+          "answer": "ANNS"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Shy",
+          "row": 0,
+          "col": 6,
+          "length": 5,
+          "answer": "START"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Aquatic shockers",
+          "row": 3,
+          "col": 3,
+          "length": 4,
+          "answer": "EELS"
+        },
+        {
+          "number": 9,
+          "direction": "down",
+          "clue": "Copier",
+          "row": 4,
+          "col": 1,
+          "length": 3,
+          "answer": "APE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0039",
+      "sourceId": 96,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "##.#...",
+        "....##.",
+        ".#.#...",
+        ".#...##",
+        ".###...",
+        ".###.#.",
+        "##....."
+      ],
+      "solution": [
+        "##J#LOW",
+        "SITE##W",
+        "P#K#LAW",
+        "U#NEA##",
+        "N###UPS",
+        "K###D#H",
+        "##ITSME"
+      ],
+      "clues": [
+        {
+          "number": 2,
+          "direction": "across",
+          "clue": "Meteorological datum",
+          "row": 0,
+          "col": 4,
+          "length": 3,
+          "answer": "LOW"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Word after Web or camp",
+          "row": 1,
+          "col": 0,
+          "length": 4,
+          "answer": "SITE"
+        },
+        {
+          "number": 5,
+          "direction": "across",
+          "clue": "\"The ___ is a ass\": Dickens",
+          "row": 2,
+          "col": 4,
+          "length": 3,
+          "answer": "LAW"
+        },
+        {
+          "number": 6,
+          "direction": "across",
+          "clue": "Teachers' advocate, for short",
+          "row": 3,
+          "col": 2,
+          "length": 3,
+          "answer": "NEA"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "FedEx alternative",
+          "row": 4,
+          "col": 4,
+          "length": 3,
+          "answer": "UPS"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "\"C'est moi\" to us",
+          "row": 6,
+          "col": 2,
+          "length": 5,
+          "answer": "ITSME"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "911 responders, for short",
+          "row": 0,
+          "col": 2,
+          "length": 4,
+          "answer": "JTKN"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "http:// follower",
+          "row": 0,
+          "col": 6,
+          "length": 3,
+          "answer": "WWW"
+        },
+        {
+          "number": 4,
+          "direction": "down",
+          "clue": "Pluck",
+          "row": 1,
+          "col": 0,
+          "length": 5,
+          "answer": "SPUNK"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Praises",
+          "row": 2,
+          "col": 4,
+          "length": 5,
+          "answer": "LAUDS"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "\"___ sells seashells by the seashore\" (tongue twister)",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "SHE"
+        }
+      ],
+      "category": "english"
+    },
+    {
+      "id": "crosswordbench_0040",
+      "sourceId": 98,
+      "difficulty": "7x7",
+      "width": 7,
+      "height": 7,
+      "grid": [
+        "....#.#",
+        ".##.#.#",
+        ".#....#",
+        "#.##.##",
+        ".....#.",
+        "#.##...",
+        "#....#."
+      ],
+      "solution": [
+        "TUBS#R#",
+        "O##P#A#",
+        "T#GAIN#",
+        "#C##R##",
+        "MOSSO#M",
+        "#S##NEE",
+        "#TEDS#X"
+      ],
+      "clues": [
+        {
+          "number": 1,
+          "direction": "across",
+          "clue": "They may be draining",
+          "row": 0,
+          "col": 0,
+          "length": 4,
+          "answer": "TUBS"
+        },
+        {
+          "number": 4,
+          "direction": "across",
+          "clue": "Come out ahead",
+          "row": 2,
+          "col": 2,
+          "length": 4,
+          "answer": "GAIN"
+        },
+        {
+          "number": 7,
+          "direction": "across",
+          "clue": "Rapid, in music",
+          "row": 4,
+          "col": 0,
+          "length": 5,
+          "answer": "MOSSO"
+        },
+        {
+          "number": 9,
+          "direction": "across",
+          "clue": "Once known as",
+          "row": 5,
+          "col": 4,
+          "length": 3,
+          "answer": "NEE"
+        },
+        {
+          "number": 10,
+          "direction": "across",
+          "clue": "\"Bill & ___ Bogus Journey,\" 1991 comedy",
+          "row": 6,
+          "col": 1,
+          "length": 4,
+          "answer": "TEDS"
+        },
+        {
+          "number": 1,
+          "direction": "down",
+          "clue": "Tater ___",
+          "row": 0,
+          "col": 0,
+          "length": 3,
+          "answer": "TOT"
+        },
+        {
+          "number": 2,
+          "direction": "down",
+          "clue": "Pampering place",
+          "row": 0,
+          "col": 3,
+          "length": 3,
+          "answer": "SPA"
+        },
+        {
+          "number": 3,
+          "direction": "down",
+          "clue": "Jogged",
+          "row": 0,
+          "col": 5,
+          "length": 3,
+          "answer": "RAN"
+        },
+        {
+          "number": 5,
+          "direction": "down",
+          "clue": "Actor Jeremy",
+          "row": 2,
+          "col": 4,
+          "length": 5,
+          "answer": "IRONS"
+        },
+        {
+          "number": 6,
+          "direction": "down",
+          "clue": "Benefit offsetter",
+          "row": 3,
+          "col": 1,
+          "length": 4,
+          "answer": "COST"
+        },
+        {
+          "number": 8,
+          "direction": "down",
+          "clue": "Country in N.A.",
+          "row": 4,
+          "col": 6,
+          "length": 3,
+          "answer": "MEX"
+        }
+      ],
+      "category": "english"
+    }
+  ]
+}

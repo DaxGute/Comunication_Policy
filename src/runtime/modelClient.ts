@@ -1,0 +1,254 @@
+import type { AgentId } from "../agents/types";
+import type { CommunicationPolicy } from "../communication/types";
+import type { Problem } from "../problems/types";
+import { abortableDelay, throwIfAborted } from "./abort";
+import {
+  isMockModel,
+  isOpenAIModel,
+  providerForModel,
+} from "./models";
+
+export type ModelMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+  agentId?: AgentId;
+};
+
+export type ModelRequest = {
+  model: string;
+  temperature: number;
+  messages: ModelMessage[];
+  signal?: AbortSignal;
+  /** Context available to adapters for deterministic mocks. */
+  meta?: {
+    agentId: AgentId;
+    turnIndex: number;
+    problem: Problem;
+    policy: CommunicationPolicy;
+  };
+};
+
+export type ModelResponse = {
+  content: string;
+  provider?: "mock" | "openai";
+};
+
+export interface ModelClient {
+  generate(input: ModelRequest): Promise<ModelResponse>;
+}
+
+export type ModelClientOptions = {
+  /** Absolute or relative URL for the local OpenAI proxy. */
+  generateUrl?: string;
+};
+
+/**
+ * Deterministic mock used for UI plumbing and policy-band inspectability.
+ */
+export class MockModelClient implements ModelClient {
+  async generate(input: ModelRequest): Promise<ModelResponse> {
+    const meta = input.meta;
+    if (!meta) {
+      return { content: "Mock response (missing meta).", provider: "mock" };
+    }
+
+    const { agentId, turnIndex, problem, policy } = meta;
+    const label = agentId === "agent_a" ? "Agent A" : "Agent B";
+    const other = agentId === "agent_a" ? "Agent B" : "Agent A";
+
+    const ownTrust = agentId === "agent_a" ? policy.trustA : policy.trustB;
+    const trustNote =
+      ownTrust < 1 / 3
+        ? `I want independent verification before adopting ${other}'s claims.`
+        : ownTrust > 2 / 3
+          ? `I'll build on ${other}'s reasoning with high default credence.`
+          : `I'll weigh ${other}'s points carefully and verify critical steps.`;
+
+    const authorityNote =
+      policy.authority < 0.4
+        ? agentId === "agent_a"
+          ? "My judgment currently carries greater decision weight."
+          : "I'll defer on resolution when appropriate while still surfacing concerns."
+        : policy.authority > 0.6
+          ? agentId === "agent_b"
+            ? "My judgment currently carries greater decision weight."
+            : "I'll defer on resolution when appropriate while still surfacing concerns."
+          : "We are peers; let's negotiate on the merits.";
+
+    const familiarityNote =
+      policy.familiarity < 1 / 3
+        ? "I'll keep explanations explicit and self-contained."
+        : policy.familiarity > 2 / 3
+          ? "Compressing shared context; focusing on deltas."
+          : "Clear but not overly verbose.";
+
+    // Final turns produce a mock answer so evaluation plumbing can run.
+    // For crossword, intentionally miss ~1/5 so the grader's incorrect path is visible.
+    const isClosing = turnIndex >= 3;
+    let answerLine = "";
+    if (isClosing) {
+      if (problem.kind === "crossword_puzzle" && problem.crossword) {
+        const shouldMiss = problem.crossword.sourceId % 5 === 0;
+        const across = problem.crossword.clues.filter(
+          (c) => c.direction === "across",
+        );
+        const down = problem.crossword.clues.filter(
+          (c) => c.direction === "down",
+        );
+        const lineFor = (c: (typeof across)[number]) =>
+          `${c.number}: ${shouldMiss ? "X".repeat(c.length) : c.answer}`;
+        answerLine = [
+          "",
+          "FINAL_ANSWER:",
+          "ACROSS",
+          ...across.map(lineFor),
+          "DOWN",
+          ...down.map(lineFor),
+        ].join("\n");
+      } else if (problem.kind === "proof" && problem.proof) {
+        const shouldMiss = problem.proof.sourceIndex % 5 === 0;
+        const entry = shouldMiss ? "0" : problem.proof.answer;
+        answerLine = `\nFINAL_ANSWER: ${entry}`;
+      } else if (problem.kind === "moral" || problem.moral) {
+        const q = problem.moral?.question ?? "the dilemma";
+        answerLine = `\nFINAL_ANSWER: After weighing the tensions, we adopt a provisional joint stance on: ${q.slice(0, 80)} — prioritize clear communication of competing claims and avoid treating either side as settled.`;
+      } else if (problem.expectedAnswer) {
+        answerLine = `\nFINAL_ANSWER: ${problem.expectedAnswer}`;
+      } else {
+        answerLine = "\nFINAL_ANSWER: unresolved";
+      }
+    }
+
+    const content = [
+      `[${label} · turn ${turnIndex}]`,
+      `Problem focus: ${problem.title}`,
+      trustNote,
+      authorityNote,
+      familiarityNote,
+      !isClosing && problem.kind === "crossword_puzzle"
+        ? `If 1-Across crosses 1-Down, those shared letters must agree — inviting ${other} to test candidates against crossings.`
+        : null,
+      isClosing
+        ? `Proposing a resolution based on our discussion.${answerLine}`
+        : `Considering constraints and inviting ${other} to respond.`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n");
+
+    // Simulate a small amount of latency for UI speaking-state feedback.
+    await abortableDelay(120 + turnIndex * 40, input.signal);
+    throwIfAborted(input.signal);
+    return { content, provider: "mock" };
+  }
+}
+
+type ProxyGenerateSuccess = {
+  content: string;
+  provider?: "openai";
+};
+
+type ProxyGenerateError = {
+  error: string;
+};
+
+/**
+ * Routes mock vs OpenAI. Real models never fall back to mock output.
+ */
+export class ConfigurableModelClient implements ModelClient {
+  private readonly mock: MockModelClient;
+  private readonly generateUrl: string;
+
+  constructor(
+    mock: MockModelClient = new MockModelClient(),
+    options: ModelClientOptions = {},
+  ) {
+    this.mock = mock;
+    this.generateUrl = options.generateUrl ?? "/api/generate";
+  }
+
+  async generate(input: ModelRequest): Promise<ModelResponse> {
+    if (isMockModel(input.model)) {
+      return this.mock.generate(input);
+    }
+
+    if (isOpenAIModel(input.model)) {
+      return this.generateOpenAI(input);
+    }
+
+    throw new Error(`Unsupported model: ${input.model}`);
+  }
+
+  private async generateOpenAI(input: ModelRequest): Promise<ModelResponse> {
+    // providerForModel validates the ID; kept for explicit metadata.
+    const provider = providerForModel(input.model);
+    if (provider !== "openai") {
+      throw new Error(`Expected OpenAI model, got provider "${provider}".`);
+    }
+
+    throwIfAborted(input.signal);
+
+    let response: Response;
+    try {
+      response = await fetch(this.generateUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: input.model,
+          temperature: input.temperature,
+          messages: input.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+        signal: input.signal,
+      });
+    } catch (error) {
+      throwIfAborted(input.signal);
+      const detail =
+        error instanceof Error ? error.message : "Network request failed.";
+      throw new Error(
+        `OpenAI proxy request failed (${this.generateUrl}): ${detail}`,
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error(
+        `OpenAI proxy returned non-JSON (HTTP ${response.status}).`,
+      );
+    }
+
+    if (!response.ok) {
+      const message =
+        payload &&
+        typeof payload === "object" &&
+        typeof (payload as ProxyGenerateError).error === "string"
+          ? (payload as ProxyGenerateError).error
+          : `OpenAI proxy error (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof (payload as ProxyGenerateSuccess).content !== "string"
+    ) {
+      throw new Error("OpenAI proxy returned a malformed success payload.");
+    }
+
+    const content = (payload as ProxyGenerateSuccess).content;
+    if (content.trim() === "") {
+      throw new Error("OpenAI proxy returned an empty content string.");
+    }
+
+    return { content, provider: "openai" };
+  }
+}
+
+export function createModelClient(
+  options: ModelClientOptions = {},
+): ModelClient {
+  return new ConfigurableModelClient(new MockModelClient(), options);
+}
