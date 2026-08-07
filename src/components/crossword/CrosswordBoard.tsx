@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { CrosswordClue, CrosswordSpec } from "../../problems/crossword/types";
 
 function cellKey(row: number, col: number): string {
@@ -15,11 +16,16 @@ function buildNumberMap(clues: CrosswordClue[]): Map<string, number> {
 
 type CrosswordBoardProps = {
   crossword: CrosswordSpec;
-  /** Grid rows to display: geometry (`.`/ `#`), gold solution, or predicted fill. */
+  /** Grid rows to display: geometry (`.` / `#`) or predicted fill. */
   rows: string[];
   label: string;
   /** When true, show letters from `rows` in open cells. */
   showLetters?: boolean;
+  /**
+   * When set with `showLetters`, tint filled cells light green/red vs gold.
+   * Gold letters are never rendered — only used for coloring.
+   */
+  scoreAgainstSolution?: boolean;
 };
 
 export function CrosswordBoard({
@@ -27,6 +33,7 @@ export function CrosswordBoard({
   rows,
   label,
   showLetters = false,
+  scoreAgainstSolution = false,
 }: CrosswordBoardProps) {
   const { width, height, clues } = crossword;
   const numbers = buildNumberMap(clues);
@@ -54,15 +61,19 @@ export function CrosswordBoard({
                 ? ch.toUpperCase()
                 : "";
 
+            let cellClass = blocked
+              ? "crossword-board__cell crossword-board__cell--blocked"
+              : "crossword-board__cell";
+            if (scoreAgainstSolution && letter) {
+              const gold = (crossword.solution[row]?.[col] ?? "").toUpperCase();
+              cellClass +=
+                letter === gold
+                  ? " crossword-board__cell--correct"
+                  : " crossword-board__cell--incorrect";
+            }
+
             return (
-              <div
-                key={cellKey(row, col)}
-                className={
-                  blocked
-                    ? "crossword-board__cell crossword-board__cell--blocked"
-                    : "crossword-board__cell"
-                }
-              >
+              <div key={cellKey(row, col)} className={cellClass}>
                 {number != null ? (
                   <span className="crossword-board__num">{number}</span>
                 ) : null}
@@ -120,41 +131,39 @@ export function CrosswordClueList({ crossword }: CrosswordClueListProps) {
 
 type CrosswordPreviewProps = {
   crossword: CrosswordSpec;
-  /** Optional agent-predicted grid (newline-separated rows). */
+  /** Optional agent-predicted grid (newline-separated rows). Never gold. */
   predictedGrid?: string;
+  /** Rendered to the right of the crossword square (e.g. grade metrics). */
+  aside?: ReactNode;
 };
 
-/** Puzzle + gold answer (and predicted fill when available) at top of transcript. */
+/**
+ * Predicted fill (or empty geometry before a run) and clue lists.
+ * Gold solution letters are never rendered — only used to tint correct/incorrect cells.
+ */
 export function CrosswordPreview({
   crossword,
   predictedGrid,
+  aside,
 }: CrosswordPreviewProps) {
   const predictedRows = predictedGrid
     ?.split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+  const hasPrediction = Boolean(predictedRows && predictedRows.length > 0);
 
   return (
     <div className="crossword-preview">
       <div className="crossword-preview__boards">
         <CrosswordBoard
           crossword={crossword}
-          rows={crossword.grid}
-          label="Puzzle"
+          rows={hasPrediction ? predictedRows! : crossword.grid}
+          label={hasPrediction ? "Predicted" : "Puzzle"}
+          showLetters={hasPrediction}
+          scoreAgainstSolution={hasPrediction}
         />
-        <CrosswordBoard
-          crossword={crossword}
-          rows={crossword.solution}
-          label="Answer"
-          showLetters
-        />
-        {predictedRows && predictedRows.length > 0 ? (
-          <CrosswordBoard
-            crossword={crossword}
-            rows={predictedRows}
-            label="Predicted"
-            showLetters
-          />
+        {aside ? (
+          <div className="crossword-preview__aside">{aside}</div>
         ) : null}
       </div>
       <CrosswordClueList crossword={crossword} />

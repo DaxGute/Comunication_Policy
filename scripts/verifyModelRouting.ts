@@ -7,7 +7,10 @@ import {
   isGenerateApiPath,
 } from "../server/generateApi.ts";
 import { createModelClient } from "../src/runtime/modelClient.ts";
-import { OPENAI_MODEL_ID } from "../src/runtime/models.ts";
+import {
+  modelSupportsCustomTemperature,
+  OPENAI_MODEL_ID,
+} from "../src/runtime/models.ts";
 
 async function listen(
   server: ReturnType<typeof createServer>,
@@ -24,6 +27,16 @@ async function listen(
 }
 
 async function main(): Promise<void> {
+  if (modelSupportsCustomTemperature("gpt-4o-mini") !== true) {
+    throw new Error("gpt-4o-mini should allow custom temperature");
+  }
+  for (const model of ["gpt-5", "gpt-5-mini", "gpt-5-nano"]) {
+    if (modelSupportsCustomTemperature(model) !== false) {
+      throw new Error(`${model} should not allow custom temperature`);
+    }
+  }
+  console.log("temperature-compat OK");
+
   const client = createModelClient();
 
   const mock = await client.generate({

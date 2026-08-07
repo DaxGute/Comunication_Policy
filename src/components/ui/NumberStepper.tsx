@@ -3,6 +3,7 @@ type Props = {
   min?: number;
   max?: number;
   step?: number;
+  disabled?: boolean;
   onChange: (value: number) => void;
 };
 
@@ -18,22 +19,30 @@ export function NumberStepper({
   min,
   max,
   step = 1,
+  disabled = false,
   onChange,
 }: Props) {
   const bump = (delta: number) => {
+    if (disabled) return;
     const raw = Number((value + delta).toFixed(6));
     onChange(clamp(raw, min, max));
   };
 
   return (
-    <div className="number-stepper">
+    <div
+      className={
+        disabled ? "number-stepper number-stepper--disabled" : "number-stepper"
+      }
+    >
       <input
         type="number"
         min={min}
         max={max}
         step={step}
         value={value}
+        disabled={disabled}
         onChange={(e) => {
+          if (disabled) return;
           const next = Number(e.target.value);
           if (!Number.isFinite(next)) return;
           onChange(clamp(next, min, max));
@@ -44,6 +53,7 @@ export function NumberStepper({
           type="button"
           className="number-stepper__btn"
           tabIndex={-1}
+          disabled={disabled}
           onClick={() => bump(step)}
         >
           <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">
@@ -61,6 +71,7 @@ export function NumberStepper({
           type="button"
           className="number-stepper__btn"
           tabIndex={-1}
+          disabled={disabled}
           onClick={() => bump(-step)}
         >
           <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true">

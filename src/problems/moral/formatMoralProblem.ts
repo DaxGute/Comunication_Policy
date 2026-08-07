@@ -26,7 +26,8 @@ export function formatMoralProblemText(item: MoralDilemmaItem): string {
     item.question,
     "",
     "Explore competing principles, counterarguments, and uncertainty.",
-    "When you converge on a shared stance (even a provisional one), report it as:",
+    "FINAL_ANSWER ends the interaction immediately — only emit it once your shared stance is locked in and you need no further partner review.",
+    "When ready, report it as:",
     "FINAL_ANSWER: <1-3 sentence joint stance>",
   ].join("\n");
 }

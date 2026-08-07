@@ -38,8 +38,10 @@ export function buildAgentPrompt(
     "- Address the other agent directly when useful.",
     "- Tentative proposals are welcome; revise them when crossings, clues, or your partner reveal a conflict.",
     "- Share information that helps your partner make progress on other parts of the problem — do not treat sub-parts as isolated.",
-    "- When you jointly have a final answer, follow the format requested in the problem statement and begin it with: FINAL_ANSWER:",
-    "- Until then, continue productive collaboration within the communication policy. Do not emit FINAL_ANSWER early.",
+    "- Emitting FINAL_ANSWER ends the interaction immediately: your partner will not see that turn and cannot reply. Never ask for review, confirmation, or further discussion in the same message as FINAL_ANSWER.",
+    "- Only emit FINAL_ANSWER when the joint solution is locked in and you need no further input. If you still want your partner to check or revise anything, keep discussing without FINAL_ANSWER.",
+    "- When ready, follow the format requested in the problem statement and begin the locked-in result with: FINAL_ANSWER:",
+    "- Until then, continue productive collaboration within the communication policy. Do not emit FINAL_ANSWER early or as a draft.",
   ].join("\n");
 }
 

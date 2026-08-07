@@ -3,6 +3,13 @@ import type { CommunicationPolicy } from "../communication/types";
 import type { EvaluationResult } from "../evaluation/types";
 import type { ProblemCategory } from "../problems/types";
 
+/** Token counts returned by the model provider for one turn. */
+export type MessageUsage = {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens: number;
+};
+
 export type ConversationMessage = {
   id: string;
   agentId: AgentId;
@@ -10,6 +17,9 @@ export type ConversationMessage = {
   content: string;
   timestamp?: string;
   turnIndex: number;
+  /** Wall-clock time for the model call that produced this message. */
+  durationMs?: number;
+  usage?: MessageUsage;
 };
 
 export type ProblemConversation = {
@@ -34,6 +44,8 @@ export type RunConfig = {
 export type ExperimentRun = {
   id: string;
   createdAt: string;
+  /** Set when the run leaves `running` (completed, failed, or cancelled). */
+  finishedAt?: string;
   /** Snapshot — immutable after creation. */
   policy: CommunicationPolicy;
   /** Exact prompts used for this run. */

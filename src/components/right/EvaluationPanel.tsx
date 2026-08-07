@@ -7,7 +7,10 @@ import {
 import type { RunConfig, RunProgress } from "../../experiment/types";
 import { PROBLEM_CATEGORIES, getProblemsForCategory } from "../../problems/registry";
 import type { ProblemCategory } from "../../problems/types";
-import { labelForModel } from "../../runtime/models";
+import {
+  labelForModel,
+  modelSupportsCustomTemperature,
+} from "../../runtime/models";
 import { NumberStepper } from "../ui/NumberStepper";
 
 type Props = {
@@ -33,6 +36,7 @@ export function EvaluationPanel({
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(loadRunSettingsOpen);
   const progressPct = Math.round((runProgress?.fraction ?? 0) * 100);
+  const temperatureEditable = modelSupportsCustomTemperature(config.model);
 
   return (
     <div className="evaluation-panel">
@@ -68,7 +72,11 @@ export function EvaluationPanel({
                   <span aria-hidden="true">·</span>
                   <span>{config.maxTurns} turns</span>
                   <span aria-hidden="true">·</span>
-                  <span>T {config.temperature}</span>
+                  <span>
+                    {temperatureEditable
+                      ? `T ${config.temperature}`
+                      : "T default"}
+                  </span>
                 </span>
               ) : null}
             </span>
@@ -158,12 +166,21 @@ export function EvaluationPanel({
               </label>
 
               <label className="field">
-                <span>Temperature</span>
+                <span className="field__top">
+                  <span>Temperature</span>
+                  {!temperatureEditable ? (
+                    <span className="field__top-note muted">
+                      This model only accepts the API default (parameter
+                      omitted).
+                    </span>
+                  ) : null}
+                </span>
                 <NumberStepper
                   min={0}
                   max={2}
                   step={0.1}
                   value={config.temperature}
+                  disabled={!temperatureEditable}
                   onChange={(temperature) => onConfigChange({ temperature })}
                 />
               </label>

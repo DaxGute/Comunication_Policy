@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import OpenAI from "openai";
 import {
   isOpenAIModel,
+  modelSupportsCustomTemperature,
   supportedOpenAIModelList,
 } from "../src/runtime/models.ts";
 
@@ -16,9 +17,17 @@ export type GenerateApiRequest = {
   messages: GenerateApiMessage[];
 };
 
+export type GenerateApiUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 export type GenerateApiSuccess = {
   content: string;
   provider: "openai";
+  usage?: GenerateApiUsage;
+  durationMs: number;
 };
 
 export type GenerateApiError = {
@@ -111,21 +120,39 @@ export async function generateWithOpenAI(
 
   const client = new OpenAI({ apiKey });
 
-  let completion: OpenAI.Chat.Completions.ChatCompletion;
-  try {
-    completion = await client.chat.completions.create({
+  const createParams: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
+    {
       model: request.model,
-      temperature: request.temperature,
       messages: request.messages.map((m) => ({
         role: m.role,
         content: m.content,
       })),
-    });
+    };
+  // GPT-5 / reasoning models only accept the default temperature; sending
+  // any other value returns HTTP 400 and fails the whole experiment run.
+  if (modelSupportsCustomTemperature(request.model)) {
+    createParams.temperature = request.temperature;
+  }
+
+  const startedAt = Date.now();
+  let completion: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    completion = await client.chat.completions.create(createParams);
   } catch (error) {
     const detail =
       error instanceof Error ? error.message : "Unknown OpenAI API error.";
-    throw new GenerateApiHttpError(502, `OpenAI API request failed: ${detail}`);
+    const connectionHint =
+      /connection error|fetch failed|econnrefused|enotfound|etimedout/i.test(
+        detail,
+      )
+        ? " The Vite dev server could not reach api.openai.com — restart `npm run dev` in a normal terminal (not a sandboxed agent shell)."
+        : "";
+    throw new GenerateApiHttpError(
+      502,
+      `OpenAI API request failed: ${detail}.${connectionHint}`,
+    );
   }
+  const durationMs = Math.max(0, Date.now() - startedAt);
 
   const content = completion.choices[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
@@ -135,7 +162,17 @@ export async function generateWithOpenAI(
     );
   }
 
-  return { content, provider: "openai" };
+  const rawUsage = completion.usage;
+  const usage =
+    rawUsage && typeof rawUsage.total_tokens === "number"
+      ? {
+          promptTokens: rawUsage.prompt_tokens ?? 0,
+          completionTokens: rawUsage.completion_tokens ?? 0,
+          totalTokens: rawUsage.total_tokens,
+        }
+      : undefined;
+
+  return { content, provider: "openai", usage, durationMs };
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {

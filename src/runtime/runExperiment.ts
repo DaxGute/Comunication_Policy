@@ -117,6 +117,7 @@ export async function runExperiment(args: {
         run.evaluation =
           run.conversations.length > 0 ? evaluateRun(run) : undefined;
         run.status = "cancelled";
+        run.finishedAt = new Date().toISOString();
         run.error = "Cancelled";
         callbacks?.onRunCancelled?.(run);
         return run;
@@ -130,6 +131,7 @@ export async function runExperiment(args: {
         run.evaluation =
           run.conversations.length > 0 ? evaluateRun(run) : undefined;
         run.status = "cancelled";
+        run.finishedAt = new Date().toISOString();
         run.error = "Cancelled";
         callbacks?.onRunCancelled?.(run);
         return run;
@@ -138,6 +140,7 @@ export async function runExperiment(args: {
 
     run.evaluation = evaluateRun(run);
     run.status = "completed";
+    run.finishedAt = new Date().toISOString();
     callbacks?.onProgress?.({
       fraction: 1,
       completedProblems: totalProblems,
@@ -150,12 +153,14 @@ export async function runExperiment(args: {
       run.evaluation =
         run.conversations.length > 0 ? evaluateRun(run) : undefined;
       run.status = "cancelled";
+      run.finishedAt = new Date().toISOString();
       run.error = "Cancelled";
       callbacks?.onRunCancelled?.(run);
       return run;
     }
 
     run.status = "failed";
+    run.finishedAt = new Date().toISOString();
     run.error = error instanceof Error ? error.message : String(error);
     callbacks?.onRunFailed?.(run, error);
     return run;

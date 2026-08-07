@@ -37,9 +37,7 @@ export default function App() {
         <ConversationInspector
           runs={store.state.runs}
           selectedRun={store.selectedRun}
-          selectedProblemId={store.state.selectedProblemId}
           onSelectRun={store.selectRun}
-          onSelectProblem={store.selectProblem}
           onDeleteRun={store.deleteRun}
         />
       }

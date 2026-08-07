@@ -55,6 +55,14 @@ export function isOpenAIModel(model: string): boolean {
   return OPENAI_MODEL_IDS.has(model);
 }
 
+/**
+ * GPT-5 and OpenAI reasoning families reject non-default temperature.
+ * Only the API default (1) is accepted — the parameter must be omitted.
+ */
+export function modelSupportsCustomTemperature(model: string): boolean {
+  return !/^(gpt-5|o1|o3|o4)([.-]|$)/i.test(model);
+}
+
 export function supportedOpenAIModelList(): string {
   return OPENAI_MODELS.map((m) => m.id).join(", ");
 }

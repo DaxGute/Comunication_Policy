@@ -748,6 +748,65 @@ p {
   stroke-linecap: round;
 }
 
+.graph-edge-pulse {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 40 260;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.graph-edge-pulse--a-to-b {
+  stroke: var(--agent-a);
+  animation: graph-edge-travel-a-to-b 0.9s ease-in-out both;
+}
+
+.graph-edge-pulse--b-to-a {
+  stroke: var(--agent-b);
+  animation: graph-edge-travel-b-to-a 0.9s ease-in-out both;
+}
+
+@keyframes graph-edge-travel-a-to-b {
+  0% {
+    stroke-dashoffset: 40;
+    opacity: 0.2;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--agent-a) 40%, transparent));
+  }
+  35% {
+    opacity: 1;
+    filter:
+      drop-shadow(0 0 8px color-mix(in srgb, var(--agent-a) 70%, transparent))
+      drop-shadow(0 0 16px color-mix(in srgb, var(--agent-b) 40%, transparent));
+  }
+  100% {
+    stroke-dashoffset: -260;
+    opacity: 0.15;
+    stroke: var(--agent-b);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--agent-b) 55%, transparent));
+  }
+}
+
+@keyframes graph-edge-travel-b-to-a {
+  0% {
+    stroke-dashoffset: -260;
+    opacity: 0.2;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--agent-b) 40%, transparent));
+  }
+  35% {
+    opacity: 1;
+    filter:
+      drop-shadow(0 0 8px color-mix(in srgb, var(--agent-b) 70%, transparent))
+      drop-shadow(0 0 16px color-mix(in srgb, var(--agent-a) 40%, transparent));
+  }
+  100% {
+    stroke-dashoffset: 40;
+    opacity: 0.15;
+    stroke: var(--agent-a);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--agent-a) 55%, transparent));
+  }
+}
+
 .graph-edge-label {
   fill: var(--text-muted);
   font-size: 12px;
@@ -760,7 +819,7 @@ p {
   fill: var(--bg-2);
   stroke: var(--border);
   stroke-width: 2.5;
-  transition: stroke 120ms ease, fill 120ms ease;
+  transition: stroke 120ms ease, fill 120ms ease, filter 180ms ease;
 }
 
 .graph-node text {
@@ -788,16 +847,96 @@ p {
   fill: #efe8f1;
 }
 
+@keyframes graph-node-glow-a {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 6px color-mix(in srgb, var(--agent-a) 55%, transparent))
+      drop-shadow(0 0 18px color-mix(in srgb, var(--agent-a) 35%, transparent));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 10px color-mix(in srgb, var(--agent-a) 75%, transparent))
+      drop-shadow(0 0 28px color-mix(in srgb, var(--agent-a) 50%, transparent));
+  }
+}
+
+@keyframes graph-node-glow-b {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 6px color-mix(in srgb, var(--agent-b) 55%, transparent))
+      drop-shadow(0 0 18px color-mix(in srgb, var(--agent-b) 35%, transparent));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 10px color-mix(in srgb, var(--agent-b) 75%, transparent))
+      drop-shadow(0 0 28px color-mix(in srgb, var(--agent-b) 50%, transparent));
+  }
+}
+
 .graph-node--active.graph-node--a circle {
   fill: color-mix(in srgb, var(--agent-a) 48%, var(--bg-2));
   stroke: var(--agent-a);
   stroke-width: 3.5;
+  animation: graph-node-glow-a 1.6s ease-in-out infinite;
 }
 
 .graph-node--active.graph-node--b circle {
   fill: color-mix(in srgb, var(--agent-b) 48%, var(--bg-2));
   stroke: var(--agent-b);
   stroke-width: 3.5;
+  animation: graph-node-glow-b 1.6s ease-in-out infinite;
+}
+
+.graph-node--handoff.graph-node--a circle {
+  animation: graph-node-handoff-a 0.9s ease-in-out both;
+}
+
+.graph-node--handoff.graph-node--b circle {
+  animation: graph-node-handoff-b 0.9s ease-in-out both;
+}
+
+.graph-node--handoff.graph-node--active.graph-node--a circle {
+  animation:
+    graph-node-handoff-a 0.9s ease-in-out both,
+    graph-node-glow-a 1.6s ease-in-out 0.9s infinite;
+}
+
+.graph-node--handoff.graph-node--active.graph-node--b circle {
+  animation:
+    graph-node-handoff-b 0.9s ease-in-out both,
+    graph-node-glow-b 1.6s ease-in-out 0.9s infinite;
+}
+
+@keyframes graph-node-handoff-a {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 4px color-mix(in srgb, var(--agent-a) 40%, transparent))
+      drop-shadow(0 0 12px color-mix(in srgb, var(--agent-a) 20%, transparent));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 14px color-mix(in srgb, var(--agent-a) 85%, transparent))
+      drop-shadow(0 0 32px color-mix(in srgb, var(--agent-a) 55%, transparent));
+    stroke-width: 4;
+  }
+}
+
+@keyframes graph-node-handoff-b {
+  0%,
+  100% {
+    filter:
+      drop-shadow(0 0 4px color-mix(in srgb, var(--agent-b) 40%, transparent))
+      drop-shadow(0 0 12px color-mix(in srgb, var(--agent-b) 20%, transparent));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 14px color-mix(in srgb, var(--agent-b) 85%, transparent))
+      drop-shadow(0 0 32px color-mix(in srgb, var(--agent-b) 55%, transparent));
+    stroke-width: 4;
+  }
 }
 
 /* —— Evaluation —— */
@@ -984,6 +1123,20 @@ p {
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-3));
 }
 
+.number-stepper--disabled {
+  opacity: 0.55;
+}
+
+.number-stepper--disabled .number-stepper__btn {
+  cursor: not-allowed;
+}
+
+.number-stepper--disabled .number-stepper__btn:hover,
+.number-stepper--disabled .number-stepper__btn:active {
+  color: var(--text-muted);
+  background: transparent;
+}
+
 .field input:focus,
 .field select:focus {
   outline: 1px solid var(--accent);
@@ -1064,6 +1217,16 @@ p {
   margin: 0 0 0.75rem;
 }
 
+.results-spec {
+  margin-bottom: 0.25rem;
+}
+
+.results-spec .results-summary {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
 .results-summary > div {
   background: var(--bg-0);
   border: 1px solid var(--border-soft);
@@ -1133,20 +1296,14 @@ p {
   line-height: 1.45;
 }
 
-.transcript__result-details {
-  margin-top: 0.55rem;
+.results-crossword-metrics__summary {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
-.results-grid {
-  margin: 0.35rem 0 0;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.72rem;
-  line-height: 1.25;
-  white-space: pre;
-  overflow-x: auto;
-  background: var(--bg-1);
-  border: 1px solid var(--border-soft);
-  border-radius: 4px;
+.transcript__result-details {
+  margin-top: 0.55rem;
 }
 
 .transcript__problem {
@@ -1162,6 +1319,16 @@ p {
   background: var(--bg-1);
   border: 1px solid var(--border-soft);
   border-radius: 4px;
+}
+
+.transcript__agent-text {
+  margin-top: 0.45rem;
+  font-size: 0.75rem;
+}
+
+.transcript__agent-text summary {
+  cursor: var(--cursor-pointer);
+  color: var(--text-muted);
 }
 
 .results-error {
@@ -1239,59 +1406,20 @@ p {
   border-color: var(--border);
 }
 
-.conv-tree__expand {
-  flex-shrink: 0;
-  width: 1.5rem;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 0.45rem 0 0;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: var(--cursor-pointer);
-}
-
-.conv-tree__expand:hover {
-  color: var(--text);
-}
-
-.conv-tree__chevron {
-  transition: transform 0.15s ease;
-  transform: rotate(-90deg);
-}
-
-.conv-tree__expand[aria-expanded="true"] .conv-tree__chevron {
-  transform: rotate(0deg);
-}
-
-.conv-tree__run,
-.conv-tree__problem {
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  padding: 0.35rem 0.45rem;
-  cursor: var(--cursor-pointer);
-  font-size: 0.8rem;
-  color: inherit;
-}
-
 .conv-tree__run {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.12rem;
+  text-align: left;
+  background: transparent;
   border: none;
   border-radius: 0;
-  padding-left: 0.2rem;
-}
-
-.conv-tree__run:hover,
-.conv-tree__problem:hover {
-  background: var(--bg-2);
+  padding: 0.35rem 0.45rem;
+  cursor: var(--cursor-pointer);
+  font-size: 0.8rem;
+  color: inherit;
 }
 
 .conv-tree__run-row:hover .conv-tree__run {
@@ -1300,11 +1428,6 @@ p {
 
 .conv-tree__run-row:hover {
   background: var(--bg-2);
-}
-
-.conv-tree__problem--active {
-  background: var(--bg-2);
-  border-color: var(--border);
 }
 
 .conv-tree__run-title {
@@ -1323,8 +1446,7 @@ p {
   color: var(--accent-2);
 }
 
-.conv-tree__run-meta,
-.conv-tree__run-stats {
+.conv-tree__run-meta {
   font-size: 0.7rem;
   line-height: 1.35;
 }
@@ -1352,12 +1474,10 @@ p {
   background: rgba(0, 0, 0, 0.25);
 }
 
-.conv-tree__problems {
-  list-style: none;
-  margin: 0.2rem 0 0.4rem 0.7rem;
-  padding: 0;
-  border-left: 1px solid var(--border-soft);
-  padding-left: 0.4rem;
+.transcript-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .transcript__header {
@@ -1379,6 +1499,15 @@ p {
   flex-wrap: wrap;
   gap: 1rem 1.25rem;
   align-items: flex-start;
+}
+
+.crossword-preview__aside {
+  /* Align with the grid below the board label */
+  padding-top: calc(0.72rem * 1.2 + 0.35rem);
+}
+
+.crossword-preview__aside .results-crossword-metrics {
+  margin-top: 0;
 }
 
 .crossword-board {
@@ -1414,6 +1543,14 @@ p {
 .crossword-board__cell--blocked {
   background: #1a221b;
   color: transparent;
+}
+
+.crossword-board__cell--correct {
+  background: #d4edda;
+}
+
+.crossword-board__cell--incorrect {
+  background: #f8d7da;
 }
 
 .crossword-board__num {
@@ -1516,13 +1653,50 @@ p {
   border-left: 3px solid var(--agent-b);
 }
 
+.transcript__msg-fold {
+  margin: 0;
+}
+
 .transcript__msg-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 0.65rem;
   background: var(--bg-2);
   font-size: 0.78rem;
+  cursor: var(--cursor-pointer);
+  list-style: none;
+  user-select: none;
+}
+
+.transcript__msg-head::-webkit-details-marker {
+  display: none;
+}
+
+.transcript__msg-head-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.transcript__msg-head-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.transcript__msg-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+}
+
+.transcript__msg-fold:not([open]) .transcript__msg-chevron {
+  transform: rotate(-90deg);
 }
 
 .transcript__msg-body {

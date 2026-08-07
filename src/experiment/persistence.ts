@@ -161,6 +161,26 @@ function parseRunConfig(raw: unknown): RunConfig | undefined {
   };
 }
 
+function parseUsage(raw: unknown): ConversationMessage["usage"] | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const u = raw as Record<string, unknown>;
+  if (typeof u.totalTokens !== "number" || !Number.isFinite(u.totalTokens)) {
+    return undefined;
+  }
+  return {
+    totalTokens: Math.max(0, Math.round(u.totalTokens)),
+    promptTokens:
+      typeof u.promptTokens === "number" && Number.isFinite(u.promptTokens)
+        ? Math.max(0, Math.round(u.promptTokens))
+        : undefined,
+    completionTokens:
+      typeof u.completionTokens === "number" &&
+      Number.isFinite(u.completionTokens)
+        ? Math.max(0, Math.round(u.completionTokens))
+        : undefined,
+  };
+}
+
 function parseMessage(raw: unknown): ConversationMessage | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const m = raw as Partial<ConversationMessage>;
@@ -174,6 +194,11 @@ function parseMessage(raw: unknown): ConversationMessage | undefined {
     content: m.content,
     turnIndex: m.turnIndex,
     timestamp: typeof m.timestamp === "string" ? m.timestamp : undefined,
+    durationMs:
+      typeof m.durationMs === "number" && Number.isFinite(m.durationMs)
+        ? Math.max(0, m.durationMs)
+        : undefined,
+    usage: parseUsage(m.usage),
   };
 }
 
@@ -275,15 +300,18 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
 
   let status = r.status as ExperimentRun["status"];
   let error = typeof r.error === "string" ? r.error : undefined;
+  let finishedAt = typeof r.finishedAt === "string" ? r.finishedAt : undefined;
   // A reload interrupts any in-flight run.
   if (status === "running") {
     status = "failed";
     error = error ?? "Interrupted (page reload)";
+    finishedAt = finishedAt ?? new Date().toISOString();
   }
 
   return {
     id: r.id,
     createdAt: r.createdAt,
+    finishedAt,
     policy: createCommunicationPolicy(r.policy),
     agentPrompts: { agentA: prompts.agentA, agentB: prompts.agentB },
     config,

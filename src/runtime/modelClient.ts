@@ -28,10 +28,23 @@ export type ModelRequest = {
   };
 };
 
+export type ModelUsage = {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens: number;
+};
+
 export type ModelResponse = {
   content: string;
   provider?: "mock" | "openai";
+  usage?: ModelUsage;
+  durationMs?: number;
 };
+
+function estimateTokenCount(text: string): number {
+  // Rough heuristic for mock runs (~4 chars/token).
+  return Math.max(1, Math.ceil(text.length / 4));
+}
 
 export interface ModelClient {
   generate(input: ModelRequest): Promise<ModelResponse>;
@@ -47,9 +60,16 @@ export type ModelClientOptions = {
  */
 export class MockModelClient implements ModelClient {
   async generate(input: ModelRequest): Promise<ModelResponse> {
+    const startedAt = Date.now();
     const meta = input.meta;
     if (!meta) {
-      return { content: "Mock response (missing meta).", provider: "mock" };
+      const content = "Mock response (missing meta).";
+      return {
+        content,
+        provider: "mock",
+        durationMs: Math.max(0, Date.now() - startedAt),
+        usage: { totalTokens: estimateTokenCount(content) },
+      };
     }
 
     const { agentId, turnIndex, problem, policy } = meta;
@@ -138,13 +158,29 @@ export class MockModelClient implements ModelClient {
     // Simulate a small amount of latency for UI speaking-state feedback.
     await abortableDelay(120 + turnIndex * 40, input.signal);
     throwIfAborted(input.signal);
-    return { content, provider: "mock" };
+    const durationMs = Math.max(0, Date.now() - startedAt);
+    const completionTokens = estimateTokenCount(content);
+    const promptTokens = estimateTokenCount(
+      input.messages.map((m) => m.content).join("\n"),
+    );
+    return {
+      content,
+      provider: "mock",
+      durationMs,
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
+      },
+    };
   }
 }
 
 type ProxyGenerateSuccess = {
   content: string;
   provider?: "openai";
+  usage?: ModelUsage;
+  durationMs?: number;
 };
 
 type ProxyGenerateError = {
@@ -187,6 +223,7 @@ export class ConfigurableModelClient implements ModelClient {
 
     throwIfAborted(input.signal);
 
+    const startedAt = Date.now();
     let response: Response;
     try {
       response = await fetch(this.generateUrl, {
@@ -238,12 +275,36 @@ export class ConfigurableModelClient implements ModelClient {
       throw new Error("OpenAI proxy returned a malformed success payload.");
     }
 
-    const content = (payload as ProxyGenerateSuccess).content;
+    const success = payload as ProxyGenerateSuccess;
+    const content = success.content;
     if (content.trim() === "") {
       throw new Error("OpenAI proxy returned an empty content string.");
     }
 
-    return { content, provider: "openai" };
+    const usage =
+      success.usage &&
+      typeof success.usage.totalTokens === "number" &&
+      Number.isFinite(success.usage.totalTokens)
+        ? {
+            promptTokens:
+              typeof success.usage.promptTokens === "number"
+                ? success.usage.promptTokens
+                : undefined,
+            completionTokens:
+              typeof success.usage.completionTokens === "number"
+                ? success.usage.completionTokens
+                : undefined,
+            totalTokens: success.usage.totalTokens,
+          }
+        : undefined;
+
+    const durationMs =
+      typeof success.durationMs === "number" &&
+      Number.isFinite(success.durationMs)
+        ? Math.max(0, success.durationMs)
+        : Math.max(0, Date.now() - startedAt);
+
+    return { content, provider: "openai", usage, durationMs };
   }
 }
 

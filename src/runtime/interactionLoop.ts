@@ -136,6 +136,14 @@ export async function runInteractionLoop(args: {
       content: response.content,
       timestamp: new Date().toISOString(),
       turnIndex: turn,
+      durationMs: response.durationMs,
+      usage: response.usage
+        ? {
+            promptTokens: response.usage.promptTokens,
+            completionTokens: response.usage.completionTokens,
+            totalTokens: response.usage.totalTokens,
+          }
+        : undefined,
     };
 
     messages.push(message);

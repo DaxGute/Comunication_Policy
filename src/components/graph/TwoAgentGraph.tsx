@@ -1,10 +1,39 @@
+import { useEffect, useRef, useState } from "react";
 import type { AgentId } from "../../agents/types";
 
 type Props = {
   speakingAgentId?: AgentId;
 };
 
+type HandoffDirection = "a-to-b" | "b-to-a";
+
+const HANDOFF_MS = 900;
+
 export function TwoAgentGraph({ speakingAgentId }: Props) {
+  const prevSpeakingRef = useRef<AgentId | undefined>(undefined);
+  const [handoff, setHandoff] = useState<HandoffDirection | null>(null);
+
+  useEffect(() => {
+    const prev = prevSpeakingRef.current;
+    prevSpeakingRef.current = speakingAgentId;
+
+    if (!prev || !speakingAgentId || prev === speakingAgentId) {
+      return;
+    }
+
+    const direction: HandoffDirection | null =
+      prev === "agent_a" && speakingAgentId === "agent_b"
+        ? "a-to-b"
+        : prev === "agent_b" && speakingAgentId === "agent_a"
+          ? "b-to-a"
+          : null;
+    if (!direction) return;
+
+    setHandoff(direction);
+    const timer = window.setTimeout(() => setHandoff(null), HANDOFF_MS);
+    return () => window.clearTimeout(timer);
+  }, [speakingAgentId]);
+
   return (
     <div className="graph-pane">
       <header className="graph-pane__header">
@@ -24,13 +53,16 @@ export function TwoAgentGraph({ speakingAgentId }: Props) {
         >
           <title id="graph-title">Agent A connected to Agent B</title>
 
-          <line
-            x1="180"
-            y1="140"
-            x2="460"
-            y2="140"
-            className="graph-edge"
-          />
+          <line x1="180" y1="140" x2="460" y2="140" className="graph-edge" />
+          {handoff ? (
+            <line
+              x1="180"
+              y1="140"
+              x2="460"
+              y2="140"
+              className={`graph-edge-pulse graph-edge-pulse--${handoff}`}
+            />
+          ) : null}
           <text x="320" y="120" textAnchor="middle" className="graph-edge-label">
             communication
           </text>
@@ -41,6 +73,7 @@ export function TwoAgentGraph({ speakingAgentId }: Props) {
             label="Agent A"
             agent="a"
             active={speakingAgentId === "agent_a"}
+            handoff={Boolean(handoff)}
           />
           <AgentNode
             cx={500}
@@ -48,6 +81,7 @@ export function TwoAgentGraph({ speakingAgentId }: Props) {
             label="Agent B"
             agent="b"
             active={speakingAgentId === "agent_b"}
+            handoff={Boolean(handoff)}
           />
         </svg>
       </div>
@@ -61,17 +95,20 @@ function AgentNode({
   label,
   agent,
   active,
+  handoff,
 }: {
   cx: number;
   cy: number;
   label: string;
   agent: "a" | "b";
   active: boolean;
+  handoff: boolean;
 }) {
   const classes = [
     "graph-node",
     `graph-node--${agent}`,
     active ? "graph-node--active" : "",
+    handoff ? "graph-node--handoff" : "",
   ]
     .filter(Boolean)
     .join(" ");
