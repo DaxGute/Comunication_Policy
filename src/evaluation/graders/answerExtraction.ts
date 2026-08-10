@@ -21,7 +21,7 @@ export function extractFinalAnswerFromMessages(
   return undefined;
 }
 
-function looksLikeStructuredBlock(lines: string[]): boolean {
+function looksLikeCrosswordBlock(lines: string[]): boolean {
   return lines.some((line) => {
     const t = line.trim();
     if (/^(across|down)\s*:?$/i.test(t)) return true;
@@ -29,6 +29,13 @@ function looksLikeStructuredBlock(lines: string[]): boolean {
     if (/^\d+\s*[:.\-–—)]\s*\S+/.test(t)) return true;
     return false;
   });
+}
+
+function looksLikeMultiLineProof(text: string, lines: string[]): boolean {
+  if (text.length < 80) return false;
+  const nonEmpty = lines.filter((l) => l.trim().length > 0);
+  // Proofs are long write-ups: either multiple lines or one long paragraph.
+  return nonEmpty.length >= 2 || text.length >= 160;
 }
 
 function cleanExtractedAnswer(raw: string): string | undefined {
@@ -39,26 +46,34 @@ function cleanExtractedAnswer(raw: string): string | undefined {
   const first = lines[0]?.trim() ?? "";
   const rest = lines.slice(1);
 
-  if (looksLikeStructuredBlock(lines)) {
+  if (looksLikeCrosswordBlock(lines)) {
     // Keep multi-line clue-assignment / grid blocks intact.
     let block = text;
     // Drop a trailing blank-line commentary paragraph if present after a dense block.
     const parts = block.split(/\n\s*\n/);
-    if (parts.length > 1 && looksLikeStructuredBlock(parts[0].split("\n"))) {
+    if (parts.length > 1 && looksLikeCrosswordBlock(parts[0].split("\n"))) {
       block = parts[0].trim();
     }
     return block;
   }
 
-  // Single-line answers (moral / proof / legacy).
-  let line = first;
-  line = line.replace(/^['"`]+|['"`]+$/g, "").trim();
-  line = line.replace(/[.;,:]+$/g, "").trim();
-  if (rest.length && !line) {
-    // FINAL_ANSWER: on its own line with body below that isn't structured — take next line.
-    line = rest[0]?.trim() ?? "";
-    line = line.replace(/^['"`]+|['"`]+$/g, "").trim();
-    line = line.replace(/[.;,:]+$/g, "").trim();
+  if (looksLikeMultiLineProof(text, lines)) {
+    // Preserve paragraph structure for collaborative proofs.
+    return text;
   }
-  return line || undefined;
+
+  // Short prose answers (moral stances / legacy): keep consecutive non-empty lines.
+  const proseLines: string[] = [];
+  if (first) proseLines.push(first);
+  for (const line of rest) {
+    const trimmed = line.trim();
+    if (!trimmed) break;
+    proseLines.push(trimmed);
+  }
+  if (proseLines.length === 0) return undefined;
+
+  let prose = proseLines.join(" ").trim();
+  prose = prose.replace(/^['"`]+|['"`]+$/g, "").trim();
+  prose = prose.replace(/[.;,:]+$/g, "").trim();
+  return prose || undefined;
 }

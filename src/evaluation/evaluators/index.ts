@@ -3,7 +3,7 @@ import type { Problem, ProblemCategory } from "../../problems/types";
 import { extractFinalAnswerFromMessages } from "../graders/answerExtraction";
 import { gradeCrosswordPuzzle } from "../graders/crosswordGrader";
 import { gradeMoralConversation } from "../graders/moralGrader";
-import { gradeProofAnswer } from "../graders/proofGrader";
+import { gradeProofConversation } from "../graders/proofGrader";
 import type { ProblemEvaluation } from "../types";
 
 function normalizeLoose(text: string): string {
@@ -104,7 +104,13 @@ function evaluateMoral(
   return {
     ...baseFields(conversation, finalAnswer),
     label: grade.label,
-    notes: grade.notes,
+    notes: [
+      grade.notes,
+      grade.stance ? `stance=${grade.stance}` : undefined,
+      `tensionSignals=${grade.exploredTensionCount}`,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     details: {
       grader: "moral_open_ended",
       hasGoldAnswer: false,
@@ -119,45 +125,35 @@ function evaluateMoral(
 
 function evaluateProof(
   conversation: ProblemConversation,
-  problem: Problem,
+  problem: Problem | undefined,
 ): ProblemEvaluation {
   const finalAnswer =
     conversation.finalAnswer ??
     extractFinalAnswerFromMessages(conversation.messages);
 
-  const gold = problem.proof?.answer ?? problem.expectedAnswer ?? "";
-  const answerType = problem.proof?.answerType ?? "option";
-
-  const grade = gradeProofAnswer({
-    predicted: finalAnswer,
-    gold,
-    answerType,
+  const grade = gradeProofConversation({
+    finalAnswer,
+    messages: conversation.messages,
   });
 
   return {
     ...baseFields(conversation, finalAnswer),
-    score: grade.correct ? 1 : 0,
     label: grade.label,
-    notes: [
-      grade.notes,
-      `type=${answerType}`,
-      `gold=${grade.goldNormalized}`,
-      finalAnswer
-        ? `predicted=${grade.predictedNormalized || "(empty)"}`
-        : undefined,
-    ]
-      .filter(Boolean)
-      .join(" · "),
+    notes: grade.notes,
     details: {
-      grader: "proof",
-      correct: grade.correct,
-      predictedNormalized: grade.predictedNormalized,
-      goldNormalized: grade.goldNormalized,
-      answerType,
-      theorem: problem.proof?.theorem,
-      field: problem.proof?.field,
-      source: problem.proof?.source,
-      sourceId: problem.proof?.sourceId,
+      grader: "proof_collaborative",
+      hasGoldAnswer: false,
+      proofSubmitted: grade.label === "proof_submitted",
+      proofMarkerCount: grade.proofMarkerCount,
+      question: problem?.proof?.question,
+      source: problem?.proof?.source,
+      sourceIndex: problem?.proof?.sourceIndex,
+      // Truncated reference for research inspectability only.
+      referenceProofPreview: problem?.proof?.referenceProof
+        ? `${problem.proof.referenceProof.slice(0, 280)}${
+            problem.proof.referenceProof.length > 280 ? "…" : ""
+          }`
+        : undefined,
     },
   };
 }
@@ -210,9 +206,6 @@ export function evaluateProblem(
   }
 
   if (category === "proof" || problem?.kind === "proof" || problem?.proof) {
-    if (!problem) {
-      return scoreWithExpected(conversation, problem);
-    }
     return evaluateProof(conversation, problem);
   }
 

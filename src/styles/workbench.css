@@ -1302,6 +1302,23 @@ p {
   border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
+.results-open-metrics {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.results-open-metrics__reference {
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+
+.results-open-metrics__summary {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
 .transcript__result-details {
   margin-top: 0.55rem;
 }
@@ -1484,6 +1501,44 @@ p {
   margin-bottom: 0.85rem;
   padding-bottom: 0.7rem;
   border-bottom: 1px solid var(--border-soft);
+}
+
+.transcript__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.transcript__title-row h3 {
+  margin: 0;
+}
+
+.transcript__copy-json {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--text-muted);
+  cursor: var(--cursor-pointer);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.transcript__copy-json:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg-3);
+}
+
+.transcript__copy-json-icon {
+  flex-shrink: 0;
 }
 
 /* —— Crossword boards in transcript —— */

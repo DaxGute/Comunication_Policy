@@ -14,7 +14,8 @@
     "curate:moral": "node scripts/curateMoralSubset.mjs",
     "curate:proof": "node scripts/curateProofSubset.mjs",
     "test:crossword-grader": "vite-node scripts/testCrosswordGrader.ts",
-    "test:proof-grader": "node scripts/testProofGrader.mjs",
+    "test:moral-grader": "vite-node scripts/testMoralGrader.ts",
+    "test:proof-grader": "vite-node scripts/testProofGrader.ts",
     "verify:crossword": "vite-node scripts/verifyCrosswordIntegration.ts",
     "verify:crossword-live": "vite-node scripts/verifyCrosswordLive.ts"
   },

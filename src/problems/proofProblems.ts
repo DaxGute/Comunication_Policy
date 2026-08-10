@@ -1,4 +1,4 @@
-import { loadTheoremQaProblems } from "./proof/loadTheoremQa";
+/** Proof category pool: curated ProofSolver prove-that problems. */
+import { loadProofSolverProblems } from "./proof/loadProofSolver";
 
-/** Proof category pool: curated TheoremQA theorem-driven problems. */
-export const PROOF_PROBLEMS = loadTheoremQaProblems();
+export const PROOF_PROBLEMS = loadProofSolverProblems();

@@ -280,7 +280,12 @@ const prompt = formatCrosswordProblemText(FIXTURE_PUZZLE);
 assert.ok(prompt.includes("CROSSWORD"));
 assert.ok(prompt.includes("ACROSS"));
 assert.ok(prompt.includes("DOWN"));
-assert.ok(prompt.includes("Grid:"));
+assert.ok(prompt.includes("Grid (1-indexed"));
+assert.ok(prompt.includes("CROSSINGS"));
+assert.ok(prompt.includes("Hard placement rules"));
+assert.ok(prompt.includes("Across 1 letter 1 = Down 1 letter 1"));
+assert.ok(prompt.includes("Exact length"));
+assert.ok(prompt.includes("Spatial overlap"));
 for (const clue of FIXTURE_PUZZLE.clues) {
   assert.ok(prompt.includes(clue.clue));
   // Gold answers must not appear as fills

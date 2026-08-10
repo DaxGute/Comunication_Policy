@@ -127,11 +127,17 @@ export class MockModelClient implements ModelClient {
         ].join("\n");
       } else if (problem.kind === "proof" && problem.proof) {
         const shouldMiss = problem.proof.sourceIndex % 5 === 0;
-        const entry = shouldMiss ? "0" : problem.proof.answer;
-        answerLine = `\nFINAL_ANSWER: ${entry}`;
+        const reference = problem.proof.referenceProof;
+        const mockProof = shouldMiss
+          ? "Suppose the claim holds. We omit a key step and conclude without justification. QED"
+          : reference.length > 400
+            ? `${reference.slice(0, 397).trimEnd()}…`
+            : reference;
+        answerLine = `\nFINAL_ANSWER:\n${mockProof}`;
       } else if (problem.kind === "moral" || problem.moral) {
         const q = problem.moral?.question ?? "the dilemma";
-        answerLine = `\nFINAL_ANSWER: After weighing the tensions, we adopt a provisional joint stance on: ${q.slice(0, 80)} — prioritize clear communication of competing claims and avoid treating either side as settled.`;
+        const issues = problem.moral?.issues?.slice(0, 2).join("; ");
+        answerLine = `\nFINAL_ANSWER: After weighing ${issues || "the core tensions"}, our provisional joint stance on "${q.slice(0, 72)}" is to prioritize clear communication of competing claims and refuse to treat either side as settled.`;
       } else if (problem.expectedAnswer) {
         answerLine = `\nFINAL_ANSWER: ${problem.expectedAnswer}`;
       } else {
@@ -147,6 +153,11 @@ export class MockModelClient implements ModelClient {
       familiarityNote,
       !isClosing && problem.kind === "crossword_puzzle"
         ? `If 1-Across crosses 1-Down, those shared letters must agree — inviting ${other} to test candidates against crossings.`
+        : !isClosing && problem.kind === "proof"
+          ? `I'll propose a proof strategy and ask ${other} to stress-test the critical steps before we lock a write-up.`
+          : null,
+      !isClosing && (problem.kind === "moral" || problem.moral)
+        ? `On the other hand, a counterargument from ${other} could surface a principle trade-off we have not settled — uncertainty remains.`
         : null,
       isClosing
         ? `Proposing a resolution based on our discussion.${answerLine}`

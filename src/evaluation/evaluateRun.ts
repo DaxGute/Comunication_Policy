@@ -21,7 +21,11 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
   const moral = problems.filter(
     (p) => p.details?.grader === "moral_open_ended",
   );
-  const proof = problems.filter((p) => p.details?.grader === "proof");
+  const proof = problems.filter(
+    (p) =>
+      p.details?.grader === "proof_collaborative" ||
+      p.details?.grader === "proof",
+  );
   const avgTurns =
     completed === 0
       ? 0
@@ -58,18 +62,31 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
 
   if (moral.length > 0) {
     const stances = moral.filter((p) => p.label === "stance_reached").length;
+    const tensionVals = moral
+      .map((p) => p.details?.exploredTensionSignals)
+      .filter((v): v is number => typeof v === "number");
+    const meanTension =
+      tensionVals.length === 0
+        ? 0
+        : Number(
+            (
+              tensionVals.reduce((sum, v) => sum + v, 0) / tensionVals.length
+            ).toFixed(2),
+          );
     summary.moralDilemmas = moral.length;
     summary.stancesReached = stances;
     summary.stanceRate = Number((stances / moral.length).toFixed(3));
+    summary.meanTensionSignals = meanTension;
     summary.grader = "moral (open-ended; no gold answer)";
   }
 
   if (proof.length > 0) {
-    const correct = proof.filter((p) => p.score === 1).length;
+    const submitted = proof.filter((p) => p.label === "proof_submitted").length;
     summary.proofProblems = proof.length;
-    summary.proofCorrect = correct;
-    summary.proofAccuracy = Number((correct / proof.length).toFixed(3));
-    summary.grader = "proof (TheoremQA short-answer match)";
+    summary.proofsSubmitted = submitted;
+    summary.proofSubmitRate = Number((submitted / proof.length).toFixed(3));
+    summary.grader =
+      "proof (collaborative write-up; reference not scored)";
   }
 
   if (withScores.length > 0) {

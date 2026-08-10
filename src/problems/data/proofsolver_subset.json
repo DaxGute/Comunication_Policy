@@ -1,0 +1,574 @@
+{
+  "source": {
+    "name": "ProofSolver-1300",
+    "huggingface": "WilhelmH/proofsolver-1300",
+    "split": "train",
+    "license": "mit",
+    "url": "https://huggingface.co/datasets/WilhelmH/proofsolver-1300",
+    "note": "Prove-that / with-proof statements. Agents write a joint proof; reference solutions are not used as gold scores."
+  },
+  "curatedAt": "2026-08-10",
+  "count": 80,
+  "items": [
+    {
+      "id": "proofsolver_0001",
+      "sourceIndex": 0,
+      "titleHint": "Let r and x be real numbers. Assume r is rational, r ≠ 0, and…",
+      "question": "Let r and x be real numbers. Assume r is rational, r ≠ 0, and x is irrational, meaning x ∉ ℚ. Prove that rx is irrational.",
+      "referenceProof": "Suppose, for contradiction, that rx is rational. Since r is a nonzero rational number, its reciprocal 1/r is rational. The rational numbers are closed under multiplication, so (1/r)(rx) is rational. But (1/r)(rx) = x, so x is rational, contradicting the assumption that x is irrational. Therefore rx is irrational. ∎"
+    },
+    {
+      "id": "proofsolver_0002",
+      "sourceIndex": 15,
+      "titleHint": "Let (X,d) be a metric space. For a subset S ⊆ X, write cl(S)…",
+      "question": "Let (X,d) be a metric space. For a subset S ⊆ X, write cl(S) for its closure. Two subsets A,B ⊆ X are called separated if A ∩ cl(B) = ∅ and cl(A) ∩ B = ∅. Suppose A and B are closed subsets of X and A ∩ B = ∅. Prove that A and B are separated.",
+      "referenceProof": "Since B is closed, cl(B) = B. Since A ∩ B = ∅, we get A ∩ cl(B) = A ∩ B = ∅. Similarly, since A is closed, cl(A) = A, and therefore cl(A) ∩ B = A ∩ B = ∅. Hence A and B are separated. ∎"
+    },
+    {
+      "id": "proofsolver_0003",
+      "sourceIndex": 30,
+      "titleHint": "Exhibit a set E ⊂ R and a real-valued function f defined on E…",
+      "question": "Exhibit a set E ⊂ R and a real-valued function f defined on E such that f is continuous on E, but there is no continuous function g:R→R satisfying g(x)=f(x) for every x∈E. Prove all asserted properties of your example.",
+      "referenceProof": "Take E=(0,1) and define f:E→R by f(x)=1/x. The function f is continuous on E because the reciprocal function is continuous at every nonzero real number, and every point of E is nonzero.\n\nSuppose, for contradiction, that there were a continuous function g:R→R such that g(x)=f(x)=1/x for all x∈(0,1). Since g is continuous at 0, there is δ>0 such that |x-0|<δ implies |g(x)-g(0)|<1. Choose an integer n with n>1/δ and n>|g(0)|+1. Then x=1/n belongs to (0,1), and |x|=1/n<δ. Hence |g(1/n)-g(0)|<1. But g(1/n)=1/(1/n)=n, so |g(1/n)-g(0)|=|n-g(0)|≥n-|g(0)|>1, a contradiction. Therefore no such continuous extension g exists."
+    },
+    {
+      "id": "proofsolver_0004",
+      "sourceIndex": 46,
+      "titleHint": "Let Z be a topological space, let Y be a Hausdorff topologica…",
+      "question": "Let Z be a topological space, let Y be a Hausdorff topological space, and let u,v:Z\\to Y be continuous functions. Prove that the equalizer E=\\{z\\in Z: u(z)=v(z)\\} is closed in Z.",
+      "referenceProof": "We prove that Z\\setminus E is open. Let z\\in Z\\setminus E. Then u(z)\\ne v(z). Since Y is Hausdorff, there exist disjoint open sets U,V\\subseteq Y such that u(z)\\in U and v(z)\\in V. By continuity, u^{-1}(U) and v^{-1}(V) are open in Z, so W=u^{-1}(U)\\cap v^{-1}(V) is an open neighborhood of z. If w\\in W, then u(w)\\in U and v(w)\\in V. Were u(w)=v(w), this common value would lie in U\\cap V, impossible because U\\cap V=\\varnothing. Hence W\\subseteq Z\\setminus E. Thus every point of Z\\setminus E has an open neighborhood contained in Z\\setminus E, so Z\\setminus E is open. Therefore E is closed. ∎"
+    },
+    {
+      "id": "proofsolver_0005",
+      "sourceIndex": 60,
+      "titleHint": "Let n be a positive integer, and let z1, z2, ..., zn be compl…",
+      "question": "Let n be a positive integer, and let z1, z2, ..., zn be complex numbers. Prove that |z1 + z2 + ... + zn| ≤ |z1| + |z2| + ... + |zn|.",
+      "referenceProof": "We first use the two-term triangle inequality: for all complex a,b, |a + b| ≤ |a| + |b|. This follows from the computation |a + b|^2 = |a|^2 + |b|^2 + 2 Re(a conj(b)) ≤ |a|^2 + |b|^2 + 2|a||b| = (|a| + |b|)^2, followed by taking square roots of nonnegative quantities. Now prove the n-term inequality by induction on n. For n = 1, |z1| ≤ |z1| is equality. Assume the result holds for some k ≥ 1: for all complex z1, ..., zk, |z1 + ... + zk| ≤ |z1| + ... + |zk|. For complex z1, ..., zk, z_{k+1}, set S_k = z1 + ... + zk. Then |z1 + ... + zk + z_{k+1}| = |S_k + z_{k+1}| ≤ |S_k| + |z_{k+1}| by the two-term triangle inequality. By the induction hypothesis, |S_k| ≤ |z1| + ... + |zk|. Therefore |z1 + ... + zk + z_{k+1}| ≤ |z1| + ... + |zk| + |z_{k+1}|. Hence the statement holds for k + 1. By induction, it holds for every positive integer n."
+    },
+    {
+      "id": "proofsolver_0006",
+      "sourceIndex": 75,
+      "titleHint": "Let (a_n)_{n≥0} and (b_n)_{n≥0} be real sequences. Suppose th…",
+      "question": "Let (a_n)_{n≥0} and (b_n)_{n≥0} be real sequences. Suppose the two series ∑_{n=0}^∞ |a_n| and ∑_{n=0}^∞ |b_n| converge. For each n≥0 define the Cauchy product coefficient c_n = ∑_{j=0}^n a_j b_{n-j}. Prove that the series ∑_{n=0}^∞ |c_n| converges.",
+      "referenceProof": "Set α_n = |a_n| and β_n = |b_n|. Since ∑ α_n and ∑ β_n converge with nonnegative terms, their partial sums A_N = ∑_{n=0}^N α_n and B_N = ∑_{n=0}^N β_n are bounded; say A_N ≤ A and B_N ≤ B for all N. For every n, the triangle inequality gives |c_n| = |∑_{j=0}^n a_j b_{n-j}| ≤ ∑_{j=0}^n |a_j| |b_{n-j}| = ∑_{j=0}^n α_j β_{n-j}. Hence, for every N,\n\n∑_{n=0}^N |c_n| ≤ ∑_{n=0}^N ∑_{j=0}^n α_j β_{n-j} = ∑_{j=0}^N ∑_{l=0}^{N-j} α_j β_l ≤ ∑_{j=0}^N ∑_{l=0}^N α_j β_l = A_N B_N ≤ AB.\n\nThe partial sums ∑_{n=0}^N |c_n| are nondecreasing because their terms are nonnegative, and they are bounded above by AB. Therefore they converge by the monotone convergence theorem for real sequences. Thus ∑_{n=0}^∞ |c_n| converges."
+    },
+    {
+      "id": "proofsolver_0007",
+      "sourceIndex": 89,
+      "titleHint": "Let F be a field with 0 ≠ 1 and let < be a strict total order…",
+      "question": "Let F be a field with 0 ≠ 1 and let < be a strict total order on F such that for all a,b,c ∈ F, a < b implies a + c < b + c, and for all a,b ∈ F, if 0 < a and 0 < b then 0 < ab. Prove that there is no element u ∈ F with u^2 = -1.",
+      "referenceProof": "Suppose, for contradiction, that u^2 = -1 for some u ∈ F. Since 0^2 = 0 and 1 ≠ 0, we have u ≠ 0. By totality, either 0 < u or u < 0. If 0 < u, then 0 < u^2 by multiplicative compatibility. If u < 0, then adding -u to both sides gives 0 < -u, and hence 0 < (-u)^2 = u^2. Therefore 0 < u^2 = -1. Multiplying the positive element -1 by itself gives 0 < (-1)^2 = 1. Also, adding 1 to 0 < -1 gives 1 < 0. Thus both 0 < 1 and 1 < 0 hold, contradicting asymmetry of the strict total order. Hence no such u exists. ∎"
+    },
+    {
+      "id": "proofsolver_0008",
+      "sourceIndex": 103,
+      "titleHint": "Let X be an arbitrary topological space, let Y be a linearly…",
+      "question": "Let X be an arbitrary topological space, let Y be a linearly ordered set with the order topology, and let f,g:X→Y be continuous. Is it necessarily true that {x∈X | f(x)≤g(x)} is closed in X? Give a proof or a counterexample. Do not assume that X is metrizable or first countable.",
+      "referenceProof": "Yes. Let A={x∈X | f(x)≤g(x)} and let U=X\\A={x∈X | g(x)<f(x)}. We show that U is open. Fix a∈U. Then g(a)<f(a). If there exists c∈Y with g(a)<c<f(a), set N=g^{-1}((-∞,c))∩f^{-1}((c,∞)). This is open in X by continuity of f and g, contains a, and is contained in U because every x∈N satisfies g(x)<c<f(x). If no element of Y lies strictly between g(a) and f(a), set N=g^{-1}((-∞,f(a)))∩f^{-1}((g(a),∞)). This set is open and contains a. If x∈N and f(x)≤g(x), then g(a)<f(x)≤g(x)<f(a), so f(x) lies strictly between g(a) and f(a), contradiction. Hence every x∈N satisfies g(x)<f(x), so N⊆U. Thus every point of U has an open neighborhood contained in U, making U open. Therefore A=X\\U is closed."
+    },
+    {
+      "id": "proofsolver_0009",
+      "sourceIndex": 116,
+      "titleHint": "Let (a_n) be the sequence indexed by positive integers n and…",
+      "question": "Let (a_n) be the sequence indexed by positive integers n and defined by a_n = sqrt(n^2 + n) - n. Determine, with proof, whether (a_n) converges, and if it converges, find its limit.",
+      "referenceProof": "The sequence converges to 1/2. For every positive integer n,\na_n = sqrt(n^2 + n) - n = ((sqrt(n^2 + n) - n)(sqrt(n^2 + n) + n))/(sqrt(n^2 + n) + n) = n/(sqrt(n^2 + n) + n).\nSince n > 0, sqrt(n^2 + n) = n sqrt(1 + 1/n). Therefore\na_n = n/(n sqrt(1 + 1/n) + n) = 1/(sqrt(1 + 1/n) + 1).\nBecause 1/n → 0, we have 1 + 1/n → 1, so sqrt(1 + 1/n) → 1 by continuity of the square root. Hence sqrt(1 + 1/n) + 1 → 2, and taking reciprocals gives\na_n → 1/2.\nThus the sequence converges, and its limit is 1/2. ∎"
+    },
+    {
+      "id": "proofsolver_0010",
+      "sourceIndex": 131,
+      "titleHint": "Let X = {1,2,3}. Let A be the family of subsets of X given by…",
+      "question": "Let X = {1,2,3}. Let A be the family of subsets of X given by A = {{1,2},{2,3}}. Compute explicitly the intersection I of all topologies on X that contain both {1,2} and {2,3}, and prove that your computed family is correct.",
+      "referenceProof": "The finite intersections generated by {1,2} and {2,3}, including the empty intersection X, are X, {1,2}, {2,3}, and {2}. Arbitrary unions of these sets give exactly ∅, {2}, {1,2}, {2,3}, and X. Let S = {∅, {2}, {1,2}, {2,3}, X}. This S is a topology: it contains ∅ and X; unions of its members are again one of the five listed sets; and intersections of its members are again one of the five listed sets, with the only nontrivial intersection {1,2} ∩ {2,3} = {2}. It contains {1,2} and {2,3}. Therefore the intersection I of all topologies containing {1,2} and {2,3} satisfies I ⊆ S. Conversely, any topology T containing {1,2} and {2,3} must contain their intersection {2}; it must also contain ∅ and X. Hence T contains all five sets in S. Therefore S is contained in every topology containing {1,2} and {2,3}, so S ⊆ I. Thus I = {∅, {2}, {1,2}, {2,3}, {1,2,3}}. ∎"
+    },
+    {
+      "id": "proofsolver_0011",
+      "sourceIndex": 149,
+      "titleHint": "Let i denote the imaginary unit, so i^2 = -1. Prove the key i…",
+      "question": "Let i denote the imaginary unit, so i^2 = -1. Prove the key identity ((-1 + sqrt(3)i)/2)^2 = (-1 - sqrt(3)i)/2, and then use it to prove that ((-1 + sqrt(3)i)/2)^3 = 1.",
+      "referenceProof": "Let z = (-1 + sqrt(3)i)/2. Then\nz^2 = ((-1 + sqrt(3)i)^2)/4 = (1 - 2sqrt(3)i + 3i^2)/4 = (1 - 2sqrt(3)i - 3)/4 = (-2 - 2sqrt(3)i)/4 = (-1 - sqrt(3)i)/2.\nUsing this identity,\nz^3 = z^2z = ((-1 - sqrt(3)i)/2)((-1 + sqrt(3)i)/2) = ((-1)^2 - (sqrt(3)i)^2)/4 = (1 - 3i^2)/4 = (1 + 3)/4 = 1."
+    },
+    {
+      "id": "proofsolver_0012",
+      "sourceIndex": 164,
+      "titleHint": "In the real vector space R^3, scalar multiplication is define…",
+      "question": "In the real vector space R^3, scalar multiplication is defined by a(x,y,z) = (ax,ay,az). Determine all real quadruples (a,x,y,z) such that a(x,y,z) = (0,0,0), and prove that your list is complete.",
+      "referenceProof": "The solutions are exactly the quadruples (a,x,y,z) such that a = 0, with x,y,z arbitrary, together with the quadruples such that x = y = z = 0, with a arbitrary. Equivalently, a(x,y,z) = (0,0,0) holds exactly when a = 0 or (x,y,z) = (0,0,0). Indeed, if a = 0, then a(x,y,z) = 0(x,y,z) = (0,0,0). If x = y = z = 0, then a(x,y,z) = a(0,0,0) = (0,0,0). Conversely, suppose a(x,y,z) = (0,0,0). Then (ax,ay,az) = (0,0,0), so ax = 0, ay = 0, and az = 0. If a = 0, the quadruple is in the first family. If a ≠ 0, multiply the three equalities ax = 0, ay = 0, az = 0 by 1/a to obtain x = 0, y = 0, and z = 0, so the quadruple is in the second family. Therefore the stated list contains all and only the solutions."
+    },
+    {
+      "id": "proofsolver_0013",
+      "sourceIndex": 185,
+      "titleHint": "Let F be a field, let V be a vector space over F, and let T:…",
+      "question": "Let F be a field, let V be a vector space over F, and let T: V → V be a linear map. Let m be a positive integer and let U_1, ..., U_m be subspaces of V. Assume that each U_j is invariant under T, meaning that for every u ∈ U_j one has T(u) ∈ U_j. The sum U_1 + ... + U_m is the set of all vectors u_1 + ... + u_m with u_j ∈ U_j for each j. Prove that U_1 + ... + U_m is invariant under T.",
+      "referenceProof": "Let S = U_1 + ... + U_m. To prove that S is invariant under T, take an arbitrary vector u ∈ S. By the definition of the sum of subspaces, there exist vectors u_1 ∈ U_1, ..., u_m ∈ U_m such that u = u_1 + ... + u_m. Since T is linear, T(u) = T(u_1 + ... + u_m) = T(u_1) + ... + T(u_m). For each j, the subspace U_j is invariant under T, so T(u_j) ∈ U_j. Therefore T(u) is a sum of one vector from each U_j, namely T(u_1) + ... + T(u_m), and hence T(u) ∈ U_1 + ... + U_m. Since u ∈ S was arbitrary, T(S) ⊆ S. Thus U_1 + ... + U_m is invariant under T. ∎"
+    },
+    {
+      "id": "proofsolver_0014",
+      "sourceIndex": 200,
+      "titleHint": "Let V be a real inner product space with inner product ⟨·,·⟩…",
+      "question": "Let V be a real inner product space with inner product ⟨·,·⟩ and norm ||v|| = sqrt(⟨v,v⟩). If a parallelogram has adjacent side vectors u,v ∈ V, then its two diagonal vectors are u+v and u-v. Determine, with proof, the value of ||u+v||^2 + ||u-v||^2 in terms of ||u|| and ||v||.",
+      "referenceProof": "The value is 2||u||^2 + 2||v||^2. Indeed, since ||w||^2 = ⟨w,w⟩, bilinearity and symmetry of the real inner product give\n\n||u+v||^2 = ⟨u+v,u+v⟩ = ⟨u,u⟩ + ⟨u,v⟩ + ⟨v,u⟩ + ⟨v,v⟩ = ||u||^2 + 2⟨u,v⟩ + ||v||^2,\n\nand\n\n||u-v||^2 = ⟨u-v,u-v⟩ = ⟨u,u⟩ - ⟨u,v⟩ - ⟨v,u⟩ + ⟨v,v⟩ = ||u||^2 - 2⟨u,v⟩ + ||v||^2.\n\nAdding these equalities cancels the terms involving ⟨u,v⟩, leaving\n\n||u+v||^2 + ||u-v||^2 = 2||u||^2 + 2||v||^2.\n\nThus the sum of the squares of the lengths of the two diagonals equals twice the sum of the squares of the lengths of the adjacent sides. ∎"
+    },
+    {
+      "id": "proofsolver_0015",
+      "sourceIndex": 215,
+      "titleHint": "Let V be a complex inner product space, with inner product li…",
+      "question": "Let V be a complex inner product space, with inner product linear in the first variable. Let (e₁,...,e_m) be an orthonormal list in V, and let v ∈ V. Decide, with proof, whether the equality ‖v‖² = |⟨v,e₁⟩|² + ⋯ + |⟨v,e_m⟩|² can hold when v is not in span(e₁,...,e_m).",
+      "referenceProof": "No. Set u = ∑_{k=1}^m ⟨v,e_k⟩e_k and w = v - u. For every j, ⟨u,e_j⟩ = ∑_{k=1}^m ⟨v,e_k⟩⟨e_k,e_j⟩ = ⟨v,e_j⟩, so ⟨w,e_j⟩ = 0. Hence w is orthogonal to span(e₁,...,e_m), and in particular w is orthogonal to u. Thus ‖v‖² = ‖u+w‖² = ‖u‖² + ‖w‖². Orthonormality also gives ‖u‖² = ∑_{k=1}^m |⟨v,e_k⟩|². Therefore ‖v‖² = ∑_{k=1}^m |⟨v,e_k⟩|² + ‖w‖². If v ∉ span(e₁,...,e_m), then w ≠ 0, because w = 0 would imply v = u belongs to the span. Hence ‖w‖² > 0, and so ‖v‖² > ∑_{k=1}^m |⟨v,e_k⟩|². Therefore the equality cannot hold outside the span. ∎"
+    },
+    {
+      "id": "proofsolver_0016",
+      "sourceIndex": 232,
+      "titleHint": "Let (X_n)_{n∈ℕ} be nonempty topological spaces, let A_n⊆X_n b…",
+      "question": "Let (X_n)_{n∈ℕ} be nonempty topological spaces, let A_n⊆X_n be countable and dense for each n, and choose b_n∈A_n for each n. In X=∏_{n∈ℕ}X_n with the product topology, define D={x∈X : x_n∈A_n for every n and {n∈ℕ : x_n≠b_n} is finite}. Prove that D is countable and dense in X.",
+      "referenceProof": "For each finite F⊆ℕ, set D_F={x∈X : x_n∈A_n for n∈F and x_n=b_n for n∉F}. Then D=⋃_{F finite}D_F. For a fixed finite F, the restriction map D_F→∏_{n∈F}A_n is a bijection, so D_F is countable because finite products of countable sets are countable. The finite subsets of ℕ form a countable set, so D is countable. Now let O⊆X be nonempty and open. Choose x∈O and a basic open cylinder V=∏V_n such that x∈V⊆O, where each V_n is open in X_n and V_n=X_n except for n in a finite set E. For n∈E, density of A_n gives a point y_n∈A_n∩V_n; for n∉E, set y_n=b_n. Then y=(y_n) lies in D because it differs from b only on E, and y∈V⊆O. Thus O∩D≠∅. Hence D is dense and countable."
+    },
+    {
+      "id": "proofsolver_0017",
+      "sourceIndex": 248,
+      "titleHint": "Let V be a finite-dimensional complex inner-product space, wi…",
+      "question": "Let V be a finite-dimensional complex inner-product space, with inner product linear in the first variable, and let T: V -> V be a normal linear operator, meaning TT^* = T^*T where T^* is the adjoint of T. Prove that T is self-adjoint, meaning T = T^*, if and only if every eigenvalue of T is real.",
+      "referenceProof": "Suppose first that T is self-adjoint. Let lambda be an eigenvalue of T, and choose a nonzero vector v in V such that Tv = lambda v. Since T = T^*, we have <Tv,v> = <v,Tv>. With the inner product linear in the first variable, this gives lambda <v,v> = conjugate(lambda) <v,v>. Because v is nonzero, <v,v> > 0, so lambda = conjugate(lambda), and hence lambda is real. Conversely, suppose every eigenvalue of T is real. Since T is normal and V is finite-dimensional over C, the complex spectral theorem gives an orthonormal basis e_1,...,e_n of V consisting of eigenvectors of T. Thus Te_j = lambda_j e_j for some eigenvalue lambda_j of T, and by hypothesis each lambda_j is real. The matrix of T in this orthonormal basis is the diagonal matrix diag(lambda_1,...,lambda_n). Its conjugate transpose is diag(conjugate(lambda_1),...,conjugate(lambda_n)) = diag(lambda_1,...,lambda_n), because all lambda_j are real. Therefore the matrix of T equals the matrix of T^* in this orthonormal basis, so T = T^*. Thus T is self-adjoint if and only if all eigenvalues of T are real."
+    },
+    {
+      "id": "proofsolver_0018",
+      "sourceIndex": 267,
+      "titleHint": "Let m be a positive integer, and let p = 2^(2^m) + 1 be prime…",
+      "question": "Let m be a positive integer, and let p = 2^(2^m) + 1 be prime. For a prime p, say that an integer g is a primitive root modulo p if gcd(g,p)=1 and the multiplicative order of g modulo p is p-1. Prove that 3 is a primitive root modulo p.",
+      "referenceProof": "Put r = 2^m, so p-1 = 2^r. Since m >= 1, we have r even and p >= 5, so p is an odd prime different from 3. By Euler's criterion, 3^((p-1)/2) is congruent modulo p to the Legendre symbol (3/p). We compute this Legendre symbol. Since p = 2^(2^m)+1 and 2^m is even, p ≡ (-1)^(2^m)+1 ≡ 2 ≡ -1 mod 3. Also p ≡ 1 mod 4. Quadratic reciprocity gives (3/p)(p/3)=(-1)^((3-1)/2 * (p-1)/2)=(-1)^((p-1)/2)=1, because p ≡ 1 mod 4. Hence (3/p)=(p/3). Since p ≡ -1 mod 3 and the only nonzero square modulo 3 is 1, we have (p/3)=-1. Therefore 3^((p-1)/2) ≡ -1 mod p.\n\nLet d be the order of 3 modulo p. Fermat's little theorem gives 3^(p-1) ≡ 1 mod p, so d divides p-1 = 2^r. If d were a proper divisor of 2^r, then d would divide 2^(r-1), and hence 3^((p-1)/2)=3^(2^(r-1)) would be congruent to 1 modulo p. This contradicts 3^((p-1)/2) ≡ -1 mod p. Thus d=2^r=p-1. Therefore 3 is a primitive root modulo p. ∎"
+    },
+    {
+      "id": "proofsolver_0019",
+      "sourceIndex": 280,
+      "titleHint": "Let (X,d_X) and (Y,d_Y) be metric spaces. Let A⊆X, and let f:…",
+      "question": "Let (X,d_X) and (Y,d_Y) be metric spaces. Let A⊆X, and let f:A→Y be uniformly continuous. Suppose g:cl(A)→Y is a function with the following approximation property: for every x∈cl(A) and every sequence (a_n) in A with a_n→x, one has f(a_n)→g(x). Prove that g is uniformly continuous on cl(A).",
+      "referenceProof": "Let ε>0. By uniform continuity of f, choose η>0 such that p,q∈A and d_X(p,q)<η imply d_Y(f(p),f(q))<ε/3. Put δ=η/3. Let x,y∈cl(A) and suppose d_X(x,y)<δ. Since x∈cl(A), choose a sequence (p_n) in A with p_n→x; by the approximation property, f(p_n)→g(x). Hence for some n, d_X(p_n,x)<η/3 and d_Y(f(p_n),g(x))<ε/3. Similarly, choose q∈A such that d_X(q,y)<η/3 and d_Y(f(q),g(y))<ε/3. Then d_X(p,q)≤d_X(p,x)+d_X(x,y)+d_X(y,q)<η, so d_Y(f(p),f(q))<ε/3. Therefore d_Y(g(x),g(y))≤d_Y(g(x),f(p))+d_Y(f(p),f(q))+d_Y(f(q),g(y))<ε. Thus g is uniformly continuous on cl(A)."
+    },
+    {
+      "id": "proofsolver_0020",
+      "sourceIndex": 296,
+      "titleHint": "Let p be a prime number and let k be a nonnegative integer. S…",
+      "question": "Let p be a prime number and let k be a nonnegative integer. Set S_k = 1^k + 2^k + ... + (p-1)^k. Determine, with proof, the residue of S_k modulo p in terms of whether p-1 divides k.",
+      "referenceProof": "The residue is 0 if p-1 does not divide k, and -1 if p-1 divides k. To prove this, work in F_p. If p = 2, then p-1 = 1 divides every k and S_k = 1^k = 1 ≡ -1 mod 2, so the claimed rule holds. Now let p be arbitrary and use the standard fact that F_p^* is cyclic of order p-1. Choose a generator g. The powers g^0, g^1, ..., g^{p-2} are exactly the nonzero residue classes modulo p, so\nS_k = sum_{i=0}^{p-2} (g^i)^k = sum_{i=0}^{p-2} (g^k)^i\nin F_p. If p-1 divides k, then g^k = 1, so S_k = p-1 = -1 in F_p. If p-1 does not divide k, then r = g^k is not 1. Also r^{p-1} = (g^{p-1})^k = 1. Hence\n(r-1)S_k = (r-1) sum_{i=0}^{p-2} r^i = r^{p-1}-1 = 0.\nSince r-1 is nonzero in the field F_p, it is invertible, and therefore S_k = 0. This proves the asserted residue in both cases."
+    },
+    {
+      "id": "proofsolver_0021",
+      "sourceIndex": 311,
+      "titleHint": "Let a>0. Prove that lim_{R→∞} ∫_{-R}^{R} x e^{ix}/(x^2+a^2) d…",
+      "question": "Let a>0. Prove that lim_{R→∞} ∫_{-R}^{R} x e^{ix}/(x^2+a^2) dx = π i e^{-a}.",
+      "referenceProof": "Set F(z)=z e^{iz}/(z^2+a^2). For R>a, integrate F over the positively oriented upper semicircle contour C_R made of [-R,R] and Γ_R(θ)=Re^{iθ}, 0≤θ≤π. The only pole inside C_R is z=ia, and Res(F,ia)=lim_{z→ia} z e^{iz}/(z+ia)=ia e^{-a}/(2ia)=e^{-a}/2. Hence ∫_{-R}^{R} x e^{ix}/(x^2+a^2) dx + ∫_{Γ_R} z e^{iz}/(z^2+a^2) dz = π i e^{-a}. On Γ_R, |z|=R, |e^{iz}|=e^{-R sin θ}, |z^2+a^2|≥R^2-a^2, and |dz|=R dθ. Thus the arc integral has modulus at most R^2/(R^2-a^2)∫_0^π e^{-R sin θ}dθ. Since ∫_0^π e^{-R sin θ}dθ≤π/R, the arc integral tends to 0. Taking R→∞ gives the claimed limit."
+    },
+    {
+      "id": "proofsolver_0022",
+      "sourceIndex": 330,
+      "titleHint": "Let (M,d) be a metric space, and let A and B be nonempty comp…",
+      "question": "Let (M,d) be a metric space, and let A and B be nonempty compact disjoint subsets of M. Define dist(A,B)=inf{d(a,b): a∈A and b∈B}. Prove that dist(A,B)>0.",
+      "referenceProof": "By compactness of A and B, the product A×B is nonempty compact. The function F:A×B→R given by F(a,b)=d(a,b) is continuous, so it attains a minimum: there exist a0∈A and b0∈B such that d(a0,b0)=dist(A,B). Since A and B are disjoint, a0≠b0. In a metric space d(a0,b0)=0 if and only if a0=b0, hence d(a0,b0)>0. Therefore dist(A,B)=d(a0,b0)>0."
+    },
+    {
+      "id": "proofsolver_0023",
+      "sourceIndex": 345,
+      "titleHint": "Let G be a finite group with identity element e. Assume |G| i…",
+      "question": "Let G be a finite group with identity element e. Assume |G| is even. Is it necessarily true that G contains a nonidentity element whose inverse is itself? Prove your answer.",
+      "referenceProof": "Yes. Let F = {g ∈ G : g = g^{-1}} be the set of elements fixed by inversion. Its complement C = G \\ F consists of the elements g with g ≠ g^{-1}. If g ∈ C, then g^{-1} ∈ C, because if g^{-1} = (g^{-1})^{-1}, then g^{-1} = g, contradicting g ∈ C. The inversion map g ↦ g^{-1} pairs the elements of C into distinct two-element pairs {g, g^{-1}}, so |C| is even. Since |G| = |F| + |C| and both |G| and |C| are even, |F| is even. The identity e belongs to F because e^{-1} = e. Since |F| is even and at least 1, it cannot be exactly 1; hence F contains some element a ≠ e. For that element, a = a^{-1}. Therefore G necessarily contains a nonidentity self-inverse element. ∎"
+    },
+    {
+      "id": "proofsolver_0024",
+      "sourceIndex": 362,
+      "titleHint": "Let G be a group, and let a,b ∈ G. Prove the identity (a^{-1}…",
+      "question": "Let G be a group, and let a,b ∈ G. Prove the identity (a^{-1})(ab)(a^{-1})^{-1} = ba. Then explain why this identity proves that ab and ba are conjugate under the convention that y is conjugate to x if y = g x g^{-1} for some g ∈ G.",
+      "referenceProof": "Since (a^{-1})^{-1} = a, we have (a^{-1})(ab)(a^{-1})^{-1} = a^{-1}(ab)a. By associativity, a^{-1}(ab)a = (a^{-1}a)ba = eba = ba. Thus ba = g(ab)g^{-1} with g = a^{-1}. By the given definition of conjugacy, ba is conjugate to ab, so ab and ba are conjugate."
+    },
+    {
+      "id": "proofsolver_0025",
+      "sourceIndex": 380,
+      "titleHint": "Let R be an associative ring that is not assumed commutative,…",
+      "question": "Let R be an associative ring that is not assumed commutative, let a ∈ R, and define L(a) = {x ∈ R | xa = 0}. A left ideal is an additive subgroup I ⊆ R such that rx ∈ I for all r ∈ R and x ∈ I; a right ideal is an additive subgroup I ⊆ R such that xr ∈ I for all x ∈ I and r ∈ R. Determine, with proof, whether L(a) must always be a left ideal and whether L(a) must always be a right ideal.",
+      "referenceProof": "For every associative ring R and every a ∈ R, the set L(a) is always a left ideal. Indeed, 0a = 0, so 0 ∈ L(a). If x,y ∈ L(a), then xa = 0 and ya = 0, so (x - y)a = xa - ya = 0 - 0 = 0; hence x - y ∈ L(a). Thus L(a) is an additive subgroup. If r ∈ R and x ∈ L(a), then (rx)a = r(xa) = r0 = 0, so rx ∈ L(a). Therefore L(a) is a left ideal.\n\nIt need not be a right ideal. Let R = M₂(Q), the ring of 2 by 2 rational matrices, and let a = [[1,0],[0,0]]. Let x = [[0,1],[0,0]] and r = [[0,0],[1,0]]. Then xa = [[0,0],[0,0]], so x ∈ L(a). But xr = [[1,0],[0,0]] = a, and therefore (xr)a = aa = a ≠ 0. Hence xr ∉ L(a). Thus L(a) is not always a right ideal. ∎"
+    },
+    {
+      "id": "proofsolver_0026",
+      "sourceIndex": 397,
+      "titleHint": "Let G be a group, let m be an integer, and let a,b be element…",
+      "question": "Let G be a group, let m be an integer, and let a,b be elements of G. Assume that the integer powers satisfy (ab)^m = a^m b^m, (ab)^(m+1) = a^(m+1)b^(m+1), and (ab)^(m+2) = a^(m+2)b^(m+2). Prove that ab=ba.",
+      "referenceProof": "For any integer r and any group element g, g^(r+1)=g^r g. Using the identities at m and m+1,\n\na^(m+1)b^(m+1)=(ab)^(m+1)=(ab)^m ab=a^m b^m a b.\n\nSince a^(m+1)=a^m a and b^(m+1)=b^m b, cancellation gives a b^m=b^m a. Next, using the identities at m and m+2,\n\na^(m+2)b^(m+2)=(ab)^(m+2)=(ab)^m(ab)^2=a^m b^m a b a b.\n\nSince a^(m+2)=a^m a^2 and b^(m+2)=b^(m+1)b, cancellation gives a^2 b^(m+1)=b^m a b a. But the relation a b^m=b^m a gives\n\na^2 b^(m+1)=a(a b^m)b=a(b^m a)b=(a b^m)a b=(b^m a)a b=b^m a^2 b.\n\nThus b^m a b a=b^m a^2 b. Cancelling b^m on the left gives a b a=a^2 b, and cancelling a on the left gives ba=ab. Hence ab=ba. ∎"
+    },
+    {
+      "id": "proofsolver_0027",
+      "sourceIndex": 410,
+      "titleHint": "Let f(X) = X^3 + 3X + 2 be regarded as a polynomial in ℚ[X].…",
+      "question": "Let f(X) = X^3 + 3X + 2 be regarded as a polynomial in ℚ[X]. Prove that f is irreducible in ℚ[X].",
+      "referenceProof": "For a polynomial of degree 3 over a field, reducibility is equivalent to having a root in that field: if a cubic factors nontrivially, one factor has degree 1 and therefore supplies a root; conversely, a root gives a linear factor. Thus it is enough to prove that f has no rational root.\n\nLet r ∈ ℚ. If r is a rational root of f, then by the rational root theorem, since f is monic with integer coefficients and constant term 2, r must be one of ±1, ±2. Direct evaluation gives\nf(1)=1+3+2=6,\nf(-1)=-1-3+2=-2,\nf(2)=8+6+2=16,\nf(-2)=-8-6+2=-12.\nNone is zero. Therefore f has no rational root. Since f has degree 3, it is irreducible in ℚ[X]. ∎"
+    },
+    {
+      "id": "proofsolver_0028",
+      "sourceIndex": 425,
+      "titleHint": "Let P(x) be a monic cubic polynomial with integer coefficient…",
+      "question": "Let P(x) be a monic cubic polynomial with integer coefficients and no repeated complex root. Prove that there exists a positive integer n such that P(n) is not the square of an integer. You may use the following two standard facts: (1) Schur's theorem: a nonconstant polynomial in Z[x] has infinitely many prime divisors among its nonzero integer values; (2) if gcd(P,P')=1 in Q[x], then there exist U,V∈Z[x] and a nonzero integer D such that U(x)P(x)+V(x)P'(x)=D.",
+      "referenceProof": "Since P has no repeated complex root, gcd(P,P')=1 in Q[x]. By the stated Bezout fact, choose U,V∈Z[x] and D∈Z\\{0} with U P+V P'=D. For every integer r, any common divisor of P(r) and P'(r) divides D.\n\nBy Schur's theorem, infinitely many primes divide values of P. Since only finitely many primes divide D, choose a prime p∤D and an integer r such that p|P(r). Then p∤P'(r), for otherwise p would divide both P(r) and P'(r), hence would divide D.\n\nWrite P(r)=pq. For n=r+kp, Taylor expansion modulo p^2 gives P(n)=P(r+kp)≡P(r)+kpP'(r)=p(q+kP'(r)) mod p^2. Since P'(r) is nonzero modulo p, choose k modulo p so that q+kP'(r) is not 0 modulo p. Then choose such a k large enough that n=r+kp>0. For this n, p divides P(n) but p^2 does not divide P(n), so the exponent of p in P(n) is odd. Hence P(n) cannot be an integer square."
+    },
+    {
+      "id": "proofsolver_0029",
+      "sourceIndex": 443,
+      "titleHint": "Let F = Z/7Z, let p(x) = x^3 - 2 and q(x) = x^3 + 2 in F[x],…",
+      "question": "Let F = Z/7Z, let p(x) = x^3 - 2 and q(x) = x^3 + 2 in F[x], and define sigma: F[x] -> F[x] by sigma(r(x)) = r(-x). Prove that sigma induces a well-defined ring isomorphism F[x]/(p(x)) -> F[x]/(q(x)).",
+      "referenceProof": "The substitution map sigma(r(x)) = r(-x) is a ring automorphism of F[x], and sigma inverse is sigma itself because replacing x by -x twice gives x. We compute\n\nsigma(p) = p(-x) = (-x)^3 - 2 = -x^3 - 2 = -(x^3 + 2) = -q.\n\nSince -1 is a unit, the ideal generated by -q equals the ideal generated by q. Hence sigma((p)) = (q). Therefore the formula\n\nbar sigma(r(x) + (p)) = r(-x) + (q)\n\ndefines a well-defined ring isomorphism F[x]/(p) -> F[x]/(q). Its inverse is induced by the same substitution map."
+    },
+    {
+      "id": "proofsolver_0030",
+      "sourceIndex": 459,
+      "titleHint": "Let F_2 be the field with two elements, written F_2 = {0,1},…",
+      "question": "Let F_2 be the field with two elements, written F_2 = {0,1}, where 1 + 1 = 0. In F_2[X], prove that X^2 + X + 1 is irreducible.",
+      "referenceProof": "The polynomial p(X) = X^2 + X + 1 has degree 2. A reducible quadratic over a field must have a linear factor, hence a root in the field. We evaluate p at the only two elements of F_2: p(0) = 0^2 + 0 + 1 = 1 ≠ 0, and p(1) = 1^2 + 1 + 1 = 1 + 1 + 1 = 0 + 1 = 1 ≠ 0. Thus p has no root in F_2. Therefore p is not reducible, and since it has degree 2, it is irreducible in F_2[X]."
+    },
+    {
+      "id": "proofsolver_0031",
+      "sourceIndex": 474,
+      "titleHint": "Let m and n be coprime positive integers. In the ring Z, let…",
+      "question": "Let m and n be coprime positive integers. In the ring Z, let mZ = {ma : a ∈ Z} and nZ = {nb : b ∈ Z}. Prove that mZ ∩ nZ = mnZ. Then compute 4Z ∩ 9Z.",
+      "referenceProof": "Since gcd(m,n) = 1, Bézout's identity gives integers u and v such that um + vn = 1. Thus 1 ∈ mZ + nZ, so mZ + nZ = Z. By the comaximal-ideal product theorem, (mZ)(nZ) = mZ ∩ nZ.\n\nIt remains to identify the product ideal. Every product of an element of mZ and an element of nZ has the form (ma)(nb) = mn(ab), so every finite sum of such products lies in mnZ. Conversely, mn = (m)(n) is a product of an element of mZ and an element of nZ, so mn ∈ (mZ)(nZ), and therefore every multiple of mn lies in (mZ)(nZ) because product ideals are ideals. Hence (mZ)(nZ) = mnZ. Therefore mZ ∩ nZ = mnZ.\n\nFor m = 4 and n = 9, the integers are coprime, so 4Z ∩ 9Z = 36Z. ∎"
+    },
+    {
+      "id": "proofsolver_0032",
+      "sourceIndex": 488,
+      "titleHint": "Let G be a group with identity element e. For x ∈ G, define t…",
+      "question": "Let G be a group with identity element e. For x ∈ G, define the order |x| to be the least positive integer n such that x^n = e, if such an n exists, and define |x| = ∞ if no positive integer n satisfies x^n = e. Prove that for all a,b ∈ G, one has |ab| = |ba|.",
+      "referenceProof": "Fix a,b ∈ G. Put x = ab. Then\n\na^{-1}xa = a^{-1}(ab)a = (a^{-1}a)ba = ba.\n\nFor every positive integer n, conjugation commutes with taking the nth power:\n\n(a^{-1}xa)^n = a^{-1}x^n a.\n\nIndeed, this follows by induction on n. Hence, for every positive integer n,\n\n(ba)^n = e ⇔ a^{-1}(ab)^n a = e ⇔ (ab)^n = e,\n\nwhere the second equivalence follows by multiplying on the left by a and on the right by a^{-1}. Therefore the set of positive integers n for which (ba)^n = e is exactly the same as the set of positive integers n for which (ab)^n = e. If this common set is empty, then both ab and ba have infinite order. If it is nonempty, then both orders are the least element of the same nonempty set of positive integers. Thus |ab| = |ba|. ∎"
+    },
+    {
+      "id": "proofsolver_0033",
+      "sourceIndex": 502,
+      "titleHint": "Let G be a finite simple group, meaning its only normal subgr…",
+      "question": "Let G be a finite simple group, meaning its only normal subgroups are {e} and G. Suppose H is a proper subgroup of G of index n. Prove that |G| divides n!. Then use this result to prove that no group of order 224 is simple.",
+      "referenceProof": "Let G act on the set G/H of left cosets of H by left multiplication. This gives a homomorphism φ : G → Sym(G/H). Let K = ker φ. Then K is normal in G. If k ∈ K, then k fixes the coset H, so kH = H and k ∈ H. Hence K ≤ H. Since H is proper, K ≠ G. Because G is simple, K = {e}. Thus φ is injective, and G is isomorphic to a subgroup of Sym(G/H). Since |G/H| = n, we have Sym(G/H) ≅ S_n, so Lagrange's theorem gives |G| divides n!. Now let |G| = 224. A Sylow 2-subgroup P has order 32, so [G : P] = 7. If G were simple, the result just proved would imply 224 divides 7!. But 7! = 5040 = 2^4 · 3^2 · 5 · 7, while 224 = 2^5 · 7, so 224 does not divide 7!. Therefore no group of order 224 is simple. ∎"
+    },
+    {
+      "id": "proofsolver_0034",
+      "sourceIndex": 517,
+      "titleHint": "Let G be a group with identity element e, and let x be an ele…",
+      "question": "Let G be a group with identity element e, and let x be an element of G. Prove that for every positive integer n, x^n = e if and only if (x^{-1})^n = e. Then deduce that if x has finite order r, then x^{-1} also has finite order r.",
+      "referenceProof": "For every positive integer n, (x^{-1})^n = (x^n)^{-1}. Therefore, if x^n = e, then (x^{-1})^n = (x^n)^{-1} = e^{-1} = e. Conversely, if (x^{-1})^n = e, then x^n = ((x^{-1})^n)^{-1} = e^{-1} = e. Hence x^n = e if and only if (x^{-1})^n = e for every positive integer n. Now suppose x has finite order r. Then r is the least positive integer such that x^r = e. By the equivalence, (x^{-1})^r = e, so x^{-1} has some positive exponent sending it to e. Let s be the order of x^{-1}. Since (x^{-1})^r = e, minimality of s gives s ≤ r. Also (x^{-1})^s = e, so by the equivalence x^s = e, and minimality of r gives r ≤ s. Therefore r = s, so x^{-1} has finite order r. ∎"
+    },
+    {
+      "id": "proofsolver_0035",
+      "sourceIndex": 533,
+      "titleHint": "Let K be a finite field. Prove that the product, in K, of all…",
+      "question": "Let K be a finite field. Prove that the product, in K, of all nonzero elements of K is -1.",
+      "referenceProof": "Let S = K \\ {0}. For each a in S, its inverse a^{-1} also lies in S. Pair every element a with a^{-1}. If a ≠ a^{-1}, then the pair contributes aa^{-1} = 1 to the total product. Thus the total product is the product of the elements satisfying a = a^{-1}. Such an element satisfies a^2 = 1, so (a - 1)(a + 1) = 0. Since K is a field, a = 1 or a = -1. If 1 ≠ -1, the self-inverse nonzero elements are exactly 1 and -1, and their product is -1. If 1 = -1, then the only self-inverse nonzero element is 1, and its product is 1 = -1. In both cases the product of all nonzero elements of K is -1. ∎"
+    },
+    {
+      "id": "proofsolver_0036",
+      "sourceIndex": 548,
+      "titleHint": "Let G be a group, and let a,b ∈ G have finite orders m and n,…",
+      "question": "Let G be a group, and let a,b ∈ G have finite orders m and n, respectively. Suppose ab=ba and gcd(m,n)=1. Prove that ab has order mn.",
+      "referenceProof": "Because a and b commute, (ab)^{mn}=a^{mn}b^{mn}=(a^m)^n(b^n)^m=e, so the order of ab divides mn. Conversely, suppose (ab)^k=e. Then a^k b^k=e, hence a^k=b^{-k}. Raising both sides to the m-th power gives e=b^{-km}, so b^{km}=e. Since b has order n, n divides km. Because gcd(m,n)=1, n divides k. Raising a^k=b^{-k} to the n-th power gives a^{kn}=e, so m divides kn. Because gcd(m,n)=1, m divides k. Thus both m and n divide k, and since gcd(m,n)=1, mn divides k. Therefore the least positive k with (ab)^k=e is mn, so ab has order mn."
+    },
+    {
+      "id": "proofsolver_0037",
+      "sourceIndex": 564,
+      "titleHint": "Let G be a finite group with identity element 1. Let σ:G→G be…",
+      "question": "Let G be a finite group with identity element 1. Let σ:G→G be a group automorphism such that σ(σ(g))=g for every g∈G, and such that σ(g)=g holds if and only if g=1. Prove that G is abelian.",
+      "referenceProof": "Define f:G→G by f(x)=x^{-1}σ(x). We first prove that f is injective. Suppose f(x)=f(y). Then x^{-1}σ(x)=y^{-1}σ(y). Multiplying on the left by x and on the right by σ(y)^{-1} gives σ(x)σ(y)^{-1}=xy^{-1}. Since σ is an automorphism, σ(y)^{-1}=σ(y^{-1}), so σ(x)σ(y)^{-1}=σ(xy^{-1}). Hence σ(xy^{-1})=xy^{-1}. By the fixed-point hypothesis, xy^{-1}=1, and therefore x=y. Thus f is injective. Since G is finite, f is surjective. Now let z∈G. Choose x∈G with z=f(x)=x^{-1}σ(x). Then σ(z)=σ(x^{-1}σ(x))=σ(x)^{-1}σ(σ(x))=σ(x)^{-1}x=(x^{-1}σ(x))^{-1}=z^{-1}. Therefore σ is the inversion map on G. For arbitrary a,b∈G, since σ is a homomorphism, σ(ab)=σ(a)σ(b)=a^{-1}b^{-1}. But σ(ab)=(ab)^{-1}=b^{-1}a^{-1}. Hence a^{-1}b^{-1}=b^{-1}a^{-1}. Taking inverses gives ba=ab. Since a and b were arbitrary, G is abelian."
+    },
+    {
+      "id": "proofsolver_0038",
+      "sourceIndex": 582,
+      "titleHint": "Let z be a complex number. Consider representations of the fo…",
+      "question": "Let z be a complex number. Consider representations of the form z = r w, where r is a real number with r ≥ 0 and w is a complex number with |w| = 1. Determine, with proof, whether r and w are unique.",
+      "referenceProof": "If z ≠ 0, the representation is unique. Indeed, suppose z = rw with r ≥ 0 and |w| = 1. Taking moduli gives\n\\[\n|z| = |rw| = |r|\\,|w| = r \\cdot 1 = r,\n\\]\nbecause r ≥ 0. Hence r = |z|. Since z ≠ 0, |z| > 0, so r > 0, and the equation z = rw gives w = z/r = z/|z|. Thus both r and w are uniquely determined.\n\nIf z = 0, then r is unique but w is not. If 0 = rw with r ≥ 0 and |w| = 1, then taking moduli gives\n\\[\n0 = |0| = |rw| = |r|\\,|w| = r \\cdot 1 = r,\n\\]\nso r = 0. Conversely, for every complex w with |w| = 1, we have 0 = 0 \\cdot w, so every unit complex number gives a valid representation of 0. Since, for example, |1| = 1 and |-1| = 1 but 1 ≠ -1, w is not unique when z = 0. ∎"
+    },
+    {
+      "id": "proofsolver_0039",
+      "sourceIndex": 598,
+      "titleHint": "Let f(x) = x^4 - 4x^3 + 6 be regarded as a polynomial in \\mat…",
+      "question": "Let f(x) = x^4 - 4x^3 + 6 be regarded as a polynomial in \\mathbb{Z}[x]. Prove that f is irreducible in \\mathbb{Z}[x], meaning that f cannot be written as a product of two nonunit polynomials in \\mathbb{Z}[x].",
+      "referenceProof": "The polynomial f(x)=x^4-4x^3+6 is primitive, since its coefficients 1,-4,0,0,6 have greatest common divisor 1. We apply Eisenstein's criterion with the prime p=2. The prime 2 does not divide the leading coefficient 1. It divides every nonleading coefficient: 2\\mid (-4), 2\\mid 0, 2\\mid 0, and 2\\mid 6. Finally, 2^2=4 does not divide the constant term 6. Therefore Eisenstein's criterion implies that f is irreducible over \\mathbb{Q}. By Gauss's lemma, a primitive polynomial in \\mathbb{Z}[x] that is irreducible over \\mathbb{Q} is irreducible in \\mathbb{Z}[x]. Hence x^4-4x^3+6 is irreducible in \\mathbb{Z}[x]."
+    },
+    {
+      "id": "proofsolver_0040",
+      "sourceIndex": 614,
+      "titleHint": "In the additive abelian group G = Z/12Z × Z/18Z, exhibit a su…",
+      "question": "In the additive abelian group G = Z/12Z × Z/18Z, exhibit a subgroup of order 36 and prove that it has order 36.",
+      "referenceProof": "Let H = ⟨(1 mod 12, 0 mod 18)⟩ × ⟨(0 mod 12, 6 mod 18)⟩, equivalently H = { (a mod 12, b mod 18) : a ∈ Z and b ∈ {0,6,12} modulo 18 }. The first coordinate can be any of the 12 residue classes modulo 12. The subgroup generated by 6 mod 18 is {0,6,12} and has 3 elements, since 3 · 6 = 18 ≡ 0 mod 18 and no smaller positive multiple of 6 is congruent to 0 modulo 18. Hence H has 12 · 3 = 36 elements. It is closed under addition and additive inverses coordinatewise, so it is a subgroup of G of order 36."
+    },
+    {
+      "id": "proofsolver_0041",
+      "sourceIndex": 630,
+      "titleHint": "Let f(x)=x^4+4x^3+6x^2+2x+1 ∈ ℤ[x]. Prove that f(x) is irredu…",
+      "question": "Let f(x)=x^4+4x^3+6x^2+2x+1 ∈ ℤ[x]. Prove that f(x) is irreducible in ℤ[x].",
+      "referenceProof": "Set g(x)=f(x-1). A direct expansion gives\n\ng(x)=(x-1)^4+4(x-1)^3+6(x-1)^2+2(x-1)+1=x^4-2x+2.\n\nThe polynomial g(x)=x^4-2x+2 satisfies Eisenstein's criterion with the prime 2: 2 divides the coefficients 0,0,-2,2 of x^3,x^2,x,1 respectively, 2 does not divide the leading coefficient 1, and 4 does not divide the constant coefficient 2. Hence g is irreducible in ℤ[x].\n\nThe substitution map Φ:ℤ[x]→ℤ[x] defined by Φ(h)(x)=h(x-1) is a ring automorphism, with inverse h(x)↦h(x+1). Ring automorphisms preserve irreducibility: if f=ab, then Φ(f)=Φ(a)Φ(b), and if Φ(f) is irreducible, one of Φ(a),Φ(b) is a unit, so one of a,b is a unit. Since Φ(f)=g is irreducible, f is irreducible in ℤ[x]. ∎"
+    },
+    {
+      "id": "proofsolver_0042",
+      "sourceIndex": 644,
+      "titleHint": "Let x,y ∈ ℝ^k with |x-y| = d > 0. Let r > 0 and suppose 2r >…",
+      "question": "Let x,y ∈ ℝ^k with |x-y| = d > 0. Let r > 0 and suppose 2r > d. Let u ∈ ℝ^k satisfy |u| = 1 and u·(x-y) = 0. Define ρ = sqrt(r^2 - d^2/4) and z = (x+y)/2 + ρu. Prove by direct computation that |z-x| = r and |z-y| = r.",
+      "referenceProof": "Since 2r > d and r,d > 0, we have r > d/2 and hence r^2-d^2/4 > 0, so ρ is real and ρ^2 = r^2-d^2/4. Put v = x-y. Then |v| = d and u·v = 0. We have z-x = (y-x)/2 + ρu = -v/2 + ρu. Therefore |z-x|^2 = |-v/2+ρu|^2 = |v|^2/4 - ρ(v·u) + ρ^2|u|^2 = d^2/4 + ρ^2 = r^2. Similarly, z-y = (x-y)/2 + ρu = v/2 + ρu, so |z-y|^2 = |v/2+ρu|^2 = |v|^2/4 + ρ(v·u) + ρ^2|u|^2 = d^2/4 + ρ^2 = r^2. Since norms are nonnegative and r > 0, the equalities of squares imply |z-x| = r and |z-y| = r."
+    },
+    {
+      "id": "proofsolver_0043",
+      "sourceIndex": 660,
+      "titleHint": "Let (X,d_X) and (Y,d_Y) be metric spaces. Let f:X→Y be contin…",
+      "question": "Let (X,d_X) and (Y,d_Y) be metric spaces. Let f:X→Y be continuous, and let E⊆X be dense in X, meaning that every open ball in X with positive radius intersects E. Prove that f(E) is dense in f(X), where f(X) has the subspace metric inherited from Y.",
+      "referenceProof": "It is enough to prove that f(X)⊆cl_Y(f(E)), because f(E)⊆f(X), and the closure of f(E) inside the subspace f(X) is f(X)∩cl_Y(f(E)). Let y∈f(X). Then y=f(x) for some x∈X. Fix ε>0. Since f is continuous at x, there exists δ>0 such that d_X(u,x)<δ implies d_Y(f(u),f(x))<ε. Since E is dense in X, the open ball B_X(x,δ) intersects E; choose e∈E with d_X(e,x)<δ. Then f(e)∈f(E) and d_Y(f(e),y)=d_Y(f(e),f(x))<ε. Thus every Y-open ball centered at y meets f(E), so y∈cl_Y(f(E)). Therefore f(X)⊆cl_Y(f(E)), and hence f(E) is dense in f(X). ∎"
+    },
+    {
+      "id": "proofsolver_0044",
+      "sourceIndex": 673,
+      "titleHint": "Let G be a finite group with |G| = 105. Prove the following t…",
+      "question": "Let G be a finite group with |G| = 105. Prove the following two implications: (1) if G has a normal subgroup P of order 5, then G has a normal Sylow 7-subgroup; (2) if G has a normal subgroup Q of order 7, then G has a normal Sylow 5-subgroup.",
+      "referenceProof": "First suppose P ⫳ G and |P| = 5. Let n_7 be the number of Sylow 7-subgroups of G. Sylow's theorem gives n_7 | 15 and n_7 ≡ 1 mod 7, so n_7 ∈ {1,15}. If n_7 = 15, choose a Sylow 7-subgroup R. Since P is normal, PR is a subgroup of G, and |PR| = |P||R|/|P ∩ R| = 5 · 7 = 35. In the subgroup PR, the number of Sylow 7-subgroups divides 5 and is congruent to 1 modulo 7, hence is 1. Therefore R is normal in PR, so PR ≤ N_G(R). But n_7 = [G : N_G(R)] = 15, so |N_G(R)| = 105/15 = 7, contradicting |PR| = 35 and PR ≤ N_G(R). Hence n_7 = 1, and the unique Sylow 7-subgroup is normal in G.\n\nNow suppose Q ⫳ G and |Q| = 7. Let n_5 be the number of Sylow 5-subgroups of G. Sylow's theorem gives n_5 | 21 and n_5 ≡ 1 mod 5, so n_5 ∈ {1,21}. If n_5 = 21, choose a Sylow 5-subgroup S. Since Q is normal, QS is a subgroup of G, and |QS| = |Q||S|/|Q ∩ S| = 7 · 5 = 35. In the subgroup QS, the number of Sylow 5-subgroups divides 7 and is congruent to 1 modulo 5, hence is 1. Therefore S is normal in QS, so QS ≤ N_G(S). But n_5 = [G : N_G(S)] = 21, so |N_G(S)| = 105/21 = 5, contradicting |QS| = 35 and QS ≤ N_G(S). Hence n_5 = 1, and the unique Sylow 5-subgroup is normal in G. ∎"
+    },
+    {
+      "id": "proofsolver_0045",
+      "sourceIndex": 690,
+      "titleHint": "Let K = {1/n : n is a positive integer} ⊂ ℝ. Let ℝ_K be the r…",
+      "question": "Let K = {1/n : n is a positive integer} ⊂ ℝ. Let ℝ_K be the real line with the topology generated by the basis consisting of all usual open intervals (a,b) with a < b and all sets (a,b) \\ K with a < b. Prove that the set [0,1) is not open in ℝ_K.",
+      "referenceProof": "Let B_K be the given basis for ℝ_K. Since 0 ∈ [0,1), it suffices to show that no basis element B ∈ B_K satisfies 0 ∈ B ⊆ [0,1). Let B be a basis element containing 0.\n\nIf B = (a,b), then a < 0 < b. The point a/2 satisfies a < a/2 < 0, so a/2 ∈ (a,b) = B, but a/2 ∉ [0,1). Hence B is not contained in [0,1).\n\nIf B = (a,b) \\ K, then 0 ∈ B implies a < 0 < b. Again a < a/2 < 0. Because every element of K is positive, a/2 ∉ K. Therefore a/2 ∈ (a,b) \\ K = B. Since a/2 < 0, we have a/2 ∉ [0,1). Hence B is not contained in [0,1).\n\nThus every ℝ_K-basis element containing 0 contains a point outside [0,1). By the basis criterion for openness, [0,1) is not open in ℝ_K. ∎"
+    },
+    {
+      "id": "proofsolver_0046",
+      "sourceIndex": 705,
+      "titleHint": "Let (X,d) be a separable metric space and let E ⊆ X be any su…",
+      "question": "Let (X,d) be a separable metric space and let E ⊆ X be any subset. Define the set of condensation points of E by\nQ = {x ∈ X : every open neighborhood of x meets E in an uncountable set}.\nProve that E \\ Q is at most countable.",
+      "referenceProof": "Since X is separable metric, it has a countable base {U_n : n ∈ ℕ}. If x ∈ E \\ Q, then x is not a condensation point of E, so there is an open neighborhood V_x of x such that V_x ∩ E is countable. Choose a basis element U_{n(x)} with x ∈ U_{n(x)} ⊆ V_x. Then U_{n(x)} ∩ E is countable.\n\nThus every x ∈ E \\ Q lies in some U_n ∩ E with U_n ∩ E countable. Hence\nE \\ Q ⊆ ⋃{U_n ∩ E : n ∈ ℕ and U_n ∩ E is countable}.\nThe right-hand side is a countable union of countable sets, and is therefore countable. Consequently E \\ Q is at most countable."
+    },
+    {
+      "id": "proofsolver_0047",
+      "sourceIndex": 721,
+      "titleHint": "Let k be a nonnegative integer and let E be any subset of R^k…",
+      "question": "Let k be a nonnegative integer and let E be any subset of R^k. Define P to be the set of condensation points of E: x ∈ P exactly when E ∩ B(x,r) is uncountable for every r > 0. Prove that E \\ P is at most countable.",
+      "referenceProof": "Let C be the countable family of all open balls in R^k with rational center and positive rational radius. Let A = {C ∈ C : E ∩ C is at most countable}. If x ∈ E \\ P, then x is not a condensation point of E, so there is an open ball U containing x such that E ∩ U is at most countable. Choose C ∈ C with x ∈ C ⊂ U. Then E ∩ C is at most countable, so C ∈ A, and x ∈ E ∩ C. Therefore E \\ P ⊂ ⋃_{C∈A} (E ∩ C). Since A is countable and each E ∩ C for C ∈ A is at most countable, the union on the right is at most countable. Hence E \\ P is at most countable. ∎"
+    },
+    {
+      "id": "proofsolver_0048",
+      "sourceIndex": 738,
+      "titleHint": "Let g:[sqrt(2),2]→R be given by g(x)=sqrt(2+sqrt(x)). Prove t…",
+      "question": "Let g:[sqrt(2),2]→R be given by g(x)=sqrt(2+sqrt(x)). Prove that for all x,y in [sqrt(2),2], |g(x)-g(y)| ≤ C|x-y| with C = 1/(4·2^(1/4)·sqrt(2+2^(1/4))). Then use this estimate to prove that the sequence s_1=sqrt(2), s_{n+1}=g(s_n) converges.",
+      "referenceProof": "For x,y∈[sqrt(2),2], rationalizing twice gives |g(x)-g(y)| = |sqrt(2+sqrt(x))-sqrt(2+sqrt(y))| = |sqrt(x)-sqrt(y)|/(sqrt(2+sqrt(x))+sqrt(2+sqrt(y))) = |x-y|/((sqrt(x)+sqrt(y))(sqrt(2+sqrt(x))+sqrt(2+sqrt(y)))). Since x,y≥sqrt(2), we have sqrt(x),sqrt(y)≥2^(1/4), and sqrt(2+sqrt(x)),sqrt(2+sqrt(y))≥sqrt(2+2^(1/4)). Hence the denominator is at least 4·2^(1/4)·sqrt(2+2^(1/4)), proving the claimed estimate. Also C<1. The sequence remains in [sqrt(2),2]: s_1=sqrt(2), and if sqrt(2)≤s_n≤2, then g(s_n)≥sqrt(2) and g(s_n)≤sqrt(2+sqrt(2))<2. Thus the contraction estimate applies to consecutive terms. For n≥1, |s_{n+2}-s_{n+1}|=|g(s_{n+1})-g(s_n)|≤C|s_{n+1}-s_n|, so by induction |s_{n+1}-s_n|≤C^{n-1}|s_2-s_1|. If m>n, then |s_m-s_n|≤Σ_{k=n}^{m-1}|s_{k+1}-s_k|≤|s_2-s_1|Σ_{k=n}^{m-1}C^{k-1}≤|s_2-s_1|C^{n-1}/(1-C), which tends to 0 as n→∞. Hence (s_n) is Cauchy, and since R is complete, (s_n) converges. ∎"
+    },
+    {
+      "id": "proofsolver_0049",
+      "sourceIndex": 751,
+      "titleHint": "Let X and Y be topological spaces. Suppose q:X→Y is continuou…",
+      "question": "Let X and Y be topological spaces. Suppose q:X→Y is continuous and there exists a continuous map s:Y→X such that q(s(y))=y for every y∈Y. Prove that q is a quotient map, where quotient map means: q is surjective and for every subset U⊂Y, U is open in Y if and only if q^{-1}(U) is open in X.",
+      "referenceProof": "For every y∈Y, q(s(y))=y, so q is surjective. Let U⊂Y. If U is open in Y, then q^{-1}(U) is open in X because q is continuous. Conversely, suppose q^{-1}(U) is open in X. Since s is continuous, s^{-1}(q^{-1}(U)) is open in Y. But s^{-1}(q^{-1}(U))=(q∘s)^{-1}(U)=id_Y^{-1}(U)=U. Hence U is open in Y. Therefore U is open in Y if and only if q^{-1}(U) is open in X, and q is surjective; hence q is a quotient map. ∎"
+    },
+    {
+      "id": "proofsolver_0050",
+      "sourceIndex": 765,
+      "titleHint": "Let X be an infinite set equipped with the finite complement…",
+      "question": "Let X be an infinite set equipped with the finite complement topology: a subset U ⊆ X is open exactly when U = ∅ or X \\ U is finite. Prove that X is connected, meaning that there do not exist nonempty open sets U,V ⊆ X such that U ∩ V = ∅ and U ∪ V = X.",
+      "referenceProof": "Suppose, toward a contradiction, that X is disconnected. Then there exist nonempty open sets U,V ⊆ X such that U ∩ V = ∅ and U ∪ V = X. Since U is nonempty and open in the finite complement topology, X \\ U is finite. But V ⊆ X \\ U because U and V are disjoint, so V is finite. Similarly, since V is nonempty and open, X \\ V is finite, and U ⊆ X \\ V, so U is finite. Therefore X = U ∪ V is a union of two finite sets, hence finite. This contradicts the hypothesis that X is infinite. Thus no such separation exists, and X is connected."
+    },
+    {
+      "id": "proofsolver_0051",
+      "sourceIndex": 779,
+      "titleHint": "Let ℝ^ℕ denote the set of all real sequences, with coordinate…",
+      "question": "Let ℝ^ℕ denote the set of all real sequences, with coordinates indexed by positive integers. For n≥1, define e_n∈ℝ^ℕ by e_n(k)=1 if k=n and e_n(k)=0 if k≠n. Let 0∈ℝ^ℕ be the zero sequence. Prove that e_n converges to 0 in the product topology on ℝ^ℕ, but does not converge to 0 in the box topology on ℝ^ℕ.",
+      "referenceProof": "Fix a coordinate k. For all n>k, e_n(k)=0, so the real sequence e_n(k) is eventually equal to 0 and hence converges to 0. To prove product convergence directly, let W be a product-topology neighborhood of 0. Then W contains a basic product neighborhood B=⋂_{k∈F}π_k^{-1}(U_k), where F⊂ℕ is finite, each U_k is an open neighborhood of 0 in ℝ, and π_k is the kth coordinate projection. If F is empty, every e_n lies in B. If F is nonempty, choose N>max F. For n≥N and k∈F, we have n≠k, so e_n(k)=0∈U_k. Thus e_n∈B⊂W for all n≥N, proving e_n→0 in the product topology.\n\nIn the box topology, the set C=∏_{k=1}^{∞}(-1/2,1/2) is open and contains 0. But for every n≥1, the nth coordinate of e_n is e_n(n)=1, and 1∉(-1/2,1/2). Hence e_n∉C for every n. Therefore the sequence is not eventually in the box-neighborhood C of 0, so e_n does not converge to 0 in the box topology."
+    },
+    {
+      "id": "proofsolver_0052",
+      "sourceIndex": 795,
+      "titleHint": "Let V be a vector space over a field F. Let C be any collecti…",
+      "question": "Let V be a vector space over a field F. Let C be any collection of subspaces of V; the collection C may be empty. Define B = ⋂_{W ∈ C} W, meaning B = {v ∈ V : v ∈ W for every W ∈ C}. Determine, with proof, whether B must be a subspace of V.",
+      "referenceProof": "Yes, B must be a subspace of V. Since every W ∈ C is a subspace, 0 ∈ W for every W ∈ C, so 0 ∈ B. If C is empty, this condition is vacuous and B = V, which is a subspace. Now let x,y ∈ B. For every W ∈ C, we have x,y ∈ W; because W is a subspace, x + y ∈ W. Hence x + y ∈ B. Finally, if a ∈ F and x ∈ B, then for every W ∈ C, x ∈ W, and closure of W under scalar multiplication gives ax ∈ W. Hence ax ∈ B. Therefore B is a subspace of V."
+    },
+    {
+      "id": "proofsolver_0053",
+      "sourceIndex": 809,
+      "titleHint": "Let U = ℤ² = { (m,n) ∈ ℝ² : m,n ∈ ℤ }. Prove that U is not eq…",
+      "question": "Let U = ℤ² = { (m,n) ∈ ℝ² : m,n ∈ ℤ }. Prove that U is not equal, as a set, to any real vector subspace W of ℝ².",
+      "referenceProof": "Suppose, for contradiction, that there is a real vector subspace W of ℝ² such that W = U. Since (1,0) ∈ U, equality gives (1,0) ∈ W. Because W is a real vector subspace, it is closed under multiplication by real scalars, so (1/2)(1,0) = (1/2,0) ∈ W. Since W = U, this would imply (1/2,0) ∈ U. But U consists exactly of the points of ℝ² whose two coordinates are integers, and 1/2 is not an integer, so (1/2,0) ∉ U. This contradiction shows that no real vector subspace W of ℝ² has underlying set U."
+    },
+    {
+      "id": "proofsolver_0054",
+      "sourceIndex": 823,
+      "titleHint": "Let X and Y be connected topological spaces. Let E be a nonem…",
+      "question": "Let X and Y be connected topological spaces. Let E be a nonempty subset of X and let F be a nonempty subset of Y. In the product space X × Y, prove that W = (E × Y) ∪ (X × F) is connected.",
+      "referenceProof": "Choose c ∈ E and d ∈ F. For each e ∈ E, set C_e = (X × {d}) ∪ ({e} × Y). The sets X × {d} and {e} × Y are homeomorphic to X and Y, respectively, so they are connected; they intersect at (e,d), so C_e is connected. All C_e contain (c,d), because (c,d) ∈ X × {d}. Hence U = ⋃_{e ∈ E} C_e is connected. For each f ∈ F, set D_f = (X × {f}) ∪ ({c} × Y). Similarly, D_f is connected, and all D_f contain (c,d), so V = ⋃_{f ∈ F} D_f is connected. The sets U and V intersect at (c,d), so U ∪ V is connected. Since d ∈ F and c ∈ E, we have X × {d} ⊆ X × F and {c} × Y ⊆ E × Y. Therefore U ∪ V = (E × Y) ∪ (X × F) = W. Hence W is connected. ∎"
+    },
+    {
+      "id": "proofsolver_0055",
+      "sourceIndex": 837,
+      "titleHint": "Let \\(\\mathbb Z[i]=\\{a+bi:a,b\\in\\mathbb Z\\}\\), with \\(i^2=-1\\…",
+      "question": "Let \\(\\mathbb Z[i]=\\{a+bi:a,b\\in\\mathbb Z\\}\\), with \\(i^2=-1\\). A unit in \\(\\mathbb Z[i]\\) is an element \\(u\\in\\mathbb Z[i]\\) for which there exists \\(v\\in\\mathbb Z[i]\\) such that \\(uv=1\\). Prove that \\((1+i)^2\\) is associated to \\(2\\) by exhibiting a unit \\(u\\in\\mathbb Z[i]\\) such that \\(2=u(1+i)^2\\). Then deduce that \\((1+i)^2\\) divides \\(2\\) in \\(\\mathbb Z[i]\\).",
+      "referenceProof": "We have\n\\[\n(1+i)^2=1+2i+i^2=2i.\n\\]\nChoose \\(u=-i\\). Then \\(u\\in\\mathbb Z[i]\\), and \\(u\\) is a unit because \\((-i)i=1\\). Moreover,\n\\[\nu(1+i)^2=(-i)(2i)=-2i^2=2.\n\\]\nThus \\(2=u(1+i)^2\\) with \\(u\\) a unit, so \\((1+i)^2\\) and \\(2\\) are associated. In particular, since \\(u\\in\\mathbb Z[i]\\), the equality \\(2=(1+i)^2u\\) also shows that \\((1+i)^2\\mid 2\\) in \\(\\mathbb Z[i]\\)."
+    },
+    {
+      "id": "proofsolver_0056",
+      "sourceIndex": 852,
+      "titleHint": "Let V be a vector space over a field F, and let T: V -> V be…",
+      "question": "Let V be a vector space over a field F, and let T: V -> V be a linear operator. Suppose that for every vector v in V there exists a scalar a_v in F such that T(v) = a_v v. Prove that there exists a scalar c in F such that T = c I, where I: V -> V is the identity operator.",
+      "referenceProof": "If V has no nonzero vector, then every v in V equals 0. Taking c = 0, for every v in V we have v = 0, so T(v) = T(0) = 0 = 0v = c I(v). Hence T = cI.\n\nNow suppose V contains a nonzero vector u. By hypothesis, there exists c in F such that T(u) = cu. We prove that T(v) = cv for every v in V. Let v in V be arbitrary. If u and v are linearly dependent, then because u != 0 there exists b in F such that v = bu. Thus T(v) = T(bu) = bT(u) = bcu = c(bu) = cv.\n\nIf u and v are linearly independent, then by hypothesis there exist d,e in F such that T(v) = dv and T(u+v) = e(u+v). By linearity,\ne(u+v) = T(u+v) = T(u) + T(v) = cu + dv.\nThus (e-c)u + (e-d)v = 0. Since u and v are linearly independent, e-c = 0 and e-d = 0. Hence d = c, and therefore T(v) = dv = cv.\n\nIn both cases T(v) = cv. Since v was arbitrary, T = cI."
+    },
+    {
+      "id": "proofsolver_0057",
+      "sourceIndex": 876,
+      "titleHint": "Let p and q be distinct primes, and suppose p - 1 divides q -…",
+      "question": "Let p and q be distinct primes, and suppose p - 1 divides q - 1. Let n be an integer such that gcd(n, pq) = 1. Prove that n^(q - 1) ≡ 1 modulo pq.",
+      "referenceProof": "Since gcd(n, pq) = 1, neither p nor q divides n. Fermat's little theorem gives n^(q - 1) ≡ 1 modulo q and n^(p - 1) ≡ 1 modulo p. Because p - 1 divides q - 1, there is an integer k ≥ 1 such that q - 1 = k(p - 1). Hence, modulo p,\n\nn^(q - 1) = n^(k(p - 1)) = (n^(p - 1))^k ≡ 1^k = 1.\n\nThus n^(q - 1) ≡ 1 modulo p and modulo q. Equivalently, p and q both divide n^(q - 1) - 1. Since p and q are distinct primes, gcd(p, q) = 1, so pq divides n^(q - 1) - 1. Therefore n^(q - 1) ≡ 1 modulo pq. ∎"
+    },
+    {
+      "id": "proofsolver_0058",
+      "sourceIndex": 889,
+      "titleHint": "Let p be an odd prime and let a be an integer with gcd(a,p)=1…",
+      "question": "Let p be an odd prime and let a be an integer with gcd(a,p)=1. Define the multiplicative order of a modulo p to be the least positive integer d such that a^d ≡ 1 mod p, and say that a is a primitive root modulo p if this order is p−1. Prove that a is a primitive root modulo p if and only if, for every prime divisor q of p−1, one has a^{(p−1)/q} not congruent to 1 modulo p.",
+      "referenceProof": "Let n=p−1 and let d be the multiplicative order of a modulo p. Since gcd(a,p)=1, Fermat's little theorem gives a^n ≡ 1 mod p, so d exists and d divides n. First suppose a is a primitive root modulo p. Then d=n. If q is a prime divisor of n and a^{n/q} ≡ 1 mod p, then the order d divides n/q. Hence n divides n/q, impossible because q≥2 and therefore 0<n/q<n. Thus a^{n/q} is not congruent to 1 modulo p for every prime divisor q of n. Conversely, suppose a^{n/q} is not congruent to 1 modulo p for every prime divisor q of n. Since d divides n, write n=dr with r a positive integer. If r>1, choose a prime q dividing r. Then q divides n, and n/q=d(r/q), so d divides n/q. Because a^d ≡ 1 mod p, this implies a^{n/q} ≡ 1 mod p, contradicting the hypothesis. Hence r=1, so d=n=p−1. Therefore a is a primitive root modulo p."
+    },
+    {
+      "id": "proofsolver_0059",
+      "sourceIndex": 907,
+      "titleHint": "Let V be a complex inner product space whose inner product ⟨·…",
+      "question": "Let V be a complex inner product space whose inner product ⟨·,·⟩ is linear in the first variable and conjugate-linear in the second. Let u,v ∈ V and suppose ⟨u,v⟩ ≠ 0. Exhibit a complex number a such that ‖u + a v‖ < ‖u‖, and prove that your choice works.",
+      "referenceProof": "Let c = ⟨u,v⟩. Since c ≠ 0, v ≠ 0, hence ‖v‖² > 0. Choose a = -c/‖v‖². Expanding the squared norm gives ‖u + a v‖² = ‖u‖² + conjugate(a)c + a conjugate(c) + |a|²‖v‖². For this a, conjugate(a)c = -|c|²/‖v‖², a conjugate(c) = -|c|²/‖v‖², and |a|²‖v‖² = |c|²/‖v‖². Therefore ‖u + a v‖² = ‖u‖² - |c|²/‖v‖² < ‖u‖². Since norms are nonnegative, ‖u + a v‖ < ‖u‖."
+    },
+    {
+      "id": "proofsolver_0060",
+      "sourceIndex": 920,
+      "titleHint": "Let z be a complex number with |z| = 1. Consider the partial…",
+      "question": "Let z be a complex number with |z| = 1. Consider the partial sums T_N = ∑_{k=1}^N (kz)/k^2. Determine whether the sequence (T_N) converges, and prove your answer.",
+      "referenceProof": "For k ≥ 1, (kz)/k^2 = z/k. Hence T_N = z∑_{k=1}^N 1/k. Since |z| = 1, z ≠ 0. The harmonic partial sums H_N = ∑_{k=1}^N 1/k diverge and are unbounded. Thus zH_N is also unbounded, because |zH_N| = |z|H_N = H_N. Therefore (T_N) is unbounded. Every convergent complex sequence is bounded, so (T_N) does not converge."
+    },
+    {
+      "id": "proofsolver_0061",
+      "sourceIndex": 938,
+      "titleHint": "Let U be an open subset of C, let z0 be a point of U, and let…",
+      "question": "Let U be an open subset of C, let z0 be a point of U, and let f: U -> C be holomorphic. Write f = u + iv, where u and v are real-valued functions. Suppose there is a neighborhood N of z0 contained in U and a number c >= 0 such that |f(z)| = c for every z in N. Prove, without dividing by u(z0) or v(z0), that f'(z0) = 0.",
+      "referenceProof": "If c = 0, then |f| = 0 on N, so f = 0 on N and hence f'(z0) = 0. Assume c > 0. Write z0 = x0 + i y0. Since |f| = c on N, we have u^2 + v^2 = c^2 on N. Differentiating at (x0,y0) gives u u_x + v v_x = 0 and u u_y + v v_y = 0, with all quantities evaluated at (x0,y0). Since f is holomorphic, the Cauchy-Riemann equations give u_x = v_y and u_y = -v_x at (x0,y0). Therefore u v_y + v v_x = 0 and -u v_x + v v_y = 0. Multiplying the first by u and the second by v and adding gives (u^2 + v^2)v_y = 0, hence c^2 v_y = 0 and v_y = 0. Multiplying the first by v and the second by -u and adding gives (u^2 + v^2)v_x = 0, hence c^2 v_x = 0 and v_x = 0. Then u_x = v_y = 0 by the Cauchy-Riemann equations, so f'(z0) = u_x + i v_x = 0."
+    },
+    {
+      "id": "proofsolver_0062",
+      "sourceIndex": 953,
+      "titleHint": "Prove that the Pell equation x^2 - 2y^2 = 1 has infinitely ma…",
+      "question": "Prove that the Pell equation x^2 - 2y^2 = 1 has infinitely many solutions in positive integers x,y. Then explain why this implies that there are infinitely many integers n such that n, n+1, and n+2 are each sums of two squares of integers.",
+      "referenceProof": "For each k >= 1, expand (3+2√2)^k uniquely in the form x_k + y_k√2 with integers x_k,y_k. This is possible by the binomial theorem. Since 3-2√2 is the algebraic conjugate of 3+2√2, we have (x_k+y_k√2)(x_k-y_k√2) = (3+2√2)^k(3-2√2)^k = ((3+2√2)(3-2√2))^k = 1^k = 1. Therefore x_k^2 - 2y_k^2 = 1. Also x_k,y_k are positive for k >= 1, because every term in the binomial expansion of (3+2√2)^k has positive coefficient and both the rational part and the √2-part occur. The numbers y_k are strictly increasing, for example because (3+2√2)^{k+1} = (3x_k+4y_k) + (2x_k+3y_k)√2, so y_{k+1} = 2x_k + 3y_k > y_k. Hence the pairs (x_k,y_k) are infinitely many distinct positive integer solutions. For each such solution, set n_k = 2y_k^2. Then n_k = y_k^2+y_k^2, n_k+1 = x_k^2+0^2, and n_k+2 = x_k^2+1^2. Since the y_k are unbounded, the n_k are infinitely many distinct integers with the desired property."
+    },
+    {
+      "id": "proofsolver_0063",
+      "sourceIndex": 968,
+      "titleHint": "Let a>0. For R>a define Γ_R(t)=R e^{it}, 0≤t≤π, oriented from…",
+      "question": "Let a>0. For R>a define Γ_R(t)=R e^{it}, 0≤t≤π, oriented from R to -R, and define F(z)=e^{iz}/(z^2+a^2). Prove that ∫_{-R}^{R} e^{ix}/(x^2+a^2) dx + ∫_{Γ_R} F(z) dz = π e^{-a}/a for every R>a, and prove that lim_{R→∞} ∫_{Γ_R} F(z) dz = 0.",
+      "referenceProof": "The function F(z)=e^{iz}/(z^2+a^2) has simple poles at z=ia and z=-ia. For R>a, the contour formed by [-R,R] and Γ_R encloses ia and not -ia. Since z^2+a^2=(z-ia)(z+ia), Res(F,ia)=lim_{z→ia} e^{iz}/(z+ia)=e^{-a}/(2ia). Thus the residue theorem gives ∫_{-R}^{R} e^{ix}/(x^2+a^2) dx + ∫_{Γ_R} F(z) dz = 2πi·e^{-a}/(2ia)=π e^{-a}/a. For z∈Γ_R, |e^{iz}|=e^{-Im z}≤1 and |z^2+a^2|≥R^2-a^2, while length(Γ_R)=πR. Therefore |∫_{Γ_R}F(z)dz|≤πR/(R^2-a^2)→0. This proves both claims."
+    },
+    {
+      "id": "proofsolver_0064",
+      "sourceIndex": 982,
+      "titleHint": "Let G be a finite group with identity element e. Prove that t…",
+      "question": "Let G be a finite group with identity element e. Prove that there exists a positive integer m such that a^m = e for every a ∈ G.",
+      "referenceProof": "Because G is finite, write G = {a_1, a_2, ..., a_k}. For each i, the element a_i has finite order: among the powers e = a_i^0, a_i^1, ..., a_i^k, two are equal, say a_i^r = a_i^s with 0 ≤ r < s ≤ k, and then a_i^{s-r} = e. Thus there is a least positive integer n_i such that a_i^{n_i} = e. Let m = lcm(n_1, n_2, ..., n_k). Since each n_i is positive, m is a positive integer. For each i, n_i divides m, so m = n_i c_i for some positive integer c_i. Therefore a_i^m = a_i^{n_i c_i} = (a_i^{n_i})^{c_i} = e^{c_i} = e. Every element of G is one of the a_i, so a^m = e for all a ∈ G. Hence such a positive integer m exists. ∎"
+    },
+    {
+      "id": "proofsolver_0065",
+      "sourceIndex": 996,
+      "titleHint": "Let Ω be a nonempty open connected subset of ℂ, let f: Ω → ℂ…",
+      "question": "Let Ω be a nonempty open connected subset of ℂ, let f: Ω → ℂ be continuous, and let F₁,F₂: Ω → ℂ be primitives of f on Ω, meaning that F₁ and F₂ are complex differentiable at every point of Ω and F₁'(z)=f(z), F₂'(z)=f(z) for every z ∈ Ω. Prove that there is a constant c ∈ ℂ such that F₁(z)=F₂(z)+c for every z ∈ Ω.",
+      "referenceProof": "Choose a point a ∈ Ω and define H: Ω → ℂ by H(z)=F₁(z)-F₂(z). For every z ∈ Ω, the complex derivative of H exists and H'(z)=F₁'(z)-F₂'(z)=f(z)-f(z)=0. We show that H is constant on Ω. Fix p ∈ Ω. Since Ω is open, there is r>0 such that the disk D(p,r) is contained in Ω. If z ∈ D(p,r), then the segment p+t(z-p), 0≤t≤1, lies in D(p,r). Define γ(t)=H(p+t(z-p)). By the chain rule, γ is differentiable as a real-variable complex-valued function and γ'(t)=H'(p+t(z-p))(z-p)=0. Writing γ=u+iv, both real functions u and v have derivative 0 on [0,1], so by the real mean value theorem u(1)=u(0) and v(1)=v(0). Hence H(z)=H(p). Thus H is locally constant on Ω. Now set A={z ∈ Ω : H(z)=H(a)}. The set A is nonempty, and local constancy shows both A and Ω\\A are open in the relative topology of Ω. Since Ω is connected, A=Ω. Therefore H(z)=H(a) for every z ∈ Ω. With c=H(a)=F₁(a)-F₂(a), we obtain F₁(z)=F₂(z)+c for every z ∈ Ω. ∎"
+    },
+    {
+      "id": "proofsolver_0066",
+      "sourceIndex": 1012,
+      "titleHint": "Let m be a nonnegative integer, let N be any norm on R^m, and…",
+      "question": "Let m be a nonnegative integer, let N be any norm on R^m, and let B = {x in R^m : N(x) <= 1}. Prove that B is compact in the metric d_N(x,y) = N(x-y).",
+      "referenceProof": "If m = 0, then R^0 has one point, so B is a one-point space and is compact. Assume m >= 1. Let |.| denote the Euclidean norm. We first compare N with |.|. Let e_1,...,e_m be the standard basis and set M = max_i N(e_i). Then M > 0, and for x = sum_i x_i e_i, N(x) <= sum_i |x_i|N(e_i) <= M sum_i |x_i| <= Mm |x|. Hence N is continuous with respect to the Euclidean metric. The Euclidean unit sphere S = {x : |x| = 1} is compact, so N attains a minimum c and a maximum C on S. Since 0 is not in S and N(x) > 0 for x != 0, c > 0. For x != 0, x/|x| is in S, so c <= N(x/|x|) <= C. By homogeneity, c|x| <= N(x) <= C|x|. The same inequalities hold for x = 0. Now if x in B, then c|x| <= N(x) <= 1, so |x| <= 1/c; hence B is Euclidean bounded. Also B = N^{-1}((-\u001e,1]) is Euclidean closed because N is Euclidean-continuous. By Heine-Borel in R^m, B is compact in the Euclidean topology. Finally, the identity map from Euclidean R^m to (R^m,d_N) is continuous because N(x-y) <= C|x-y|. Therefore its restriction sends the Euclidean-compact set B onto B, so B is compact in the d_N metric. ∎"
+    },
+    {
+      "id": "proofsolver_0067",
+      "sourceIndex": 1027,
+      "titleHint": "Verify explicitly that the prime p = 113 satisfies the conclu…",
+      "question": "Verify explicitly that the prime p = 113 satisfies the conclusion of the theorem: show that 113 ≡ 1 mod 4, exhibit nonnegative integers A,B with 113 = A^2 + 64B^2, and exhibit an integer x with x^4 ≡ 2 mod 113.",
+      "referenceProof": "The integer 113 is prime: no prime 2,3,5,7 less than or equal to sqrt(113) divides it. Also 113 ≡ 1 mod 4. We have 113 = 49 + 64 = 7^2 + 64·1^2, so A = 7 and B = 1 give the required representation. For the fourth-power congruence, take x = 47. Then 47^2 = 2209 = 19·113 + 62, so 47^2 ≡ 62 mod 113. Squaring again, 47^4 ≡ 62^2 = 3844 = 34·113 + 2 ≡ 2 mod 113. Thus x = 47 is an explicit solution."
+    },
+    {
+      "id": "proofsolver_0068",
+      "sourceIndex": 1041,
+      "titleHint": "Let F be a field and let q(x) ∈ F[x] be irreducible. Determin…",
+      "question": "Let F be a field and let q(x) ∈ F[x] be irreducible. Determine, with proof, whether the quotient ring F[x]/(q(x)) must be a field.",
+      "referenceProof": "Yes. Let f + (q) be a nonzero element of F[x]/(q). Then f ∉ (q), so q does not divide f. Since q is irreducible, every divisor of q is either a unit or an associate of q. Hence any common divisor of f and q is a unit; otherwise q would divide f. Thus gcd(f,q) = 1. Because F[x] is a Euclidean domain, Bézout's identity gives a,b ∈ F[x] such that af + bq = 1. Modulo (q), this becomes (a + (q))(f + (q)) = 1 + (q). Therefore every nonzero element of F[x]/(q) has a multiplicative inverse. Hence F[x]/(q) is a field. ∎"
+    },
+    {
+      "id": "proofsolver_0069",
+      "sourceIndex": 1055,
+      "titleHint": "For a set E ⊂ ℝ, define C(E) = {p ∈ ℝ : for every ε > 0, E ∩…",
+      "question": "For a set E ⊂ ℝ, define C(E) = {p ∈ ℝ : for every ε > 0, E ∩ (p - ε, p + ε) is uncountable}. Determine, with proof, what can be said about the size of E \\ C(E).",
+      "referenceProof": "The set E \\ C(E) is countable. For each x ∈ E \\ C(E), x is not a condensation point of E, so there exists ε_x > 0 such that E ∩ (x - ε_x, x + ε_x) is countable. Choose rationals a_x,b_x with x - ε_x < a_x < x < b_x < x + ε_x. Then x ∈ (a_x,b_x), and E ∩ (a_x,b_x) is countable. Let A be the collection of all rational endpoint intervals (a,b) such that E ∩ (a,b) is countable. The collection A is countable. The previous argument shows that every x ∈ E \\ C(E) lies in some interval I ∈ A. Therefore E \\ C(E) ⊂ ⋃_{I ∈ A} (E ∩ I). Since A is countable and each E ∩ I is countable, the union is countable. Hence E \\ C(E) is countable. ∎"
+    },
+    {
+      "id": "proofsolver_0070",
+      "sourceIndex": 1071,
+      "titleHint": "Let θ = π/180, where angles are measured in radians. Prove th…",
+      "question": "Let θ = π/180, where angles are measured in radians. Prove that the real number cos θ is algebraic over ℚ, meaning that cos θ is a root of some nonzero polynomial with coefficients in ℚ.",
+      "referenceProof": "Set ζ = cos θ + i sin θ ∈ ℂ. By de Moivre's formula, ζ^360 = cos(360θ) + i sin(360θ) = cos(2π) + i sin(2π) = 1. Hence ζ is a root of X^360 − 1 ∈ ℚ[X], so ζ is algebraic over ℚ. The algebraic complex numbers over ℚ form a field, so ζ^{-1}, ζ + ζ^{-1}, and (ζ + ζ^{-1})/2 are algebraic over ℚ. Since ζ^{-1} = cos θ − i sin θ, we have (ζ + ζ^{-1})/2 = cos θ. Therefore cos(π/180) is algebraic over ℚ. ∎"
+    },
+    {
+      "id": "proofsolver_0071",
+      "sourceIndex": 1086,
+      "titleHint": "Let G be a nonabelian group of order 21. Prove that there exi…",
+      "question": "Let G be a nonabelian group of order 21. Prove that there exist elements a,b in G such that a has order 3, b has order 7, G = <a,b>, and a b a^{-1} = b^2.",
+      "referenceProof": "By Sylow's theorem, the number of subgroups of order 7 is congruent to 1 modulo 7 and divides 3, so it is 1. Let B be this unique subgroup of order 7; then B is normal. Choose b generating B. By Cauchy's theorem, choose a_0 in G of order 3. Let A = <a_0>. Then A ∩ B = {e}, so |AB| = 3·7 = 21; since B is normal, AB is a subgroup and therefore AB = G. Since B is normal, a_0 b a_0^{-1} = b^r for some r in {1,2,3,4,5,6}. Because a_0^3 = e, we get b = a_0^3 b a_0^{-3} = b^{r^3}, so r^3 ≡ 1 mod 7. The solutions among units modulo 7 are r = 1,2,4. If r = 1, then a_0 commutes with b, and since G = <a_0,b>, the group G is abelian, a contradiction. Thus r = 2 or 4. If r = 2, set a = a_0. If r = 4, set a = a_0^{-1}; then a has order 3 and a b a^{-1} = a_0^{-1} b a_0 = b^{4^{-1}} = b^2 because 4^{-1} ≡ 2 mod 7. In either case, a has order 3, b has order 7, G = <a,b>, and a b a^{-1} = b^2."
+    },
+    {
+      "id": "proofsolver_0072",
+      "sourceIndex": 1103,
+      "titleHint": "For a prime number p, consider the following property P(p): f…",
+      "question": "For a prime number p, consider the following property P(p): for every pair of integers a,b with b ≠ 0, if a/b = 1 + 1/2 + ... + 1/(p - 1) as rational numbers, then p divides a. Determine exactly which prime numbers p satisfy P(p), and prove your answer.",
+      "referenceProof": "The property holds exactly for the odd primes. If p = 2, then the sum is just 1. Taking a = 1 and b = 1 gives a/b = 1, but 2 does not divide 1, so P(2) fails.\n\nNow let p be an odd prime. Write p = 2m + 1. Pairing terms i and p - i gives\nΣ_{k=1}^{p-1} 1/k = Σ_{i=1}^m (1/i + 1/(p - i)) = Σ_{i=1}^m p/(i(p - i)).\nLet D = Π_{i=1}^m i(p - i). Then p ∤ D, since every factor lies between 1 and p - 1. Let C = Σ_{i=1}^m D/(i(p - i)) ∈ ℤ. Then the sum equals pC/D. If a/b equals this sum, then aD = bpC, so p | aD. Since p ∤ D and p is prime, Euclid's lemma gives p | a. Therefore P(p) holds for every odd prime p, and fails only for p = 2. ∎"
+    },
+    {
+      "id": "proofsolver_0073",
+      "sourceIndex": 1118,
+      "titleHint": "Let n be an integer. For integers r and s, write r ≡ s modulo…",
+      "question": "Let n be an integer. For integers r and s, write r ≡ s modulo n if n divides r - s, and write [r] for the congruence class of r modulo n. Prove the compatibility lemma: if x ≡ a modulo n and y ≡ b modulo n, then x + y ≡ a + b modulo n. Deduce that if [x] = [a] and [y] = [b], then [x + y] = [a + b].",
+      "referenceProof": "Assume x ≡ a modulo n and y ≡ b modulo n. Then there are integers r and s such that x - a = nr and y - b = ns. Therefore (x + y) - (a + b) = (x - a) + (y - b) = nr + ns = n(r + s). Since r + s is an integer, n divides (x + y) - (a + b), so x + y ≡ a + b modulo n.\n\nNow assume [x] = [a] and [y] = [b]. Since x ∈ [x] = [a], we have x ≡ a modulo n. Since y ∈ [y] = [b], we have y ≡ b modulo n. By the compatibility lemma, x + y ≡ a + b modulo n. Congruent integers have the same congruence class, so [x + y] = [a + b]. ∎"
+    },
+    {
+      "id": "proofsolver_0074",
+      "sourceIndex": 1133,
+      "titleHint": "Let Ω be a bounded open subset of C, let z0 ∈ Ω, and let φ: Ω…",
+      "question": "Let Ω be a bounded open subset of C, let z0 ∈ Ω, and let φ: Ω → Ω be holomorphic with φ(z0) = z0. Fix an integer n ≥ 2 and a complex number a. Suppose that in a neighborhood of z0 there is a holomorphic function ψ such that φ(z) = z + a(z − z0)^n + (z − z0)^(n+1)ψ(z). Prove that a = 0.",
+      "referenceProof": "For k ≥ 1, let φ^k denote the k-fold iterate of φ. We first claim that the coefficient of (z − z0)^n in the Taylor expansion of φ^k at z0 is k a. This is true for k = 1 by the assumed expansion. If it is true for k, write w = z − z0 and φ^k(z0 + w) − z0 = w + k a w^n + O(w^(n+1)). Then, since n ≥ 2, u := φ^k(z0 + w) − z0 satisfies u = w + O(w^2), so u^n = w^n + O(w^(n+1)) and u^(n+1) = O(w^(n+1)). Using the expansion of φ gives φ^(k+1)(z0 + w) − z0 = u + a u^n + O(u^(n+1)) = w + (k + 1)a w^n + O(w^(n+1)). Thus the claim follows by induction. Choose r > 0 such that |z − z0| ≤ r lies in Ω. By Cauchy's coefficient formula, k a = (1/(2πi)) ∫_|z−z0|=r φ^k(z)/(z − z0)^(n+1) dz. Since Ω is bounded, choose M > 0 with |w| ≤ M for all w ∈ Ω. Because φ maps Ω into Ω, φ^k(z) ∈ Ω for all z ∈ Ω; hence |φ^k(z)| ≤ M on the circle. Therefore |k a| ≤ M/r^n for every k ≥ 1. Dividing by k and letting k → ∞ gives a = 0."
+    },
+    {
+      "id": "proofsolver_0075",
+      "sourceIndex": 1151,
+      "titleHint": "Let p be an odd prime number. Let a and b be integers with b…",
+      "question": "Let p be an odd prime number. Let a and b be integers with b ≠ 0, and suppose that, as rational numbers, a / b = 1 + 1/2 + 1/3 + ... + 1/(p - 1). Prove that p divides a.",
+      "referenceProof": "Write p = 2m + 1, so m = (p - 1)/2 is an integer. Pair the terms i and p - i in the harmonic sum. Then\n1 + 1/2 + ... + 1/(p - 1) = Σ_{i=1}^m (1/i + 1/(p - i)) = Σ_{i=1}^m p/(i(p - i)).\nLet D = Π_{i=1}^m i(p - i). Since every factor i and p - i lies between 1 and p - 1, no factor is divisible by p, so p ∤ D. Put C = Σ_{i=1}^m D/(i(p - i)), an integer. Then the sum equals pC/D. Since a/b = pC/D and b,D ≠ 0, cross-multiplication gives aD = bpC. Hence p divides aD. Because p is prime and p ∤ D, Euclid's lemma gives p | a. ∎"
+    },
+    {
+      "id": "proofsolver_0076",
+      "sourceIndex": 1165,
+      "titleHint": "Let G be a group with identity element e, written multiplicat…",
+      "question": "Let G be a group with identity element e, written multiplicatively. Let x ∈ G, and let a,b ∈ ℤ with a < b. Prove the key cancellation fact that if x^a = x^b, then x^{b-a} = e. Then deduce that if x has infinite order, meaning x^k ≠ e for every positive integer k, the powers x^n with n ∈ ℤ are pairwise distinct.",
+      "referenceProof": "Assume x^a = x^b with a < b. Multiplying the equality on the left by x^{-a} gives x^{-a}x^a = x^{-a}x^b. The left side is x^0 = e, and the right side is x^{b-a}. Hence e = x^{b-a}, so x^{b-a} = e. Since a < b, the integer b-a is positive. If x has infinite order, no positive power of x equals e, so such an equality x^a = x^b cannot occur for a < b. Now for any distinct integers n,m, either n < m or m < n. In the first case, equality x^n = x^m would imply x^{m-n} = e with m-n > 0, impossible. In the second case, equality x^n = x^m would imply x^{n-m} = e with n-m > 0, impossible. Therefore x^n ≠ x^m whenever n ≠ m, so the powers are pairwise distinct."
+    },
+    {
+      "id": "proofsolver_0077",
+      "sourceIndex": 1182,
+      "titleHint": "Let G be a group with identity element e, and let H be a subg…",
+      "question": "Let G be a group with identity element e, and let H be a subgroup of G. Define S = H \\ {e} = {h ∈ H : h ≠ e}. Let ⟨S⟩ denote the subgroup of G generated by S, meaning the smallest subgroup of G containing S. Prove that ⟨S⟩ = H.",
+      "referenceProof": "Let K = ⟨S⟩. Since S ⊆ H and H is a subgroup of G, the minimality of the generated subgroup gives K ⊆ H. Conversely, let h ∈ H. If h = e, then h ∈ K because K is a subgroup of G and every subgroup contains the identity. If h ≠ e, then h ∈ H \\ {e} = S, and since S ⊆ K, we have h ∈ K. Thus every h ∈ H lies in K, so H ⊆ K. Therefore K = H, i.e. ⟨H \\ {e}⟩ = H. ∎"
+    },
+    {
+      "id": "proofsolver_0078",
+      "sourceIndex": 1196,
+      "titleHint": "In the ring R = ℤ/4ℤ, let M = {0̄, 2̄}, where ā denotes the…",
+      "question": "In the ring R = ℤ/4ℤ, let M = {0̄, 2̄}, where ā denotes the congruence class of a modulo 4. Verify that M is a proper ideal of R, verify that every element of R outside M is a unit, and prove that M is the unique maximal ideal of R.",
+      "referenceProof": "The elements of R are 0̄, 1̄, 2̄, and 3̄. The set M = {0̄, 2̄} is an additive subgroup because 0̄ + 0̄ = 0̄, 0̄ + 2̄ = 2̄, 2̄ + 0̄ = 2̄, and 2̄ + 2̄ = 0̄, and both elements are their own additive inverses. For any r̄ ∈ ℤ/4ℤ, r̄·0̄ = 0̄ and r̄·2̄ is 0̄ if r̄ is 0̄ or 2̄, and is 2̄ if r̄ is 1̄ or 3̄. Thus M is an ideal. It is proper because 1̄ ∉ M.\n\nThe elements outside M are 1̄ and 3̄. We have 1̄·1̄ = 1̄ and 3̄·3̄ = 9̄ = 1̄, so both are units. Now let I be an ideal containing M. If I ≠ M, then I contains either 1̄ or 3̄, hence contains a unit, so I = R. Therefore M is maximal. If N is any maximal ideal, then N is proper and so contains no unit. Hence N contains neither 1̄ nor 3̄, and therefore N ⊆ {0̄, 2̄} = M. Since N is maximal and M is proper, N = M. Thus M is the unique maximal ideal of ℤ/4ℤ."
+    },
+    {
+      "id": "proofsolver_0079",
+      "sourceIndex": 1210,
+      "titleHint": "Let G be a group with identity element e. Let H be a subgroup…",
+      "question": "Let G be a group with identity element e. Let H be a subgroup of G, and let y ∈ G \\ H. Assume that every element of G either lies in H or equals y; equivalently, G = H ∪ {y} and y ∉ H. Prove that H = {e}.",
+      "referenceProof": "Let h ∈ H. If hy ∈ H, then h^{-1} ∈ H, so h^{-1}(hy) ∈ H. But h^{-1}(hy) = (h^{-1}h)y = y, contradicting y ∉ H. Hence hy ∉ H. Since hy ∈ G and G = H ∪ {y}, it follows that hy = y. Multiplying on the right by y^{-1}, we obtain h = e. Thus every h ∈ H equals e, so H ⊆ {e}. Since every subgroup contains e, {e} ⊆ H. Therefore H = {e}."
+    },
+    {
+      "id": "proofsolver_0080",
+      "sourceIndex": 1225,
+      "titleHint": "Let G be a finite group, p a prime, and P a Sylow p-subgroup…",
+      "question": "Let G be a finite group, p a prime, and P a Sylow p-subgroup of G. If H is an arbitrary subgroup of G not assumed to contain P, is P ∩ H necessarily a Sylow p-subgroup of H? Decide the question with proof.",
+      "referenceProof": "No. Take G=S_3, p=2, P=⟨(12)⟩, and H=⟨(13)⟩. The group S_3 has order 6=2·3, so its Sylow 2-subgroups have order 2. Thus P=⟨(12)⟩ is a Sylow 2-subgroup of S_3. Also H=⟨(13)⟩ has order 2. The intersection P∩H is trivial, because P={e,(12)} and H={e,(13)}, and (12)≠(13). Therefore |P∩H|=1. But H has order 2, so the largest power of 2 dividing |H| is 2, and a Sylow 2-subgroup of H must have order 2. Since P∩H has order 1, it is not a Sylow 2-subgroup of H. Hence the asserted statement is false."
+    }
+  ]
+}

@@ -1,19 +1,21 @@
-# TheoremQA raw data
+# Proof raw data
 
-Source: [TIGER-Lab/TheoremQA](https://huggingface.co/datasets/TIGER-Lab/TheoremQA) (MIT).
+Primary source: [WilhelmH/proofsolver-1300](https://huggingface.co/datasets/WilhelmH/proofsolver-1300) (MIT).
 
-The full test JSON is **not** committed. A curated evaluation subset is vendored at:
+The full train JSONL is **not** committed. A curated evaluation subset is vendored at:
 
 ```text
-src/problems/data/theoremqa_subset.json
+src/problems/data/proofsolver_subset.json
 ```
 
 ## Regenerate the subset
 
 ```bash
-curl -L "https://raw.githubusercontent.com/TIGER-AI-Lab/TheoremQA/main/theoremqa_test.json" \
-  -o data/proof/theoremqa_test.json
+curl -L "https://huggingface.co/datasets/WilhelmH/proofsolver-1300/resolve/main/data/train.jsonl" \
+  -o data/proof/proofsolver_train.jsonl
 
 npm run curate:proof
 npm run test:proof-grader
 ```
+
+Optional legacy TheoremQA files in this folder are unused by the app.

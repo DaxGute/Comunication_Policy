@@ -2,13 +2,13 @@ import { getCrosswordBenchSourceMeta } from "./crossword/loadCrosswordBench";
 import { CROSSWORD_PROBLEMS } from "./crosswordProblems";
 import { getRedditEthicsSourceMeta } from "./moral/loadRedditEthics";
 import { MORAL_PHILOSOPHICAL_PROBLEMS } from "./moralPhilosophical";
-import { getTheoremQaSourceMeta } from "./proof/loadTheoremQa";
+import { getProofSolverSourceMeta } from "./proof/loadProofSolver";
 import { PROOF_PROBLEMS } from "./proofProblems";
 import type { Problem, ProblemCategory, ProblemCategoryMeta } from "./types";
 
 const crosswordSource = getCrosswordBenchSourceMeta();
 const moralSource = getRedditEthicsSourceMeta();
-const proofSource = getTheoremQaSourceMeta();
+const proofSource = getProofSolverSourceMeta();
 
 export const PROBLEM_CATEGORIES: ProblemCategoryMeta[] = [
   {
@@ -24,7 +24,7 @@ export const PROBLEM_CATEGORIES: ProblemCategoryMeta[] = [
   {
     id: "proof",
     label: "Proof",
-    description: `TheoremQA theorem-driven problems (${proofSource.huggingface}, ${PROOF_PROBLEMS.length} items). Short answers graded.`,
+    description: `ProofSolver prove-that problems (${proofSource.huggingface}, ${PROOF_PROBLEMS.length} items). Agents write a joint proof; not short-answer graded.`,
   },
 ];
 

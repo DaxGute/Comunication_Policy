@@ -54,8 +54,12 @@ export function useExperimentStore(): ExperimentStore {
   }, [state.selectedRunId, state.selectedProblemId]);
 
   const agentPrompts = useMemo(
-    () => buildAgentPromptPair(state.currentPolicy),
-    [state.currentPolicy],
+    () =>
+      buildAgentPromptPair(
+        state.currentPolicy,
+        state.currentRunConfig.problemCategory,
+      ),
+    [state.currentPolicy, state.currentRunConfig.problemCategory],
   );
 
   const selectedRun = state.runs.find((r) => r.id === state.selectedRunId);

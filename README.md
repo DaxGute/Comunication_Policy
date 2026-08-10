@@ -90,11 +90,12 @@ npm run curate:moral
 
 ### Proof
 
-Curated subset of [TIGER-Lab/TheoremQA](https://huggingface.co/datasets/TIGER-Lab/TheoremQA) (MIT).
+Curated subset of [WilhelmH/proofsolver-1300](https://huggingface.co/datasets/WilhelmH/proofsolver-1300) (MIT).
 
-- Vendored: `src/problems/data/theoremqa_subset.json` (100 theorem-driven items)
-- Agents write a short derivation; grader scores the short `FINAL_ANSWER`
-- Supports integer / float (4% rel. eps) / bool / list / option
+- Vendored: `src/problems/data/proofsolver_subset.json` (80 prove-that / with-proof items)
+- Agents co-author a joint proof; `FINAL_ANSWER` is the full write-up
+- Reference solutions are stored for inspectability only and are **not** used as gold scores
+- Evaluator records proof submitted + lightweight proof-structure signals
 
 ```bash
 npm run curate:proof
@@ -103,6 +104,6 @@ npm run test:proof-grader
 
 ## Current status
 
-- Fully implemented: layout, policy sliders, live prompt inspection, mock + OpenAI runs, transcript inspector, CrossWordBench full puzzles + Reddit Ethics + TheoremQA
+- Fully implemented: layout, policy sliders, live prompt inspection, mock + OpenAI runs, transcript inspector, CrossWordBench full puzzles + Reddit Ethics + ProofSolver collaborative proofs
 - OpenAI: `ConfigurableModelClient` → local `/api/generate` proxy → `gpt-4o-mini`
 - Smoke test: `npm run smoke:openai`

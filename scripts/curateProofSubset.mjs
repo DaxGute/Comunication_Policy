@@ -1,94 +1,118 @@
 /**
- * Curate a compact TheoremQA evaluation subset.
+ * Curate a compact ProofSolver evaluation subset.
  *
- * Source: TIGER-Lab/TheoremQA (MIT)
- *   https://huggingface.co/datasets/TIGER-Lab/TheoremQA
- *   https://github.com/TIGER-AI-Lab/TheoremQA
+ * Source: WilhelmH/proofsolver-1300 (MIT)
+ *   https://huggingface.co/datasets/WilhelmH/proofsolver-1300
+ *
+ * These are prove-that / with-proof statements. Agents collaborate to write
+ * a joint proof. Reference solutions are kept for inspectability only and
+ * are never shown in agent prompts or used as objective scores.
  *
  * Usage:
  *   node scripts/curateProofSubset.mjs
  */
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const INPUT = join(ROOT, "data/proof/theoremqa_test.json");
-const OUTPUT = join(ROOT, "src/problems/data/theoremqa_subset.json");
+const INPUT = join(ROOT, "data/proof/proofsolver_train.jsonl");
+const OUTPUT = join(ROOT, "src/problems/data/proofsolver_subset.json");
 
-const MAX_TOTAL = 100;
-const TARGET_TYPES = {
-  integer: 30,
-  float: 30,
-  bool: 20,
-  "list of integer": 12,
-  option: 8,
-};
+const MAX_TOTAL = 80;
+const MIN_QUESTION = 60;
+const MAX_QUESTION = 520;
+const MIN_ANSWER = 120;
+const MAX_ANSWER = 1200;
 
-function isUsable(item) {
-  if (!item?.Question || item.Answer === undefined || item.Answer === null) {
+function isProofTask(question) {
+  const q = question.toLowerCase();
+  return (
+    /\bprove\b/.test(q) ||
+    /\bwith proof\b/.test(q) ||
+    /\bshow that\b/.test(q) ||
+    /\bgive a proof\b/.test(q)
+  );
+}
+
+function isUsable(obj) {
+  if (!obj?.question || !obj?.answer) return false;
+  const question = String(obj.question).trim();
+  const answer = String(obj.answer).trim();
+  if (!isProofTask(question)) return false;
+  if (question.length < MIN_QUESTION || question.length > MAX_QUESTION) {
     return false;
   }
-  if (item.Picture) return false;
-  if (!["Math", "EECS"].includes(item.field)) return false;
-  if (item.Question.length < 20 || item.Question.length > 500) return false;
-  if (!TARGET_TYPES[item.Answer_type]) return false;
+  if (answer.length < MIN_ANSWER || answer.length > MAX_ANSWER) return false;
   return true;
 }
 
-function serializeAnswer(answer) {
-  if (typeof answer === "string") return answer;
-  return JSON.stringify(answer);
+function shortTitle(question) {
+  const cleaned = question.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= 64) return cleaned;
+  return `${cleaned.slice(0, 61).trimEnd()}…`;
 }
 
 async function main() {
-  const raw = JSON.parse(await readFile(INPUT, "utf8"));
-  const buckets = new Map();
-  for (const type of Object.keys(TARGET_TYPES)) {
-    buckets.set(type, []);
-  }
-
-  raw.forEach((item, index) => {
-    if (!isUsable(item)) return;
-    buckets.get(item.Answer_type)?.push({ item, index });
+  const candidates = [];
+  const rl = createInterface({
+    input: createReadStream(INPUT, { encoding: "utf8" }),
+    crlfDelay: Infinity,
   });
 
-  const selected = [];
-  for (const [type, target] of Object.entries(TARGET_TYPES)) {
-    const pool = buckets.get(type) ?? [];
-    if (pool.length === 0) continue;
-    const step = Math.max(1, Math.floor(pool.length / target));
-    for (let i = 0; i < pool.length && selected.length < MAX_TOTAL; i += step) {
-      const taken = selected.filter((x) => x.answerType === type).length;
-      if (taken >= target) break;
-      const { item, index } = pool[i];
-      selected.push({
-        id: `theoremqa_${String(selected.length + 1).padStart(4, "0")}`,
-        sourceId: item.id ?? String(index),
-        sourceIndex: index,
-        question: item.Question.trim(),
-        answer: serializeAnswer(item.Answer),
-        answerType: item.Answer_type,
-        theorem: item.theorem ?? "",
-        field: item.field,
-        subfield: item.subfield ?? "",
-      });
+  let sourceIndex = 0;
+  for await (const line of rl) {
+    if (!line.trim()) {
+      sourceIndex += 1;
+      continue;
     }
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      sourceIndex += 1;
+      continue;
+    }
+    if (isUsable(obj)) {
+      candidates.push({ sourceIndex, obj });
+    }
+    sourceIndex += 1;
   }
 
-  selected.sort((a, b) => a.sourceIndex - b.sourceIndex);
+  const step = Math.max(1, Math.floor(candidates.length / MAX_TOTAL));
+  const selected = [];
+  for (
+    let i = 0;
+    i < candidates.length && selected.length < MAX_TOTAL;
+    i += step
+  ) {
+    const { sourceIndex: idx, obj } = candidates[i];
+    const question = String(obj.question).trim();
+    selected.push({
+      id: `proofsolver_${String(selected.length + 1).padStart(4, "0")}`,
+      sourceIndex: idx,
+      titleHint: shortTitle(question),
+      question,
+      // Reference proof for research inspectability only — never agent-facing.
+      referenceProof: String(obj.answer).trim(),
+    });
+  }
+
   selected.forEach((item, i) => {
-    item.id = `theoremqa_${String(i + 1).padStart(4, "0")}`;
+    item.id = `proofsolver_${String(i + 1).padStart(4, "0")}`;
   });
 
   const payload = {
     source: {
-      name: "TheoremQA",
-      huggingface: "TIGER-Lab/TheoremQA",
-      paper: "TheoremQA: A Theorem-driven Question Answering dataset (EMNLP 2023)",
+      name: "ProofSolver-1300",
+      huggingface: "WilhelmH/proofsolver-1300",
+      split: "train",
       license: "mit",
-      url: "https://huggingface.co/datasets/TIGER-Lab/TheoremQA",
-      note: "Text-only Math/EECS subset. Short answers are graded; full proofs are not required for the score.",
+      url: "https://huggingface.co/datasets/WilhelmH/proofsolver-1300",
+      note:
+        "Prove-that / with-proof statements. Agents write a joint proof; reference solutions are not used as gold scores.",
     },
     curatedAt: new Date().toISOString().slice(0, 10),
     count: selected.length,
@@ -97,13 +121,9 @@ async function main() {
 
   await mkdir(dirname(OUTPUT), { recursive: true });
   await writeFile(OUTPUT, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-
-  const hist = {};
-  for (const item of selected) {
-    hist[item.answerType] = (hist[item.answerType] ?? 0) + 1;
-  }
-  console.log(`Wrote ${payload.count} items → ${OUTPUT}`);
-  console.log("Type histogram:", hist);
+  console.log(
+    `Wrote ${payload.count} proofs → ${OUTPUT} (from ${candidates.length} usable / ${sourceIndex} rows)`,
+  );
 }
 
 main().catch((err) => {

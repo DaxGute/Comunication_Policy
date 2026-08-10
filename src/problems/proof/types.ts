@@ -1,46 +1,30 @@
-export type ProofAnswerType =
-  | "integer"
-  | "float"
-  | "bool"
-  | "list of integer"
-  | "list of float"
-  | "option"
-  | string;
-
-export type TheoremQaItem = {
+export type ProofSolverItem = {
   id: string;
-  sourceId: string;
   sourceIndex: number;
+  titleHint: string;
   question: string;
-  answer: string;
-  answerType: ProofAnswerType;
-  theorem: string;
-  field: string;
-  subfield: string;
+  /** Reference proof for research inspectability only — never agent-facing. */
+  referenceProof: string;
 };
 
-export type TheoremQaSubsetFile = {
+export type ProofSolverSubsetFile = {
   source: {
     name: string;
     huggingface: string;
-    paper: string;
+    split: string;
     license: string;
     url: string;
     note: string;
   };
   curatedAt: string;
   count: number;
-  items: TheoremQaItem[];
+  items: ProofSolverItem[];
 };
 
 export type ProofSpec = {
   question: string;
-  answer: string;
-  answerType: ProofAnswerType;
-  theorem: string;
-  field: string;
-  subfield: string;
-  source: "theoremqa";
-  sourceId: string;
+  /** Reference proof; evaluation-only / inspectability. */
+  referenceProof: string;
+  source: "proofsolver";
   sourceIndex: number;
 };

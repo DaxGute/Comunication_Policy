@@ -25,7 +25,7 @@ export type Problem = {
   crossword?: CrosswordSpec;
   /** Present when kind === "moral". Open-ended; no gold answer. */
   moral?: MoralSpec;
-  /** Present when kind === "proof". */
+  /** Present when kind === "proof". Collaborative prove-that; reference is eval-only. */
   proof?: ProofSpec;
 };
 

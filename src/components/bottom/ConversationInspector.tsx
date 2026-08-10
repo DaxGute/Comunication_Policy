@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { formatPolicyValue } from "../../communication";
 import type { ProblemEvaluation } from "../../evaluation/types";
+import { serializeConversation } from "../../experiment/serializeConversation";
 import type { ExperimentRun, ProblemConversation, ConversationMessage } from "../../experiment/types";
 import type { CrosswordSpec } from "../../problems/crossword/types";
 import { getProblemById } from "../../problems/registry";
@@ -184,6 +186,7 @@ export function ConversationInspector({
                 <TranscriptView
                   key={conversation.problemId}
                   conversation={conversation}
+                  run={selectedRun}
                   evaluation={evaluation}
                   crossword={
                     selectedRun.config.problemCategory === "crossword"
@@ -254,23 +257,83 @@ export function ConversationInspector({
 
 function TranscriptView({
   conversation,
+  run,
   evaluation,
   crossword,
 }: {
   conversation: ProblemConversation;
+  run: ExperimentRun;
   evaluation?: ProblemEvaluation;
   crossword?: CrosswordSpec;
 }) {
+  const [copied, setCopied] = useState(false);
   const isCrossword = evaluation?.details?.grader === "crossword";
+  const isMoral = evaluation?.details?.grader === "moral_open_ended";
+  const isProof = evaluation?.details?.grader === "proof_collaborative";
   const predictedGrid =
     typeof evaluation?.details?.predictedGrid === "string"
       ? evaluation.details.predictedGrid
       : undefined;
 
+  useEffect(() => {
+    if (!copied) return;
+    const timeout = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timeout);
+  }, [copied]);
+
+  const copyConvoJson = async () => {
+    try {
+      const json = JSON.stringify(
+        serializeConversation(conversation, run),
+        null,
+        2,
+      );
+      await navigator.clipboard.writeText(json);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
     <div className="transcript">
       <header className="transcript__header">
-        <h3>{conversation.problemTitle}</h3>
+        <div className="transcript__title-row">
+          <h3>{conversation.problemTitle}</h3>
+          <button
+            type="button"
+            className="transcript__copy-json"
+            onClick={copyConvoJson}
+            aria-label="Copy conversation JSON"
+          >
+            <svg
+              className="transcript__copy-json-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+            >
+              <rect
+                x="5.5"
+                y="5.5"
+                width="8"
+                height="8"
+                rx="1.25"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.25"
+              />
+              <path
+                d="M10.5 5.5V4.25A1.25 1.25 0 0 0 9.25 3H4.25A1.25 1.25 0 0 0 3 4.25v5A1.25 1.25 0 0 0 4.25 10.5H5.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.25"
+                strokeLinecap="round"
+              />
+            </svg>
+            {copied ? "Copied!" : "Copy Convo JSON"}
+          </button>
+        </div>
         {crossword ? (
           <>
             <CrosswordPreview
@@ -300,14 +363,34 @@ function TranscriptView({
         <div className="transcript__meta muted">
           stopped: {conversation.stoppedReason}
           {conversation.finalAnswer && !crossword
-            ? ` · FINAL_ANSWER: ${conversation.finalAnswer}`
+            ? ` · FINAL_ANSWER: ${
+                conversation.finalAnswer.length > 160
+                  ? `${conversation.finalAnswer.slice(0, 157).trimEnd()}…`
+                  : conversation.finalAnswer
+              }`
             : ""}
           {evaluation?.label ? ` · ${evaluation.label}` : ""}
-          {typeof evaluation?.score === "number" && !isCrossword
+          {typeof evaluation?.score === "number" &&
+          !isCrossword &&
+          !isMoral &&
+          !isProof
             ? ` · score=${evaluation.score}`
             : ""}
+          {isMoral || isProof ? " · not objectively scored" : ""}
         </div>
-        {evaluation && !isCrossword ? (
+        {evaluation && isMoral ? (
+          <MoralResultDetails
+            evaluation={evaluation}
+            messages={conversation.messages}
+          />
+        ) : null}
+        {evaluation && isProof ? (
+          <ProofResultDetails
+            evaluation={evaluation}
+            messages={conversation.messages}
+          />
+        ) : null}
+        {evaluation && !isCrossword && !isMoral && !isProof ? (
           <ProblemResultDetails evaluation={evaluation} />
         ) : null}
       </header>
@@ -407,6 +490,111 @@ function CrosswordMetrics({
   );
 }
 
+function MoralResultDetails({
+  evaluation,
+  messages,
+}: {
+  evaluation: ProblemEvaluation;
+  messages: ConversationMessage[];
+}) {
+  const { totalDurationMs, totalTokens, hasDuration, hasTokens } =
+    conversationTotals(messages);
+  const tension =
+    typeof evaluation.details?.exploredTensionSignals === "number"
+      ? evaluation.details.exploredTensionSignals
+      : undefined;
+
+  return (
+    <div className="transcript__result-details">
+      {evaluation.finalAnswer ? (
+        <div className="mono results-answer">
+          stance: {evaluation.finalAnswer}
+        </div>
+      ) : (
+        <div className="muted">No joint stance recorded.</div>
+      )}
+      <div className="results-open-metrics mono">
+        <div>
+          Stance reached:{" "}
+          {evaluation.details?.stanceReached === true ? "Yes" : "No"}
+        </div>
+        <div>
+          Tension signals: {tension !== undefined ? tension : "—"}
+        </div>
+        <div>Gold answer: none (open-ended)</div>
+        <div className="results-open-metrics__summary">
+          <div>
+            Total time: {hasDuration ? formatDuration(totalDurationMs) : "—"}
+          </div>
+          <div>
+            Total tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}
+          </div>
+        </div>
+      </div>
+      {evaluation.notes ? (
+        <div className="muted">{evaluation.notes}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProofResultDetails({
+  evaluation,
+  messages,
+}: {
+  evaluation: ProblemEvaluation;
+  messages: ConversationMessage[];
+}) {
+  const { totalDurationMs, totalTokens, hasDuration, hasTokens } =
+    conversationTotals(messages);
+  const markers =
+    typeof evaluation.details?.proofMarkerCount === "number"
+      ? evaluation.details.proofMarkerCount
+      : undefined;
+  const reference =
+    typeof evaluation.details?.referenceProofPreview === "string"
+      ? evaluation.details.referenceProofPreview
+      : undefined;
+
+  return (
+    <div className="transcript__result-details">
+      {evaluation.finalAnswer ? (
+        <div className="mono results-answer">
+          joint proof: {evaluation.finalAnswer}
+        </div>
+      ) : (
+        <div className="muted">No joint proof recorded.</div>
+      )}
+      <div className="results-open-metrics mono">
+        <div>
+          Proof submitted:{" "}
+          {evaluation.details?.proofSubmitted === true ? "Yes" : "No"}
+        </div>
+        <div>
+          Proof-structure signals: {markers !== undefined ? markers : "—"}
+        </div>
+        <div>Objective score: none (collaborative proof)</div>
+        {reference ? (
+          <div className="results-open-metrics__reference">
+            Reference (inspect only): {reference}
+          </div>
+        ) : null}
+        <div className="results-open-metrics__summary">
+          <div>
+            Total time: {hasDuration ? formatDuration(totalDurationMs) : "—"}
+          </div>
+          <div>
+            Total tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}
+          </div>
+        </div>
+      </div>
+      {evaluation.notes ? (
+        <div className="muted">{evaluation.notes}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function ProblemResultDetails({
   evaluation,
 }: {
@@ -416,9 +604,7 @@ function ProblemResultDetails({
     <div className="transcript__result-details">
       {evaluation.finalAnswer ? (
         <div className="mono results-answer">
-          {evaluation.details?.grader === "moral_open_ended"
-            ? `stance: ${evaluation.finalAnswer}`
-            : `predicted: ${evaluation.finalAnswer}`}
+          predicted: {evaluation.finalAnswer}
           {typeof evaluation.details?.goldNormalized === "string"
             ? ` · gold: ${evaluation.details.goldNormalized}`
             : ""}

@@ -75,7 +75,10 @@ export async function runExperiment(args: {
     id: createId("run"),
     createdAt: new Date().toISOString(),
     policy: policySnapshot,
-    agentPrompts: buildAgentPromptPair(policySnapshot),
+    agentPrompts: buildAgentPromptPair(
+      policySnapshot,
+      config.problemCategory,
+    ),
     config: { ...config },
     conversations: [],
     status: "running",

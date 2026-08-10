@@ -18,8 +18,16 @@ export async function runProblem(args: {
 }): Promise<ProblemConversation> {
   const { problem, policy, config, client, signal, callbacks } = args;
 
-  const agentA = buildAgentDefinition("agent_a", policy);
-  const agentB = buildAgentDefinition("agent_b", policy);
+  const agentA = buildAgentDefinition(
+    "agent_a",
+    policy,
+    problem.category,
+  );
+  const agentB = buildAgentDefinition(
+    "agent_b",
+    policy,
+    problem.category,
+  );
 
   const result = await runInteractionLoop({
     problem,

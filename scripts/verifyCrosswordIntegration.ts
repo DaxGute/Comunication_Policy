@@ -31,6 +31,14 @@ async function runCategory(category: ProblemCategory) {
   console.log("stopped:", conv?.stoppedReason);
   console.log("label:", problemEval?.label);
   console.log("score:", problemEval?.score);
+  if (problemEval?.details?.grader === "moral_open_ended") {
+    console.log("stanceReached:", problemEval.details.stanceReached);
+    console.log(
+      "exploredTensionSignals:",
+      problemEval.details.exploredTensionSignals,
+    );
+    console.log("hasGoldAnswer:", problemEval.details.hasGoldAnswer);
+  }
   if (problemEval?.details?.grader === "crossword") {
     console.log("letterAccuracy:", problemEval.details.letterAccuracy);
     console.log("wordAccuracy:", problemEval.details.wordAccuracy);
@@ -53,7 +61,10 @@ async function runCategory(category: ProblemCategory) {
 function verifyPromptLeak() {
   const puzzle = getCrosswordBenchPuzzles()[0];
   const text = formatCrosswordProblemText(puzzle);
-  const prompts = buildAgentPromptPair(DEFAULT_COMMUNICATION_POLICY);
+  const prompts = buildAgentPromptPair(
+    DEFAULT_COMMUNICATION_POLICY,
+    "crossword",
+  );
   for (const clue of puzzle.clues) {
     if (text.includes(clue.answer)) {
       throw new Error(`agent problem text leaked ${clue.answer}`);

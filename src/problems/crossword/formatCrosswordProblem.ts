@@ -19,6 +19,34 @@ function formatGridBlock(grid: string[]): string {
 }
 
 /**
+ * Every Across/Down letter pair that occupies the same cell.
+ * Agent-facing only — no gold letters.
+ */
+function formatCrossingLines(clues: CrosswordClue[]): string[] {
+  const across = clues.filter((c) => c.direction === "across");
+  const down = clues.filter((c) => c.direction === "down");
+  const lines: string[] = [];
+
+  for (const a of across) {
+    for (let ai = 0; ai < a.length; ai++) {
+      const row = a.row;
+      const col = a.col + ai;
+      for (const d of down) {
+        for (let di = 0; di < d.length; di++) {
+          if (d.row + di === row && d.col === col) {
+            lines.push(
+              `- Across ${a.number} letter ${ai + 1} = Down ${d.number} letter ${di + 1} (row ${row + 1}, col ${col + 1})`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
+/**
  * Agent-facing serialization of a complete crossword.
  * Gold answers / solution letters are intentionally omitted.
  */
@@ -29,15 +57,16 @@ export function formatCrosswordProblemText(puzzle: CrosswordPuzzle): string {
   const down = puzzle.clues
     .filter((c) => c.direction === "down")
     .sort((a, b) => a.number - b.number);
+  const crossings = formatCrossingLines(puzzle.clues);
 
   return [
     "CROSSWORD",
     "",
-    "Grid:",
+    "Grid (1-indexed rows and columns):",
     formatGridBlock(puzzle.grid),
     "",
-    '"." = unknown letter',
-    '"#" = blocked square',
+    '"." = empty cell that needs a letter',
+    '"#" = blocked square (no letter)',
     "",
     "ACROSS",
     ...across.map(formatClueLine),
@@ -45,14 +74,30 @@ export function formatCrosswordProblemText(puzzle: CrosswordPuzzle): string {
     "DOWN",
     ...down.map(formatClueLine),
     "",
+    "CROSSINGS (shared cells — these letters MUST match):",
+    ...(crossings.length > 0
+      ? crossings
+      : ["- (no across/down overlaps in this grid)"]),
+    "",
     "Your goal is to collaboratively solve the ENTIRE crossword.",
     "",
-    "Use crossing letters and other clues to test tentative answers. You may revise earlier guesses.",
-    "When communicating with the other agent, discuss useful candidate fills, conflicts, crossings, uncertainty, and revisions rather than treating each clue as an isolated question.",
-    "You are not required to solve clues in number order.",
+    "## Hard placement rules",
+    "Answers that break these rules cannot sit on the grid together:",
+    "1. Exact length — each answer must have exactly the stated letter count (no shorter, no longer).",
+    "2. Spatial overlap — every CROSSINGS line above is a shared cell. The Across letter and the Down letter at that cell must be identical.",
+    "3. Consistency — before locking in FINAL_ANSWER, walk the crossings list and confirm every shared letter agrees. If two candidates disagree at a crossing, at least one is wrong; revise it.",
+    "4. Full cover — assign every Across and Down clue. Partial lists leave holes.",
+    "",
+    "How to check a candidate fill:",
+    "- Across N starts at its [row, col] and runs right for N's length.",
+    "- Down M starts at its [row, col] and runs down for M's length.",
+    "- Where those paths share a cell (listed under CROSSINGS), both answers must put the same letter there.",
+    "",
+    "Discuss candidates, crossings, conflicts, and revisions with your partner. Do not treat clues as isolated trivia.",
+    "You are not required to solve clues in number order; often solving a crossing pair together is better.",
     "",
     "Do not emit a complete solution on every turn. Keep turns in natural language while you explore.",
-    "FINAL_ANSWER ends the interaction immediately — only emit it once the full grid is locked in and you need no further partner review.",
+    "FINAL_ANSWER ends the interaction immediately — only emit it once every clue is filled, every length matches, every crossing agrees, and you need no further partner review.",
     "When ready, report clue assignments as:",
     "",
     "FINAL_ANSWER:",
@@ -65,7 +110,7 @@ export function formatCrosswordProblemText(puzzle: CrosswordPuzzle): string {
     "2: ANSWER",
     "...",
     "",
-    "Use letters only in each answer (spaces and punctuation will be ignored). Match each clue's stated length.",
+    "Use letters only in each answer (spaces and punctuation will be ignored).",
   ].join("\n");
 }
 

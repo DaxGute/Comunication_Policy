@@ -1,55 +1,30 @@
-import type { TheoremQaItem } from "./types";
+import type { ProofSolverItem } from "./types";
 
 /**
- * Build the shared problem text agents see for a theorem-driven proof/QA item.
- * Gold answer is intentionally omitted from the prompt.
+ * Build the shared problem text agents see for a collaborative proof task.
+ * The reference proof is intentionally omitted from the prompt.
  */
-export function formatProofProblemText(item: TheoremQaItem): string {
-  const theoremLine = item.theorem
-    ? `Relevant theorem / concept: ${item.theorem}`
-    : "Derive the result carefully from first principles or a named theorem.";
-
+export function formatProofProblemText(item: ProofSolverItem): string {
   return [
-    "Solve this theorem-driven problem together.",
-    "Provide a short joint proof / derivation, then a final answer.",
+    "Conduct this proof together.",
+    "You are co-authors: propose definitions, lemmas, strategies, and checks across turns.",
+    "Build one shared rigorous proof — do not each write a separate complete proof in isolation.",
     "",
-    `Field: ${item.field}${item.subfield ? ` / ${item.subfield}` : ""}`,
-    theoremLine,
-    "",
-    "Problem:",
+    "Statement to prove:",
     item.question,
     "",
-    "Discuss the reasoning, check edge cases, and converge.",
-    "FINAL_ANSWER ends the interaction immediately — only emit it once the result is locked in and you need no further partner review.",
-    "When ready, report the final result as:",
-    "FINAL_ANSWER: <answer>",
-    "",
-    answerFormatHint(item.answerType),
+    "Work the argument jointly: surface gaps, challenge unjustified steps, and converge on a single write-up.",
+    "FINAL_ANSWER ends the interaction immediately — only emit it once the joint proof is locked in and you need no further partner review.",
+    "When ready, report the finished proof as a multi-line block:",
+    "FINAL_ANSWER:",
+    "<full joint proof>",
   ].join("\n");
 }
 
-export function formatProofTitle(item: TheoremQaItem): string {
-  const label = item.theorem || item.subfield || item.field;
+export function formatProofTitle(item: ProofSolverItem): string {
   const short =
-    label.length > 40 ? `${label.slice(0, 37).trimEnd()}…` : label;
+    item.titleHint.length > 48
+      ? `${item.titleHint.slice(0, 45).trimEnd()}…`
+      : item.titleHint;
   return `Proof — ${short}`;
-}
-
-function answerFormatHint(answerType: string): string {
-  switch (answerType) {
-    case "integer":
-      return "Expected answer form: an integer.";
-    case "float":
-      return "Expected answer form: a number (integer or decimal).";
-    case "bool":
-      return "Expected answer form: true or false.";
-    case "list of integer":
-      return "Expected answer form: a list of integers, e.g. [0, 1, 2].";
-    case "list of float":
-      return "Expected answer form: a list of numbers, e.g. [1.0, 2.5].";
-    case "option":
-      return "Expected answer form: the chosen option (letter or option text).";
-    default:
-      return `Expected answer form: ${answerType}.`;
-  }
 }
