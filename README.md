@@ -56,9 +56,25 @@ Domain logic lives outside React components:
 | `src/agents/` | Minimal agent definitions + prompt assembly |
 | `src/runtime/` | Model client + alternating interaction loop |
 | `src/problems/` | Category registry (crossword, moral, proof) |
-| `src/evaluation/` | Extensible per-category evaluators |
+| `src/evaluation/` | Task graders + post-hoc multi-agent evaluation (MARBLE + belief dynamics) |
 | `src/experiment/` | Current config vs immutable completed runs |
 | `src/components/` | Four-pane experiment browser UI |
+
+## Post-hoc multi-agent evaluation
+
+After a conversation completes, the Conversation Inspector shows a **Multi-Agent Evaluation** panel above the transcript. Evaluation is manual (never auto-runs) and keeps coordination/belief layers separate from the existing task graders on `ExperimentRun.evaluation`:
+
+1. **MultiAgentBench / MARBLE** — official Graph `evaluate_communication` / `evaluate_planning` / `evaluate_kpi` via a pinned MARBLE checkout (post-hoc; does not re-orchestrate agents)
+2. **Belief Dynamics** — trajectory claim/event extraction + deterministic aggregate rates
+
+```bash
+npm run test:belief-grader
+npm run test:marble-posthoc          # import / adapter smoke
+npm run test:marble-posthoc -- --live  # calls MARBLE evaluator (needs OPENAI_API_KEY + MARBLE_ROOT)
+```
+
+Set `MARBLE_ROOT` (and optionally `MARBLE_PYTHON`) if the default sibling `Summer_CESTA/deps/MARBLE` path is unavailable.
+
 
 ## Datasets
 

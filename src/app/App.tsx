@@ -39,6 +39,9 @@ export default function App() {
           selectedRun={store.selectedRun}
           onSelectRun={store.selectRun}
           onDeleteRun={store.deleteRun}
+          evaluationUi={store.evaluationUi}
+          onRunEvaluation={store.runConversationEvaluation}
+          onRunAllEvaluations={store.runAllConversationEvaluations}
         />
       }
     />

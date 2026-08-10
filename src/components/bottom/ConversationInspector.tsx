@@ -1,17 +1,34 @@
 import { useEffect, useState } from "react";
 import { formatPolicyValue } from "../../communication";
-import type { ProblemEvaluation } from "../../evaluation/types";
+import type {
+  MultiAgentEvaluation,
+  ProblemEvaluation,
+} from "../../evaluation/types";
+import type { EvaluationUiState } from "../../experiment/store";
 import { serializeConversation } from "../../experiment/serializeConversation";
 import type { ExperimentRun, ProblemConversation, ConversationMessage } from "../../experiment/types";
 import type { CrosswordSpec } from "../../problems/crossword/types";
 import { getProblemById } from "../../problems/registry";
+import { AVAILABLE_MODELS, OPENAI_MODEL_ID } from "../../runtime/models";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
+import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
 
 type Props = {
   runs: ExperimentRun[];
   selectedRun?: ExperimentRun;
   onSelectRun: (runId: string) => void;
   onDeleteRun: (runId: string) => void;
+  evaluationUi?: EvaluationUiState;
+  onRunEvaluation: (options: {
+    runId: string;
+    problemId: string;
+    evaluatorModel: string;
+    retryFrom?: MultiAgentEvaluation;
+  }) => Promise<unknown>;
+  onRunAllEvaluations: (options: {
+    runId: string;
+    evaluatorModel: string;
+  }) => Promise<unknown>;
 };
 
 /** Prefer finishedAt; else last message time; else createdAt. */
@@ -56,6 +73,31 @@ function runMetaLine(run: ExperimentRun): string {
 function formatPct(value: unknown): string | undefined {
   if (typeof value !== "number" || Number.isNaN(value)) return undefined;
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatPctSd(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function numericValues(values: Array<number | null | undefined>): number[] {
+  return values.filter(
+    (v): v is number => typeof v === "number" && !Number.isNaN(v),
+  );
+}
+
+/** Sample mean and standard deviation (n−1). SD is null when n < 2. */
+function meanSd(values: Array<number | null | undefined>): {
+  mean: number | null;
+  sd: number | null;
+} {
+  const nums = numericValues(values);
+  if (nums.length === 0) return { mean: null, sd: null };
+  const mean = nums.reduce((sum, v) => sum + v, 0) / nums.length;
+  if (nums.length < 2) return { mean, sd: null };
+  const variance =
+    nums.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (nums.length - 1);
+  return { mean, sd: Math.sqrt(variance) };
 }
 
 function formatDuration(ms: number): string {
@@ -113,6 +155,9 @@ export function ConversationInspector({
   selectedRun,
   onSelectRun,
   onDeleteRun,
+  evaluationUi,
+  onRunEvaluation,
+  onRunAllEvaluations,
 }: Props) {
   return (
     <div className="conversation-inspector">
@@ -188,6 +233,8 @@ export function ConversationInspector({
                   conversation={conversation}
                   run={selectedRun}
                   evaluation={evaluation}
+                  evaluationUi={evaluationUi}
+                  onRunEvaluation={onRunEvaluation}
                   crossword={
                     selectedRun.config.problemCategory === "crossword"
                       ? getProblemById(
@@ -230,24 +277,25 @@ export function ConversationInspector({
                     : " before any problem finished."}
                 </p>
                 {selectedRun.evaluation ? (
-                  <EvaluationSummary evaluation={selectedRun.evaluation} />
+                  <EvaluationSummary run={selectedRun} />
                 ) : (
                   <p className="muted">No completed problems to evaluate.</p>
                 )}
               </>
             ) : selectedRun.evaluation ? (
-              <EvaluationSummary evaluation={selectedRun.evaluation} />
+              <EvaluationSummary run={selectedRun} />
             ) : (
               <p className="muted empty-state">
                 Select a completed run to inspect results.
               </p>
             )}
-            <details className="snapshot-details">
-              <summary>Snapshotted prompts</summary>
-              <pre className="prompt-block__body">
-                {JSON.stringify(selectedRun.agentPrompts, null, 2)}
-              </pre>
-            </details>
+            {selectedRun.conversations.length > 0 ? (
+              <RunResultsMultiAgentEval
+                run={selectedRun}
+                evaluationUi={evaluationUi}
+                onRunAllEvaluations={onRunAllEvaluations}
+              />
+            ) : null}
           </div>
         )}
       </aside>
@@ -259,11 +307,15 @@ function TranscriptView({
   conversation,
   run,
   evaluation,
+  evaluationUi,
+  onRunEvaluation,
   crossword,
 }: {
   conversation: ProblemConversation;
   run: ExperimentRun;
   evaluation?: ProblemEvaluation;
+  evaluationUi?: Props["evaluationUi"];
+  onRunEvaluation: Props["onRunEvaluation"];
   crossword?: CrosswordSpec;
 }) {
   const [copied, setCopied] = useState(false);
@@ -394,6 +446,13 @@ function TranscriptView({
           <ProblemResultDetails evaluation={evaluation} />
         ) : null}
       </header>
+
+      <MultiAgentEvaluationPanel
+        run={run}
+        conversation={conversation}
+        evaluationUi={evaluationUi}
+        onRunEvaluation={onRunEvaluation}
+      />
 
       <ol className="transcript__messages">
         {conversation.messages.map((message) => {
@@ -619,8 +678,10 @@ function ProblemResultDetails({
 
 function RunSpecView({ run }: { run: ExperimentRun }) {
   const { config, policy } = run;
+
   return (
-    <div className="results-spec">
+    <details className="results-spec">
+      <summary>Run settings</summary>
       <dl className="results-summary">
         <div>
           <dt>Problem</dt>
@@ -663,23 +724,524 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
           <dd className="mono">{formatPolicyValue(policy.familiarity)}</dd>
         </div>
       </dl>
+    </details>
+  );
+}
+
+function formatMaePct(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function formatMaeScore5(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return `${value.toFixed(1)}/5`;
+}
+
+function formatMaeMean(value: number | null, digits = 1): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return value.toFixed(digits);
+}
+
+function formatMaeScore5Sd(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return "—";
+  return value.toFixed(1);
+}
+
+function MetricTable({
+  rows,
+  footer,
+}: {
+  rows: Array<{ label: string; mean: string; sd: string }>;
+  footer?: Array<{ label: string; mean: string; sd?: string }>;
+}) {
+  return (
+    <div className="results-metric-table mono">
+      <div className="results-metric-table__head muted">
+        <span />
+        <span>mean</span>
+        <span>sd</span>
+      </div>
+      {rows.map((row) => (
+        <div key={row.label} className="results-metric-table__row">
+          <span className="results-metric-table__label">{row.label}</span>
+          <span>{row.mean}</span>
+          <span>{row.sd}</span>
+        </div>
+      ))}
+      {footer && footer.length > 0 ? (
+        <div className="results-metric-table__footer">
+          {footer.map((row) => (
+            <div key={row.label} className="results-metric-table__row">
+              <span className="results-metric-table__label">{row.label}</span>
+              <span>{row.mean}</span>
+              <span>{row.sd ?? "—"}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function EvaluationSummary({
-  evaluation,
+function latestEvalsByProblem(run: ExperimentRun): MultiAgentEvaluation[] {
+  const byProblem = new Map<string, MultiAgentEvaluation>();
+  for (const evaluation of run.multiAgentEvaluations ?? []) {
+    if (!run.conversations.some((c) => c.problemId === evaluation.problemId)) {
+      continue;
+    }
+    const prev = byProblem.get(evaluation.problemId);
+    if (!prev || evaluation.createdAt > prev.createdAt) {
+      byProblem.set(evaluation.problemId, evaluation);
+    }
+  }
+  return [...byProblem.values()];
+}
+
+function RunResultsMultiAgentEval({
+  run,
+  evaluationUi,
+  onRunAllEvaluations,
 }: {
-  evaluation: NonNullable<ExperimentRun["evaluation"]>;
+  run: ExperimentRun;
+  evaluationUi?: EvaluationUiState;
+  onRunAllEvaluations: Props["onRunAllEvaluations"];
+}) {
+  const [evaluatorModel, setEvaluatorModel] = useState(
+    run.config.provider === "openai" ? run.config.model : OPENAI_MODEL_ID,
+  );
+  const isBatchRunning =
+    evaluationUi?.status === "running" &&
+    evaluationUi.runId === run.id &&
+    Boolean(evaluationUi.batch);
+  const isAnyEvalRunning =
+    evaluationUi?.status === "running" && evaluationUi.runId === run.id;
+  const canEvaluate =
+    (run.status === "completed" ||
+      run.status === "cancelled" ||
+      run.status === "failed") &&
+    !isAnyEvalRunning;
+  const total = run.conversations.length;
+  const evals = latestEvalsByProblem(run);
+  const evaluatedCount = evals.length;
+  const currentProblem =
+    isBatchRunning && evaluationUi?.problemId
+      ? run.conversations.find((c) => c.problemId === evaluationUi.problemId)
+      : undefined;
+
+  const marbleEvals = evals
+    .map((e) => e.marble?.normalized)
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+  const beliefEvals = evals
+    .map((e) => e.beliefDynamics?.normalized.metrics)
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+
+  const communication = meanSd(marbleEvals.map((m) => m.communicationScore));
+  const planning = meanSd(marbleEvals.map((m) => m.planningScore));
+  const coordination = meanSd(marbleEvals.map((m) => m.coordinationScore));
+  const correction = meanSd(beliefEvals.map((m) => m.errorCorrectionRate));
+  const reinforcement = meanSd(
+    beliefEvals.map((m) => m.errorReinforcementRate),
+  );
+  const challenge = meanSd(beliefEvals.map((m) => m.challengeRate));
+  const successfulChallenge = meanSd(
+    beliefEvals.map((m) => m.successfulChallengeRate),
+  );
+  const critique = meanSd(beliefEvals.map((m) => m.independentCritiqueRate));
+  const deference = meanSd(beliefEvals.map((m) => m.deferenceRate));
+  const claims = meanSd(beliefEvals.map((m) => m.claimsIntroduced));
+  const incorrect = meanSd(beliefEvals.map((m) => m.incorrectClaims));
+
+  const rows: Array<{ label: string; mean: string; sd: string }> = [];
+  if (marbleEvals.length > 0) {
+    rows.push(
+      {
+        label: "Communication",
+        mean: formatMaeScore5(communication.mean),
+        sd: formatMaeScore5Sd(communication.sd),
+      },
+      {
+        label: "Planning",
+        mean: formatMaeScore5(planning.mean),
+        sd: formatMaeScore5Sd(planning.sd),
+      },
+      {
+        label: "Coordination",
+        mean: formatMaeScore5(coordination.mean),
+        sd: formatMaeScore5Sd(coordination.sd),
+      },
+    );
+  }
+  if (beliefEvals.length > 0) {
+    rows.push(
+      {
+        label: "Claims",
+        mean: formatMaeMean(claims.mean, 1),
+        sd: formatMaeMean(claims.sd, 1),
+      },
+      {
+        label: "Incorrect",
+        mean: formatMaeMean(incorrect.mean, 1),
+        sd: formatMaeMean(incorrect.sd, 1),
+      },
+      {
+        label: "Correction",
+        mean: formatMaePct(correction.mean),
+        sd: formatMaePct(correction.sd),
+      },
+      {
+        label: "Reinforcement",
+        mean: formatMaePct(reinforcement.mean),
+        sd: formatMaePct(reinforcement.sd),
+      },
+      {
+        label: "Challenge",
+        mean: formatMaePct(challenge.mean),
+        sd: formatMaePct(challenge.sd),
+      },
+      {
+        label: "Successful challenge",
+        mean: formatMaePct(successfulChallenge.mean),
+        sd: formatMaePct(successfulChallenge.sd),
+      },
+      {
+        label: "Critique",
+        mean: formatMaePct(critique.mean),
+        sd: formatMaePct(critique.sd),
+      },
+      {
+        label: "Deference",
+        mean: formatMaePct(deference.mean),
+        sd: formatMaePct(deference.sd),
+      },
+    );
+  }
+
+  return (
+    <div className="results-mae">
+      <div className="results-mae__bar">
+        <span className="results-mae__title">Multi-agent eval</span>
+        {!isBatchRunning ? (
+          <>
+            <select
+              className="results-mae__model"
+              value={evaluatorModel}
+              onChange={(e) => setEvaluatorModel(e.target.value)}
+              disabled={!canEvaluate}
+              aria-label="Evaluator model"
+            >
+              {AVAILABLE_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="results-mae__run"
+              disabled={!canEvaluate}
+              onClick={() => {
+                void onRunAllEvaluations({
+                  runId: run.id,
+                  evaluatorModel,
+                });
+              }}
+            >
+              Run all
+            </button>
+          </>
+        ) : (
+          <span className="muted results-mae__status">
+            {(evaluationUi?.batch?.currentIndex ?? 0) + 1}/
+            {evaluationUi?.batch?.total ?? total}
+            {currentProblem?.problemTitle
+              ? ` · ${currentProblem.problemTitle}`
+              : ""}
+          </span>
+        )}
+        {!isBatchRunning && evaluatedCount > 0 ? (
+          <span className="muted results-mae__status">
+            {evaluatedCount}/{total} avg
+          </span>
+        ) : null}
+      </div>
+
+      {rows.length > 0 ? (
+        <MetricTable rows={rows} />
+      ) : !isBatchRunning ? (
+        <p className="muted results-mae__empty">No evaluations yet.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function runTotals(run: ExperimentRun): {
+  totalDurationMs: number;
+  totalTokens: number;
+  hasDuration: boolean;
+  hasTokens: boolean;
+  durationSdMs: number | null;
+  tokensSd: number | null;
+} {
+  const durations: number[] = [];
+  const tokens: number[] = [];
+  for (const conversation of run.conversations) {
+    const part = conversationTotals(conversation.messages);
+    if (part.hasDuration) durations.push(part.totalDurationMs);
+    if (part.hasTokens) tokens.push(part.totalTokens);
+  }
+  const durationStats = meanSd(durations);
+  const tokenStats = meanSd(tokens);
+  return {
+    totalDurationMs: durations.reduce((sum, v) => sum + v, 0),
+    totalTokens: tokens.reduce((sum, v) => sum + v, 0),
+    hasDuration: durations.length > 0,
+    hasTokens: tokens.length > 0,
+    durationSdMs: durationStats.sd,
+    tokensSd: tokenStats.sd,
+  };
+}
+
+function MetricsBlock({
+  rows,
+  totalDurationMs,
+  totalTokens,
+  hasDuration,
+  hasTokens,
+  durationSdMs,
+  tokensSd,
+}: {
+  rows: Array<{ label: string; mean: string; sd: string }>;
+  totalDurationMs: number;
+  totalTokens: number;
+  hasDuration: boolean;
+  hasTokens: boolean;
+  durationSdMs: number | null;
+  tokensSd: number | null;
 }) {
   return (
-    <dl className="results-summary">
-      {Object.entries(evaluation.summary).map(([key, value]) => (
-        <div key={key}>
-          <dt>{key}</dt>
-          <dd className="mono">{String(value)}</dd>
-        </div>
-      ))}
-    </dl>
+    <MetricTable
+      rows={rows}
+      footer={[
+        {
+          label: "Total time",
+          mean: hasDuration ? formatDuration(totalDurationMs) : "—",
+          sd: durationSdMs !== null ? formatDuration(durationSdMs) : "—",
+        },
+        {
+          label: "Total tokens",
+          mean: hasTokens ? formatTokenCount(totalTokens) : "—",
+          sd: tokensSd !== null ? formatTokenCount(tokensSd) : "—",
+        },
+      ]}
+    />
+  );
+}
+
+function EvaluationSummary({ run }: { run: ExperimentRun }) {
+  const evaluation = run.evaluation;
+  if (!evaluation) return null;
+
+  const {
+    totalDurationMs,
+    totalTokens,
+    hasDuration,
+    hasTokens,
+    durationSdMs,
+    tokensSd,
+  } = runTotals(run);
+  const crosswordProblems = evaluation.problems.filter(
+    (p) => p.details?.grader === "crossword",
+  );
+
+  if (crosswordProblems.length > 0) {
+    const letter = meanSd(
+      crosswordProblems.map((p) =>
+        typeof p.details?.letterAccuracy === "number"
+          ? p.details.letterAccuracy
+          : null,
+      ),
+    );
+    const word = meanSd(
+      crosswordProblems.map((p) =>
+        typeof p.details?.wordAccuracy === "number"
+          ? p.details.wordAccuracy
+          : null,
+      ),
+    );
+    const completion = meanSd(
+      crosswordProblems.map((p) =>
+        typeof p.details?.completion === "number" ? p.details.completion : null,
+      ),
+    );
+    const crossing = meanSd(
+      crosswordProblems.map((p) =>
+        typeof p.details?.crossingConsistency === "number"
+          ? p.details.crossingConsistency
+          : null,
+      ),
+    );
+
+    return (
+      <MetricsBlock
+        rows={[
+          {
+            label: "Letter accuracy",
+            mean: formatPct(letter.mean) ?? "—",
+            sd: formatPctSd(letter.sd),
+          },
+          {
+            label: "Word accuracy",
+            mean: formatPct(word.mean) ?? "—",
+            sd: formatPctSd(word.sd),
+          },
+          {
+            label: "Completion",
+            mean: formatPct(completion.mean) ?? "—",
+            sd: formatPctSd(completion.sd),
+          },
+          {
+            label: "Crossing consistency",
+            mean: formatPct(crossing.mean) ?? "n/a",
+            sd: formatPctSd(crossing.sd),
+          },
+        ]}
+        totalDurationMs={totalDurationMs}
+        totalTokens={totalTokens}
+        hasDuration={hasDuration}
+        hasTokens={hasTokens}
+        durationSdMs={durationSdMs}
+        tokensSd={tokensSd}
+      />
+    );
+  }
+
+  const moralProblems = evaluation.problems.filter(
+    (p) => p.details?.grader === "moral_open_ended",
+  );
+  if (moralProblems.length > 0) {
+    const stance = meanSd(
+      moralProblems.map((p) => (p.details?.stanceReached === true ? 1 : 0)),
+    );
+    const tension = meanSd(
+      moralProblems.map((p) =>
+        typeof p.details?.exploredTensionSignals === "number"
+          ? p.details.exploredTensionSignals
+          : null,
+      ),
+    );
+    return (
+      <MetricsBlock
+        rows={[
+          {
+            label: "Stance rate",
+            mean: formatPct(stance.mean) ?? "—",
+            sd: formatPctSd(stance.sd),
+          },
+          {
+            label: "Stances reached",
+            mean: String(
+              moralProblems.filter((p) => p.details?.stanceReached === true)
+                .length,
+            ),
+            sd: "—",
+          },
+          {
+            label: "Mean tension signals",
+            mean:
+              tension.mean !== null
+                ? String(Number(tension.mean.toFixed(2)))
+                : "—",
+            sd:
+              tension.sd !== null
+                ? String(Number(tension.sd.toFixed(2)))
+                : "—",
+          },
+        ]}
+        totalDurationMs={totalDurationMs}
+        totalTokens={totalTokens}
+        hasDuration={hasDuration}
+        hasTokens={hasTokens}
+        durationSdMs={durationSdMs}
+        tokensSd={tokensSd}
+      />
+    );
+  }
+
+  const proofProblems = evaluation.problems.filter(
+    (p) =>
+      p.details?.grader === "proof_collaborative" ||
+      p.details?.grader === "proof",
+  );
+  if (proofProblems.length > 0) {
+    const submit = meanSd(
+      proofProblems.map((p) => (p.label === "proof_submitted" ? 1 : 0)),
+    );
+    return (
+      <MetricsBlock
+        rows={[
+          {
+            label: "Proof submit rate",
+            mean: formatPct(submit.mean) ?? "—",
+            sd: formatPctSd(submit.sd),
+          },
+          {
+            label: "Proofs submitted",
+            mean: String(
+              proofProblems.filter((p) => p.label === "proof_submitted").length,
+            ),
+            sd: "—",
+          },
+        ]}
+        totalDurationMs={totalDurationMs}
+        totalTokens={totalTokens}
+        hasDuration={hasDuration}
+        hasTokens={hasTokens}
+        durationSdMs={durationSdMs}
+        tokensSd={tokensSd}
+      />
+    );
+  }
+
+  const scores = meanSd(
+    evaluation.problems.map((p) =>
+      typeof p.score === "number" ? p.score : null,
+    ),
+  );
+  const turns = meanSd(evaluation.problems.map((p) => p.turns));
+
+  return (
+    <MetricsBlock
+      rows={[
+        {
+          label: "Score",
+          mean:
+            scores.mean !== null
+              ? (formatPct(scores.mean) ?? String(scores.mean))
+              : "—",
+          sd:
+            scores.sd !== null
+              ? (formatPct(scores.sd) ?? String(Number(scores.sd.toFixed(2))))
+              : "—",
+        },
+        {
+          label: "Problems completed",
+          mean: String(evaluation.problems.length),
+          sd: "—",
+        },
+        {
+          label: "Average turns",
+          mean:
+            turns.mean !== null ? String(Number(turns.mean.toFixed(2))) : "—",
+          sd: turns.sd !== null ? String(Number(turns.sd.toFixed(2))) : "—",
+        },
+      ]}
+      totalDurationMs={totalDurationMs}
+      totalTokens={totalTokens}
+      hasDuration={hasDuration}
+      hasTokens={hasTokens}
+      durationSdMs={durationSdMs}
+      tokensSd={tokensSd}
+    />
   );
 }

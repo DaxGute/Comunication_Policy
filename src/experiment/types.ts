@@ -1,6 +1,9 @@
 import type { AgentId, AgentPromptPair } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
-import type { EvaluationResult } from "../evaluation/types";
+import type {
+  EvaluationResult,
+  MultiAgentEvaluation,
+} from "../evaluation/types";
 import type { ProblemCategory } from "../problems/types";
 
 /** Token counts returned by the model provider for one turn. */
@@ -53,6 +56,11 @@ export type ExperimentRun = {
   config: RunConfig;
   conversations: ProblemConversation[];
   evaluation?: EvaluationResult;
+  /**
+   * Post-hoc multi-agent evaluations. At most one record per conversation
+   * (problemId); reruns replace the previous evaluation.
+   */
+  multiAgentEvaluations?: MultiAgentEvaluation[];
   status: "running" | "completed" | "failed" | "cancelled";
   error?: string;
 };

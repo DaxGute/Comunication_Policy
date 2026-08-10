@@ -1,6 +1,7 @@
 /**
  * Smoke-test: prove ModelClient.generate() reaches a real OpenAI response
- * via the same /api/generate proxy contract the browser uses.
+ * via the same /api/generate proxy contract the browser uses — for every
+ * model offered in the workbench picker.
  *
  * Usage:
  *   OPENAI_API_KEY=... npm run smoke:openai
@@ -15,7 +16,10 @@ import {
   isGenerateApiPath,
 } from "../server/generateApi.ts";
 import { createModelClient } from "../src/runtime/modelClient.ts";
-import { OPENAI_MODEL_ID } from "../src/runtime/models.ts";
+import {
+  modelSupportsCustomTemperature,
+  OPENAI_MODELS,
+} from "../src/runtime/models.ts";
 
 function loadEnvLocal(): void {
   const path = resolve(process.cwd(), ".env.local");
@@ -71,36 +75,51 @@ async function main(): Promise<void> {
   const generateUrl = `http://127.0.0.1:${address.port}/api/generate`;
   const client = createModelClient({ generateUrl });
 
+  const failures: string[] = [];
   try {
-    const response = await client.generate({
-      model: OPENAI_MODEL_ID,
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: "Respond with exactly: MODEL_CONNECTED",
-        },
-      ],
-    });
+    for (const { id } of OPENAI_MODELS) {
+      // Match the app: always send a configured temperature. The proxy must
+      // omit it for GPT-5 / reasoning models so OpenAI does not 400.
+      const temperature = modelSupportsCustomTemperature(id) ? 0.4 : 0;
+      try {
+        const response = await client.generate({
+          model: id,
+          temperature,
+          messages: [
+            {
+              role: "user",
+              content: "Respond with exactly: MODEL_CONNECTED",
+            },
+          ],
+        });
 
-    if (!response.content || response.content.trim() === "") {
-      throw new Error("ModelClient.generate() returned empty content.");
+        if (!response.content || response.content.trim() === "") {
+          throw new Error("empty content");
+        }
+        if (response.provider !== "openai") {
+          throw new Error(`provider=${String(response.provider)}`);
+        }
+        console.log(`OK  ${id}  ${JSON.stringify(response.content.slice(0, 60))}`);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        failures.push(`${id}: ${detail}`);
+        console.error(`FAIL  ${id}  ${detail}`);
+      }
     }
-    if (response.provider !== "openai") {
-      throw new Error(
-        `Expected provider "openai", got ${String(response.provider)}.`,
-      );
-    }
-
-    console.log("smoke:openai OK");
-    console.log(`model=${OPENAI_MODEL_ID}`);
-    console.log(`provider=${response.provider}`);
-    console.log(`content=${JSON.stringify(response.content)}`);
   } finally {
     await new Promise<void>((resolveClose, rejectClose) => {
       server.close((err) => (err ? rejectClose(err) : resolveClose()));
     });
   }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length}/${OPENAI_MODELS.length} models failed:\n` +
+        failures.map((f) => `  - ${f}`).join("\n"),
+    );
+  }
+
+  console.log(`smoke:openai OK (${OPENAI_MODELS.length} models)`);
 }
 
 main().catch((error) => {

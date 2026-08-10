@@ -3,12 +3,21 @@ import {
   handleGenerateApiRequest,
   isGenerateApiPath,
 } from "./server/generateApi.ts";
+import {
+  isMarbleEvaluateApiPath,
+  safeHandleMarbleEvaluateApiRequest,
+} from "./server/marbleEvaluateApi.ts";
 
 function attachGenerateApi(
   server: ViteDevServer | PreviewServer,
   getApiKey: () => string | undefined,
 ): void {
   server.middlewares.use((req, res, next) => {
+    if (isMarbleEvaluateApiPath(req.url)) {
+      void safeHandleMarbleEvaluateApiRequest(req, res, getApiKey());
+      return;
+    }
+
     if (!isGenerateApiPath(req.url)) {
       next();
       return;

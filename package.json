@@ -16,6 +16,9 @@
     "test:crossword-grader": "vite-node scripts/testCrosswordGrader.ts",
     "test:moral-grader": "vite-node scripts/testMoralGrader.ts",
     "test:proof-grader": "vite-node scripts/testProofGrader.ts",
+    "test:belief-grader": "vite-node scripts/testBeliefGrader.ts",
+    "test:marble-posthoc": "vite-node scripts/testMarblePosthoc.ts",
+    "test:eval-isolation": "vite-node scripts/testEvalIsolation.ts",
     "verify:crossword": "vite-node scripts/verifyCrosswordIntegration.ts",
     "verify:crossword-live": "vite-node scripts/verifyCrosswordLive.ts"
   },

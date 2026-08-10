@@ -1,5 +1,9 @@
 import { createCommunicationPolicy } from "../communication/policy";
-import type { EvaluationResult, ProblemEvaluation } from "../evaluation/types";
+import type {
+  EvaluationResult,
+  MultiAgentEvaluation,
+  ProblemEvaluation,
+} from "../evaluation/types";
 import type { ProblemCategory } from "../problems/types";
 import {
   AVAILABLE_MODEL_IDS,
@@ -275,6 +279,26 @@ function parseEvaluation(raw: unknown): EvaluationResult | undefined {
   return { summary, problems };
 }
 
+function parseMultiAgentEvaluation(
+  raw: unknown,
+): MultiAgentEvaluation | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const e = raw as Partial<MultiAgentEvaluation>;
+  if (
+    typeof e.id !== "string" ||
+    typeof e.conversationId !== "string" ||
+    typeof e.problemId !== "string" ||
+    typeof e.runId !== "string" ||
+    typeof e.createdAt !== "string" ||
+    typeof e.evaluatorModel !== "string" ||
+    typeof e.status !== "string"
+  ) {
+    return undefined;
+  }
+  // Trust stored shape; UI/orchestrator own schema evolution via versions.
+  return e as MultiAgentEvaluation;
+}
+
 function parseRun(raw: unknown): ExperimentRun | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const r = raw as Partial<ExperimentRun>;
@@ -308,6 +332,12 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
     finishedAt = finishedAt ?? new Date().toISOString();
   }
 
+  const multiAgentEvaluations = Array.isArray(r.multiAgentEvaluations)
+    ? r.multiAgentEvaluations
+        .map(parseMultiAgentEvaluation)
+        .filter((e): e is MultiAgentEvaluation => Boolean(e))
+    : undefined;
+
   return {
     id: r.id,
     createdAt: r.createdAt,
@@ -317,6 +347,10 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
     config,
     conversations,
     evaluation: parseEvaluation(r.evaluation),
+    multiAgentEvaluations:
+      multiAgentEvaluations && multiAgentEvaluations.length > 0
+        ? multiAgentEvaluations
+        : undefined,
     status,
     error,
   };

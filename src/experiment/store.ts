@@ -3,6 +3,14 @@ import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { AgentId } from "../agents/types";
 import { createCommunicationPolicy } from "../communication/policy";
 import type { CommunicationPolicy } from "../communication/types";
+import {
+  runMultiAgentEvaluation,
+  type OrchestratorProgress,
+} from "../evaluation/orchestrator";
+import type {
+  EvaluationStageState,
+  MultiAgentEvaluation,
+} from "../evaluation/types";
 import { runExperiment } from "../runtime/runExperiment";
 import { createInitialExperimentState, providerForModel } from "./defaults";
 import {
@@ -21,11 +29,29 @@ import type {
   RunProgress,
 } from "./types";
 
+export type EvaluationUiState = {
+  runId: string;
+  problemId: string;
+  evaluationId?: string;
+  evaluatorModel: string;
+  status: "idle" | "running" | "completed" | "failed";
+  stages: EvaluationStageState[];
+  /** In-flight / latest partial evaluation for progressive UI. */
+  partial?: MultiAgentEvaluation;
+  error?: string;
+  /** Present while a run-wide batch evaluation is in progress. */
+  batch?: {
+    currentIndex: number;
+    total: number;
+  };
+};
+
 export type ExperimentStore = {
   state: ExperimentState;
   agentPrompts: { agentA: string; agentB: string };
   selectedRun?: ExperimentRun;
   selectedConversation?: ExperimentRun["conversations"][number];
+  evaluationUi?: EvaluationUiState;
   setPolicy: (partial: Partial<CommunicationPolicy>) => void;
   setRunConfig: (partial: Partial<RunConfig>) => void;
   selectRun: (runId: string | undefined) => void;
@@ -33,14 +59,32 @@ export type ExperimentStore = {
   deleteRun: (runId: string) => void;
   startRun: () => Promise<void>;
   cancelRun: () => void;
+  appendMultiAgentEvaluation: (
+    runId: string,
+    evaluation: MultiAgentEvaluation,
+  ) => void;
+  runConversationEvaluation: (options: {
+    runId: string;
+    problemId: string;
+    evaluatorModel: string;
+    retryFrom?: MultiAgentEvaluation;
+  }) => Promise<MultiAgentEvaluation | undefined>;
+  runAllConversationEvaluations: (options: {
+    runId: string;
+    evaluatorModel: string;
+  }) => Promise<void>;
 };
 
 export function useExperimentStore(): ExperimentStore {
   const [state, setState] = useState<ExperimentState>(() =>
     createInitialExperimentState(loadRunConfig(), loadRuns(), loadSelection()),
   );
+  const [evaluationUi, setEvaluationUi] = useState<EvaluationUiState | undefined>();
   const runningRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const evalAbortRef = useRef<AbortController | null>(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     saveRuns(state.runs);
@@ -264,11 +308,187 @@ export function useExperimentStore(): ExperimentStore {
     abortRef.current?.abort();
   }
 
+  function appendMultiAgentEvaluation(
+    runId: string,
+    evaluation: MultiAgentEvaluation,
+  ) {
+    setState((prev) => ({
+      ...prev,
+      runs: prev.runs.map((run) => {
+        if (run.id !== runId) return run;
+        const existing = run.multiAgentEvaluations ?? [];
+        // Reruns replace the prior evaluation for this conversation.
+        const without = existing.filter(
+          (e) => e.problemId !== evaluation.problemId,
+        );
+        return {
+          ...run,
+          multiAgentEvaluations: [...without, evaluation],
+        };
+      }),
+    }));
+  }
+
+  async function runConversationEvaluation(options: {
+    runId: string;
+    problemId: string;
+    evaluatorModel: string;
+    retryFrom?: MultiAgentEvaluation;
+  }): Promise<MultiAgentEvaluation | undefined> {
+    const run = stateRef.current.runs.find((r) => r.id === options.runId);
+    const conversation = run?.conversations.find(
+      (c) => c.problemId === options.problemId,
+    );
+    if (!run || !conversation) return undefined;
+
+    evalAbortRef.current?.abort();
+    const abortController = new AbortController();
+    evalAbortRef.current = abortController;
+
+    setEvaluationUi({
+      runId: options.runId,
+      problemId: options.problemId,
+      evaluatorModel: options.evaluatorModel,
+      status: "running",
+      stages: [],
+      partial: undefined,
+      error: undefined,
+    });
+
+    const evaluation = await runMultiAgentEvaluation({
+      run,
+      conversation,
+      evaluatorModel: options.evaluatorModel,
+      retryFrom: options.retryFrom,
+      signal: abortController.signal,
+      onProgress: (progress: OrchestratorProgress) => {
+        setEvaluationUi((prev) =>
+          prev
+            ? {
+                ...prev,
+                evaluationId: progress.evaluationId,
+                stages: progress.stages,
+                partial: progress.evaluation,
+                status:
+                  progress.status === "running"
+                    ? "running"
+                    : progress.status === "completed"
+                      ? "completed"
+                      : "failed",
+              }
+            : prev,
+        );
+      },
+    });
+
+    appendMultiAgentEvaluation(options.runId, evaluation);
+    setEvaluationUi({
+      runId: options.runId,
+      problemId: options.problemId,
+      evaluationId: evaluation.id,
+      evaluatorModel: options.evaluatorModel,
+      status: evaluation.status === "completed" ? "completed" : "failed",
+      stages: evaluation.stages,
+      partial: evaluation,
+      error: evaluation.errors[0]?.message,
+    });
+    return evaluation;
+  }
+
+  async function runAllConversationEvaluations(options: {
+    runId: string;
+    evaluatorModel: string;
+  }): Promise<void> {
+    const run = stateRef.current.runs.find((r) => r.id === options.runId);
+    if (!run || run.conversations.length === 0) return;
+
+    evalAbortRef.current?.abort();
+    const abortController = new AbortController();
+    evalAbortRef.current = abortController;
+
+    const total = run.conversations.length;
+    for (let index = 0; index < total; index++) {
+      if (abortController.signal.aborted) break;
+
+      const conversation = run.conversations[index];
+      if (!conversation) continue;
+
+      // Re-read run so prior appends are visible if needed later.
+      const latestRun =
+        stateRef.current.runs.find((r) => r.id === options.runId) ?? run;
+
+      setEvaluationUi({
+        runId: options.runId,
+        problemId: conversation.problemId,
+        evaluatorModel: options.evaluatorModel,
+        status: "running",
+        stages: [],
+        partial: undefined,
+        error: undefined,
+        batch: { currentIndex: index, total },
+      });
+
+      const evaluation = await runMultiAgentEvaluation({
+        run: latestRun,
+        conversation,
+        evaluatorModel: options.evaluatorModel,
+        signal: abortController.signal,
+        onProgress: (progress: OrchestratorProgress) => {
+          setEvaluationUi((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  evaluationId: progress.evaluationId,
+                  stages: progress.stages,
+                  partial: progress.evaluation,
+                  status:
+                    progress.status === "running"
+                      ? "running"
+                      : progress.status === "completed"
+                        ? "completed"
+                        : "failed",
+                  batch: { currentIndex: index, total },
+                }
+              : prev,
+          );
+        },
+      });
+
+      appendMultiAgentEvaluation(options.runId, evaluation);
+    }
+
+    if (abortController.signal.aborted) {
+      setEvaluationUi((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "failed",
+              error: "Batch evaluation cancelled.",
+              batch: undefined,
+            }
+          : prev,
+      );
+      return;
+    }
+
+    setEvaluationUi((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "completed",
+            batch: undefined,
+            error: undefined,
+          }
+        : prev,
+    );
+  }
+
   return {
     state,
     agentPrompts,
     selectedRun,
     selectedConversation,
+    evaluationUi,
     setPolicy,
     setRunConfig,
     selectRun,
@@ -276,5 +496,8 @@ export function useExperimentStore(): ExperimentStore {
     deleteRun,
     startRun,
     cancelRun,
+    appendMultiAgentEvaluation,
+    runConversationEvaluation,
+    runAllConversationEvaluations,
   };
 }
