@@ -18,7 +18,11 @@ export function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") return true;
   if (
     error instanceof Error &&
-    (error.name === "AbortError" || error.message === "Run cancelled")
+    (error.name === "AbortError" ||
+      error.name === "APIUserAbortError" ||
+      error.message === "Run cancelled" ||
+      error.message === "Aborted" ||
+      /^request was aborted/i.test(error.message))
   ) {
     return true;
   }

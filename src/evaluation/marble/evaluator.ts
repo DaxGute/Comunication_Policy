@@ -12,7 +12,8 @@ export type MarbleEvaluateResult = {
 };
 
 /**
- * Invoke the official MARBLE Graph evaluator post-hoc via the local Vite API.
+ * Invoke the official MARBLE Graph evaluator post-hoc via the local Vite API
+ * (browser) or an injected invoker (server RunManager).
  * Failures must be surfaced — never silently approximated.
  */
 export async function evaluateMarblePosthoc(options: {
@@ -20,6 +21,11 @@ export async function evaluateMarblePosthoc(options: {
   conversation: ProblemConversation;
   evaluatorModel: string;
   signal?: AbortSignal;
+  /**
+   * Server-side: call the Python MARBLE bridge directly.
+   * Browser: omit to use fetch("/api/marble-evaluate").
+   */
+  invoke?: (request: unknown, signal?: AbortSignal) => Promise<Record<string, unknown>>;
 }): Promise<MarbleEvaluateResult> {
   const request = toMarblePosthocRequest({
     run: options.run,
@@ -27,19 +33,32 @@ export async function evaluateMarblePosthoc(options: {
     evaluatorModel: options.evaluatorModel,
   });
 
-  const response = await fetch("/api/marble-evaluate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-    signal: options.signal,
-  });
+  let body: Record<string, unknown>;
+  if (options.invoke) {
+    body = await options.invoke(request, options.signal);
+  } else {
+    const response = await fetch("/api/marble-evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal: options.signal,
+    });
 
-  const body = (await response.json()) as Record<string, unknown>;
-  if (!response.ok || body.ok === false) {
+    body = (await response.json()) as Record<string, unknown>;
+    if (!response.ok || body.ok === false) {
+      const message =
+        typeof body.error === "string"
+          ? body.error
+          : `MARBLE evaluation failed (HTTP ${response.status}).`;
+      throw new Error(message);
+    }
+  }
+
+  if (body.ok === false) {
     const message =
       typeof body.error === "string"
         ? body.error
-        : `MARBLE evaluation failed (HTTP ${response.status}).`;
+        : "MARBLE evaluation failed.";
     throw new Error(message);
   }
 

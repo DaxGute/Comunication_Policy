@@ -126,9 +126,193 @@ export class GenerateApiHttpError extends Error {
   }
 }
 
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason instanceof Error ? signal.reason : new Error("Aborted"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(signal?.reason instanceof Error ? signal.reason : new Error("Aborted"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isRateLimitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status =
+    "status" in error && typeof (error as { status?: unknown }).status === "number"
+      ? (error as { status: number }).status
+      : undefined;
+  if (status === 429) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /rate limit|429|tokens per min|\bTPM\b|Request too large/i.test(
+    message,
+  );
+}
+
+function isTransientUpstreamError(error: unknown): boolean {
+  if (isRateLimitError(error)) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /connection error|fetch failed|econnrefused|econnreset|enotfound|etimedout|socket hang up|temporarily unavailable|503|502/i.test(
+    message,
+  );
+}
+
+/** Parse OpenAI's "Please try again in 32ms" / "1.2s" hints. */
+function parseRetryAfterMs(error: unknown): number | undefined {
+  const message = error instanceof Error ? error.message : String(error);
+  const msMatch = message.match(/try again in (\d+(?:\.\d+)?)\s*ms/i);
+  if (msMatch) return Math.max(0, Math.ceil(Number(msMatch[1])));
+  const sMatch = message.match(/try again in (\d+(?:\.\d+)?)\s*s/i);
+  if (sMatch) return Math.max(0, Math.ceil(Number(sMatch[1]) * 1000));
+  return undefined;
+}
+
+function abortError(signal?: AbortSignal): Error {
+  return signal?.reason instanceof Error ? signal.reason : new Error("Aborted");
+}
+
+/**
+ * Unbounded parallel problems can stampede a 200k TPM cap; fully serial
+ * even-spread pacing made runs crawl. Cap in-flight calls, and only wait
+ * once the sliding 60s window is near the limit. Override with
+ * OPENAI_MAX_CONCURRENT / OPENAI_TPM_LIMIT.
+ */
+const DEFAULT_MAX_CONCURRENT = 4;
+const DEFAULT_TPM_LIMIT = 200_000;
+const TPM_SOFT_FRACTION = 0.92;
+
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const parsed = Number(process.env[name]);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
+}
+
+function maxConcurrent(): number {
+  return envInt("OPENAI_MAX_CONCURRENT", DEFAULT_MAX_CONCURRENT, 1, 16);
+}
+
+function tpmLimit(): number {
+  return envInt("OPENAI_TPM_LIMIT", DEFAULT_TPM_LIMIT, 10_000, 20_000_000);
+}
+
+function estimateRequestTokens(request: GenerateApiRequest): number {
+  const chars = request.messages.reduce((sum, m) => sum + m.content.length, 0);
+  return Math.max(1, Math.ceil(chars / 4)) + 800;
+}
+
+function retryDelayMs(error: unknown, attempt: number): number {
+  const hinted = parseRetryAfterMs(error) ?? 0;
+  // Keep the exponential floor small so a "try again in 561ms" hint wins
+  // on the first collisions instead of forcing 1s/2s/4s sleeps.
+  const exponential = Math.min(8_000, 150 * 2 ** (attempt - 1));
+  const jitter = Math.floor(Math.random() * 120);
+  return Math.max(hinted, exponential) + jitter;
+}
+
+class OpenAIScheduler {
+  private inFlight = 0;
+  private readonly slotWaiters: Array<() => void> = [];
+  private readonly window: Array<{ at: number; tokens: number }> = [];
+  private cooldownUntil = 0;
+
+  noteRateLimit(waitMs: number): void {
+    this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + waitMs);
+  }
+
+  recordUsage(tokens: number): void {
+    this.window.push({ at: Date.now(), tokens: Math.max(1, tokens) });
+  }
+
+  async acquire(
+    estimate: number,
+    signal?: AbortSignal,
+  ): Promise<() => void> {
+    while (true) {
+      if (signal?.aborted) throw abortError(signal);
+
+      const coolWait = this.cooldownUntil - Date.now();
+      if (coolWait > 0) {
+        await sleep(coolWait, signal);
+        continue;
+      }
+
+      this.prune(Date.now());
+      const used = this.used();
+      const soft = Math.floor(tpmLimit() * TPM_SOFT_FRACTION);
+      const nearCap = this.inFlight > 0 && used + estimate > soft;
+      if (nearCap) {
+        const oldest = this.window[0];
+        const wait = oldest
+          ? Math.max(75, oldest.at + 60_000 - Date.now())
+          : 100;
+        await sleep(Math.min(wait, 2_000), signal);
+        continue;
+      }
+
+      if (this.inFlight >= maxConcurrent()) {
+        await this.waitForSlot(signal);
+        continue;
+      }
+
+      this.inFlight += 1;
+      return () => this.release();
+    }
+  }
+
+  private prune(now: number): void {
+    const cutoff = now - 60_000;
+    while (this.window.length > 0 && this.window[0]!.at < cutoff) {
+      this.window.shift();
+    }
+  }
+
+  private used(): number {
+    return this.window.reduce((sum, stamp) => sum + stamp.tokens, 0);
+  }
+
+  private waitForSlot(signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const wake = () => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      };
+      const onAbort = () => {
+        const index = this.slotWaiters.indexOf(wake);
+        if (index >= 0) this.slotWaiters.splice(index, 1);
+        reject(abortError(signal));
+      };
+      this.slotWaiters.push(wake);
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  private release(): void {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    const next = this.slotWaiters.shift();
+    next?.();
+  }
+}
+
+const openaiScheduler = new OpenAIScheduler();
+
+const UPSTREAM_RETRY_MAX_ATTEMPTS = 8;
+
 export async function generateWithOpenAI(
   request: GenerateApiRequest,
   apiKey: string | undefined,
+  signal?: AbortSignal,
 ): Promise<GenerateApiSuccess> {
   if (!apiKey || apiKey.trim() === "") {
     throw new GenerateApiHttpError(
@@ -136,6 +320,26 @@ export async function generateWithOpenAI(
       "OPENAI_API_KEY is not set. Add it to .env.local or the process environment.",
     );
   }
+
+  if (signal?.aborted) throw abortError(signal);
+
+  const release = await openaiScheduler.acquire(
+    estimateRequestTokens(request),
+    signal,
+  );
+  try {
+    return await generateWithOpenAILocked(request, apiKey, signal);
+  } finally {
+    release();
+  }
+}
+
+async function generateWithOpenAILocked(
+  request: GenerateApiRequest,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<GenerateApiSuccess> {
+  if (signal?.aborted) throw abortError(signal);
 
   const client = new OpenAI({ apiKey });
 
@@ -164,12 +368,47 @@ export async function generateWithOpenAI(
   }
 
   const startedAt = Date.now();
-  let completion: OpenAI.Chat.Completions.ChatCompletion;
-  try {
-    completion = await client.chat.completions.create(createParams);
-  } catch (error) {
+  let completion: OpenAI.Chat.Completions.ChatCompletion | undefined;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= UPSTREAM_RETRY_MAX_ATTEMPTS; attempt++) {
+    if (signal?.aborted) throw abortError(signal);
+    try {
+      completion = await client.chat.completions.create(createParams, {
+        signal,
+      });
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (isAbortLikeError(error) || signal?.aborted) {
+        throw error instanceof Error ? error : abortError(signal);
+      }
+      if (
+        !isTransientUpstreamError(error) ||
+        attempt === UPSTREAM_RETRY_MAX_ATTEMPTS
+      ) {
+        break;
+      }
+      const delay = retryDelayMs(error, attempt);
+      if (isRateLimitError(error)) openaiScheduler.noteRateLimit(delay);
+      await sleep(delay, signal);
+    }
+  }
+
+  if (!completion) {
+    if (isAbortLikeError(lastError) || signal?.aborted) {
+      throw lastError instanceof Error ? lastError : abortError(signal);
+    }
+    if (isRateLimitError(lastError)) {
+      openaiScheduler.noteRateLimit(
+        retryDelayMs(lastError, UPSTREAM_RETRY_MAX_ATTEMPTS),
+      );
+    }
     const detail =
-      error instanceof Error ? error.message : "Unknown OpenAI API error.";
+      lastError instanceof Error
+        ? lastError.message
+        : "Unknown OpenAI API error.";
     const connectionHint =
       /connection error|fetch failed|econnrefused|enotfound|etimedout/i.test(
         detail,
@@ -177,7 +416,7 @@ export async function generateWithOpenAI(
         ? " The Vite dev server could not reach api.openai.com — restart `npm run dev` in a normal terminal (not a sandboxed agent shell)."
         : "";
     throw new GenerateApiHttpError(
-      502,
+      isRateLimitError(lastError) ? 429 : 502,
       `OpenAI API request failed: ${detail}.${connectionHint}`,
     );
   }
@@ -214,7 +453,22 @@ export async function generateWithOpenAI(
         }
       : undefined;
 
+  openaiScheduler.recordUsage(
+    usage?.totalTokens ?? estimateRequestTokens(request),
+  );
   return { content, provider: "openai", usage, durationMs };
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String((error as { name: unknown }).name) : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    name === "AbortError" ||
+    name === "APIUserAbortError" ||
+    message === "Aborted" ||
+    /^request was aborted/i.test(message)
+  );
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {

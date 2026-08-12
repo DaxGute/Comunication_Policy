@@ -42,12 +42,19 @@ export type ProblemConversation = {
   problemText: string;
   messages: ConversationMessage[];
   finalAnswer?: string;
-  stoppedReason: "final_answer" | "max_turns" | "cancelled";
+  stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
   /**
    * Set while this problem is mid-run (streaming into the inspector).
-   * Omitted once the problem finishes or when loaded from persistence.
+   * Cleared once the problem finishes.
    */
   status?: "running";
+  /**
+   * Live speaker for this problem while `status === "running"`.
+   * Scoped per problem so parallel problems and UI selection stay independent.
+   */
+  speakingAgentId?: AgentId;
+  /** Present when `stoppedReason` is `error` (e.g. provider rate limit). */
+  error?: string;
   /** Sum of all agent model calls for this problem. */
   conversationUsage?: ModelUsage;
   conversationCostUsd?: number | null;
@@ -77,8 +84,15 @@ export type RunConfig = {
 export type ExperimentRun = {
   id: string;
   createdAt: string;
+  /** Set when server-side execution begins (leaves `queued`). */
+  startedAt?: string;
   /** Set when the run leaves `running` (completed, failed, or cancelled). */
   finishedAt?: string;
+  /**
+   * Optional display name. When unset, the UI shows the run finish timestamp.
+   * Editable from the conversation inspector; persisted with the run.
+   */
+  title?: string;
   /** Snapshot — immutable after creation. */
   policy: CommunicationPolicy;
   /** Exact prompts used for this run. */
@@ -98,8 +112,10 @@ export type ExperimentRun = {
   evaluationUsage?: ModelUsage;
   evaluationCostUsd?: number | null;
   totalCostUsd?: number | null;
-  status: "running" | "completed" | "failed" | "cancelled";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   error?: string;
+  /** Live progress while the run is queued/running (server-authoritative). */
+  progress?: RunProgress;
 };
 
 /** Live run progress for the Run button progress bar (0–1). */
@@ -117,6 +133,8 @@ export type ExperimentState = {
   selectedProblemId?: string;
   /** Which agent is currently speaking during a live run (UI hint). */
   speakingAgentId?: AgentId;
+  /** True while at least one experiment run is in flight. */
   isRunning: boolean;
-  runProgress?: RunProgress;
+  /** Live progress keyed by run id (active runs only). */
+  runProgressById: Record<string, RunProgress>;
 };

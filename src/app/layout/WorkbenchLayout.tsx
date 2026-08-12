@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ResizableSplit } from "../../components/ui/ResizableSplit";
 
 type Props = {
   left: ReactNode;
@@ -19,13 +20,27 @@ export function WorkbenchLayout({ left, main, right, bottom }: Props) {
         </div>
       </header>
 
-      <div className="workbench__body">
-        <aside className="workbench__left">{left}</aside>
-        <main className="workbench__main">{main}</main>
-        <aside className="workbench__right">{right}</aside>
-      </div>
+      <ResizableSplit
+        direction="vertical"
+        className="workbench__shell"
+        initialSizes={[58, 42]}
+        minSizesPx={[220, 220]}
+        storageKey="workbench:shell"
+      >
+        <ResizableSplit
+          direction="horizontal"
+          className="workbench__body"
+          initialSizes={[28, 46, 26]}
+          minSizesPx={[220, 240, 220]}
+          storageKey="workbench:body"
+        >
+          <aside className="workbench__left">{left}</aside>
+          <main className="workbench__main">{main}</main>
+          <aside className="workbench__right">{right}</aside>
+        </ResizableSplit>
 
-      <section className="workbench__bottom">{bottom}</section>
+        <section className="workbench__bottom">{bottom}</section>
+      </ResizableSplit>
     </div>
   );
 }

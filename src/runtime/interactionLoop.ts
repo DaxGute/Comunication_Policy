@@ -17,7 +17,9 @@ export type InteractionLoopCallbacks = {
 export type InteractionLoopResult = {
   messages: ConversationMessage[];
   finalAnswer?: string;
-  stoppedReason: "final_answer" | "max_turns" | "cancelled";
+  stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
+  /** Set when `stoppedReason` is `error`. */
+  error?: string;
 };
 
 function buildTranscriptMessages(
@@ -120,8 +122,8 @@ export async function runInteractionLoop(args: {
         },
       });
     } catch (error) {
+      callbacks?.onSpeaking?.(undefined);
       if (isAbortError(error)) {
-        callbacks?.onSpeaking?.(undefined);
         return {
           messages,
           finalAnswer: extractFinalAnswerFromText(
@@ -130,7 +132,16 @@ export async function runInteractionLoop(args: {
           stoppedReason: "cancelled",
         };
       }
-      throw error;
+      // Keep partial transcript so a rate-limit / API failure does not erase
+      // progress for this problem (or wipe the parent run via Promise.all).
+      return {
+        messages,
+        finalAnswer: extractFinalAnswerFromText(
+          messages[messages.length - 1]?.content ?? "",
+        ),
+        stoppedReason: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
 
     const inputTokens =

@@ -202,7 +202,15 @@ export function evaluateProblem(
     category === "crossword"
   ) {
     if (!problem) {
-      return scoreWithExpected(conversation, problem);
+      const finalAnswer =
+        extractFinalAnswerFromMessages(conversation.messages) ??
+        conversation.finalAnswer;
+      return {
+        ...baseFields(conversation, finalAnswer),
+        label: "no_answer",
+        notes: "Crossword problem missing from local pool; cannot grade.",
+        details: { grader: "crossword" },
+      };
     }
     return evaluateCrossword(conversation, problem);
   }

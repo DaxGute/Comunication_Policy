@@ -86,19 +86,20 @@ export function TokenUsagePanel({
 
   return (
     <div className="token-usage">
-      <h4 className="token-usage__title">Token usage</h4>
-      <UsageBlock
-        title="Conversation"
-        usage={conversationUsage}
-        costUsd={conversationCostUsd}
-        showCached
-      />
-      <UsageBlock
-        title="Evaluation"
-        usage={hasEval ? evaluationUsage : null}
-        costUsd={hasEval ? evaluationCostUsd : null}
-        costFallback={hasEval ? undefined : "Not run"}
-      />
+      <div className="token-usage__columns">
+        <UsageBlock
+          title="Conversation"
+          usage={conversationUsage}
+          costUsd={conversationCostUsd}
+          showCached
+        />
+        <UsageBlock
+          title="Evaluation"
+          usage={hasEval ? evaluationUsage : null}
+          costUsd={hasEval ? evaluationCostUsd : null}
+          costFallback={hasEval ? undefined : "Not run"}
+        />
+      </div>
       {typeof totalCostUsd === "number" ? (
         <p className="token-usage__total mono">
           {usageIncomplete ? "Total recorded cost" : "Total actual cost"}{" "}

@@ -73,6 +73,7 @@ export async function runProblem(args: {
     messages: result.messages,
     finalAnswer: result.finalAnswer,
     stoppedReason: result.stoppedReason,
+    error: result.error,
     conversationUsage: hasUsage ? conversationUsage : undefined,
     conversationCostUsd,
   };

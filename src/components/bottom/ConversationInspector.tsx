@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatPolicyValue } from "../../communication";
+import { evaluateRun } from "../../evaluation/evaluateRun";
 import { extractFinalAnswerFromMessages } from "../../evaluation/graders/answerExtraction";
 import { gradeCrosswordPuzzle } from "../../evaluation/graders/crosswordGrader";
 import type {
@@ -8,7 +9,10 @@ import type {
 } from "../../evaluation/types";
 import { resolveRunModel } from "../../experiment/configAccessors";
 import type { EvaluationUiState } from "../../experiment/store";
-import { serializeConversation } from "../../experiment/serializeConversation";
+import {
+  serializeConversation,
+  serializeRun,
+} from "../../experiment/serializeConversation";
 import {
   formatActualUsd,
   getRunCostSummary,
@@ -27,11 +31,52 @@ import type { CrosswordSpec } from "../../problems/crossword/types";
 import { getProblemById } from "../../problems/registry";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
 import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
+import { InlineEditableText } from "../ui/InlineEditableText";
 import { ModelSelect } from "../ui/ModelSelect";
+import { ResizableSplit } from "../ui/ResizableSplit";
+import { TextPreviewModal } from "../ui/TextPreviewModal";
 import { TokenUsagePanel } from "../ui/TokenUsagePanel";
 
 function gridHasLetters(grid?: string): boolean {
   return Boolean(grid && /[A-Za-z]/.test(grid));
+}
+
+/** Prefer stored crossword grade; otherwise grade live from the transcript. */
+function resolveCrosswordDetails(
+  crossword: CrosswordSpec | undefined,
+  conversation: ProblemConversation,
+  evaluation?: ProblemEvaluation,
+): ProblemEvaluation["details"] | undefined {
+  if (!crossword) return undefined;
+  if (
+    evaluation?.details?.grader === "crossword" &&
+    typeof evaluation.details.letterAccuracy === "number"
+  ) {
+    return evaluation.details;
+  }
+  const predicted =
+    extractFinalAnswerFromMessages(conversation.messages) ??
+    conversation.finalAnswer;
+  const grade = gradeCrosswordPuzzle({
+    predicted,
+    spec: crossword,
+  });
+  return {
+    grader: "crossword",
+    letterAccuracy: grade.letterAccuracy,
+    wordAccuracy: grade.wordAccuracy,
+    completion: grade.completion,
+    crossingConsistency: grade.crossingConsistency,
+    exactSolve: grade.exactSolve,
+    fillableCells: grade.fillableCells,
+    correctLetters: grade.correctLetters,
+    filledCells: grade.filledCells,
+    totalClues: grade.totalClues,
+    correctWords: grade.correctWords,
+    crossingsCompared: grade.crossingsCompared,
+    crossingsAgreeing: grade.crossingsAgreeing,
+    predictedGrid: grade.predictedGrid.join("\n"),
+  };
 }
 
 type Props = {
@@ -41,6 +86,8 @@ type Props = {
   onSelectRun: (runId: string) => void;
   onSelectProblem: (problemId: string) => void;
   onDeleteRun: (runId: string) => void;
+  onRenameRun: (runId: string, title: string) => void;
+  onRenameProblem: (runId: string, problemId: string, title: string) => void;
   evaluationUi?: EvaluationUiState;
   onRunEvaluation: (options: {
     runId: string;
@@ -82,6 +129,11 @@ function formatRunFinishTitle(run: ExperimentRun): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function displayRunTitle(run: ExperimentRun): string {
+  const custom = run.title?.trim();
+  return custom && custom.length > 0 ? custom : formatRunFinishTitle(run);
 }
 
 function runMetaLine(run: ExperimentRun): string {
@@ -142,6 +194,21 @@ function formatTokenCount(n: number): string {
   return String(n);
 }
 
+function RunWarningBanner({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="run-warning-banner" role="status">
+      <strong className="run-warning-banner__title">{title}</strong>
+      <p className="run-warning-banner__message">{message}</p>
+    </div>
+  );
+}
+
 function messageStatsLabel(message: {
   durationMs?: number;
   usage?: { totalTokens: number };
@@ -187,20 +254,69 @@ export function ConversationInspector({
   onSelectRun,
   onSelectProblem,
   onDeleteRun,
+  onRenameRun,
+  onRenameProblem,
   evaluationUi,
   onRunEvaluation,
   onRunAllEvaluations,
 }: Props) {
+  const [runJsonOpen, setRunJsonOpen] = useState(false);
+  const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const selectedConversation =
     selectedRun?.conversations.find((c) => c.problemId === selectedProblemId) ??
-    selectedRun?.conversations[0];
+    // Only fall back when nothing is selected. Never silently switch to
+    // conversations[0] while a different problem id is still selected —
+    // that made the transcript chase whichever problem was currently running.
+    (selectedProblemId ? undefined : selectedRun?.conversations[0]);
+
+  // Selecting a multi-problem run expands its problem list once; the user can
+  // still collapse it afterward without losing the selection.
+  useEffect(() => {
+    const runId = selectedRun?.id;
+    if (!runId || (selectedRun?.conversations.length ?? 0) <= 1) return;
+    setExpandedRunIds((prev) => {
+      if (prev.has(runId)) return prev;
+      const next = new Set(prev);
+      next.add(runId);
+      return next;
+    });
+    // Only react to selection changes — not conversation growth mid-run —
+    // so collapsing a selected run stays collapsed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [selectedRun?.id]);
+
+  const toggleRunExpanded = (runId: string) => {
+    setExpandedRunIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(runId)) next.delete(runId);
+      else next.add(runId);
+      return next;
+    });
+  };
+
+  const runJsonText = useMemo(
+    () =>
+      selectedRun
+        ? JSON.stringify(serializeRun(selectedRun), null, 2)
+        : "",
+    [selectedRun],
+  );
 
   return (
-    <div className="conversation-inspector">
+    <>
+      <ResizableSplit
+        direction="horizontal"
+        className="conversation-inspector"
+        initialSizes={[24, 48, 28]}
+        minSizesPx={[160, 220, 200]}
+        storageKey="workbench:inspector"
+      >
       <aside className="conversation-inspector__nav">
         <h2>Conversation Inspector</h2>
         <p className="muted">
-          Runs, transcripts, and stats are saved locally. Delete a run with ×.
+          Click a title to rename. Delete with × to remove a run from the saved list.
         </p>
 
         {runs.length === 0 ? (
@@ -208,10 +324,10 @@ export function ConversationInspector({
         ) : (
           <ul className="conv-tree">
             {runs.map((run) => {
-              const title = formatRunFinishTitle(run);
+              const title = displayRunTitle(run);
               const active = selectedRun?.id === run.id;
               const multiProblem = run.conversations.length > 1;
-              const showProblems = active && multiProblem;
+              const expanded = multiProblem && expandedRunIds.has(run.id);
               const activeProblemId =
                 selectedConversation?.problemId ??
                 run.conversations[0]?.problemId;
@@ -224,30 +340,77 @@ export function ConversationInspector({
                         : "conv-tree__run-row"
                     }
                   >
-                    <button
-                      type="button"
+                    <div
                       className="conv-tree__run"
-                      onClick={() => onSelectRun(run.id)}
-                      aria-expanded={showProblems ? true : undefined}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={multiProblem ? expanded : undefined}
+                      onClick={() => {
+                        if (active && multiProblem) {
+                          toggleRunExpanded(run.id);
+                          return;
+                        }
+                        onSelectRun(run.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (active && multiProblem) {
+                            toggleRunExpanded(run.id);
+                            return;
+                          }
+                          onSelectRun(run.id);
+                        }
+                      }}
                     >
                       <span className="conv-tree__run-title">
                         <span className="conv-tree__run-title-text">
                           {multiProblem ? (
-                            <span
+                            <button
+                              type="button"
                               className={
-                                showProblems
+                                expanded
                                   ? "conv-tree__chevron conv-tree__chevron--open"
                                   : "conv-tree__chevron"
                               }
-                              aria-hidden="true"
+                              aria-label={
+                                expanded
+                                  ? `Collapse problems for ${title}`
+                                  : `Expand problems for ${title}`
+                              }
+                              aria-expanded={expanded}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRunExpanded(run.id);
+                              }}
                             >
                               ▸
-                            </span>
+                            </button>
                           ) : null}
-                          {title}
+                          <InlineEditableText
+                            value={title}
+                            className="conv-tree__editable-title"
+                            inputClassName="conv-tree__editable-input"
+                            ariaLabel={`Rename run ${title}`}
+                            onEditStart={() => onSelectRun(run.id)}
+                            onCommit={(next) => onRenameRun(run.id, next)}
+                          />
                         </span>
-                        <span className="conv-tree__run-status">
-                          {run.status === "running" && !multiProblem ? (
+                        <span
+                          className={
+                            run.status === "failed"
+                              ? "conv-tree__run-status conv-tree__run-status--failed"
+                              : "conv-tree__run-status"
+                          }
+                          title={
+                            run.status === "failed" && run.error
+                              ? run.error
+                              : undefined
+                          }
+                        >
+                          {(run.status === "running" ||
+                            run.status === "queued") &&
+                          !multiProblem ? (
                             <span
                               className="conv-tree__problem-spinner"
                               aria-label="Running"
@@ -263,17 +426,21 @@ export function ConversationInspector({
                           ? ` · ${run.conversations.length} problems`
                           : ""}
                       </span>
-                    </button>
+                    </div>
                     <button
                       type="button"
                       className="conv-tree__delete"
                       aria-label={`Delete run ${title}`}
-                      onClick={() => onDeleteRun(run.id)}
+                      title="Delete run"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteRun(run.id);
+                      }}
                     >
                       ×
                     </button>
                   </div>
-                  {showProblems ? (
+                  {expanded ? (
                     <ul className="conv-tree__problems">
                       {run.conversations.map((conversation, index) => {
                         const problemActive =
@@ -282,32 +449,62 @@ export function ConversationInspector({
                           conversation.status === "running";
                         return (
                           <li key={conversation.problemId}>
-                            <button
-                              type="button"
+                            <div
                               className={
                                 problemActive
                                   ? "conv-tree__problem conv-tree__problem--active"
                                   : "conv-tree__problem"
                               }
+                              role="button"
+                              tabIndex={0}
                               aria-busy={problemRunning || undefined}
                               onClick={() =>
                                 onSelectProblem(conversation.problemId)
                               }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  onSelectProblem(conversation.problemId);
+                                }
+                              }}
                             >
                               <span className="conv-tree__problem-index">
                                 {index + 1}.
                               </span>
-                              <span className="conv-tree__problem-title">
-                                {conversation.problemTitle}
-                              </span>
+                              <InlineEditableText
+                                value={conversation.problemTitle}
+                                className="conv-tree__problem-title conv-tree__editable-title"
+                                inputClassName="conv-tree__editable-input conv-tree__editable-input--problem"
+                                ariaLabel={`Rename problem ${conversation.problemTitle}`}
+                                onEditStart={() =>
+                                  onSelectProblem(conversation.problemId)
+                                }
+                                onCommit={(next) =>
+                                  onRenameProblem(
+                                    run.id,
+                                    conversation.problemId,
+                                    next,
+                                  )
+                                }
+                              />
                               {problemRunning ? (
                                 <span
                                   className="conv-tree__problem-spinner"
                                   aria-label="Running"
                                   title="Running"
                                 />
+                              ) : conversation.stoppedReason === "error" ? (
+                                <span
+                                  className="conv-tree__problem-warn"
+                                  aria-label="Failed"
+                                  title={
+                                    conversation.error ?? "Problem failed"
+                                  }
+                                >
+                                  !
+                                </span>
                               ) : null}
-                            </button>
+                            </div>
                           </li>
                         );
                       })}
@@ -323,34 +520,57 @@ export function ConversationInspector({
       <div className="conversation-inspector__transcript">
         {!selectedRun ? (
           <p className="muted empty-state">Select a run.</p>
-        ) : !selectedConversation ? (
-          <p className="muted empty-state">
-            No transcripts yet for this run.
-          </p>
         ) : (
-          <TranscriptView
-            key={`${selectedRun.id}:${selectedConversation.problemId}`}
-            conversation={selectedConversation}
-            run={selectedRun}
-            evaluation={selectedRun.evaluation?.problems.find(
-              (p) => p.problemId === selectedConversation.problemId,
+          <>
+            {selectedConversation?.stoppedReason === "error" ? (
+              <RunWarningBanner
+                title="Problem failed"
+                message={
+                  selectedConversation.error ??
+                  selectedRun.error ??
+                  "This problem failed. Partial progress is kept."
+                }
+              />
+            ) : null}
+            {!selectedConversation ? (
+              <p className="muted empty-state">
+                No transcripts yet for this run.
+              </p>
+            ) : (
+              <TranscriptView
+                key={`${selectedRun.id}:${selectedConversation.problemId}`}
+                conversation={selectedConversation}
+                run={selectedRun}
+                evaluation={selectedRun.evaluation?.problems.find(
+                  (p) => p.problemId === selectedConversation.problemId,
+                )}
+                evaluationUi={evaluationUi}
+                onRunEvaluation={onRunEvaluation}
+                onRenameProblem={onRenameProblem}
+                crossword={
+                  selectedRun.config.problemCategory === "crossword"
+                    ? getProblemById(
+                        selectedRun.config.problemCategory,
+                        selectedConversation.problemId,
+                      )?.crossword
+                    : undefined
+                }
+              />
             )}
-            evaluationUi={evaluationUi}
-            onRunEvaluation={onRunEvaluation}
-            crossword={
-              selectedRun.config.problemCategory === "crossword"
-                ? getProblemById(
-                    selectedRun.config.problemCategory,
-                    selectedConversation.problemId,
-                  )?.crossword
-                : undefined
-            }
-          />
+          </>
         )}
       </div>
 
       <aside className="conversation-inspector__results">
-        <h2>Run Results</h2>
+        <div className="results-header">
+          <h2>Run Results</h2>
+          {selectedRun ? (
+            <CopyJsonButton
+              label="Copy Run JSON"
+              onClick={() => setRunJsonOpen(true)}
+            />
+          ) : null}
+        </div>
         {!selectedRun ? (
           <p className="muted empty-state">Select a run.</p>
         ) : (
@@ -358,31 +578,40 @@ export function ConversationInspector({
             <RunSpecView run={selectedRun} />
             {selectedRun.status === "failed" ? (
               <>
-                <p className="results-error">
-                  Run failed
-                  {selectedRun.error ? `: ${selectedRun.error}` : "."}
-                </p>
-                <p className="muted">
-                  Real-model failures do not fall back to mock output. Fix the
-                  error and re-run.
-                </p>
+                <RunWarningBanner
+                  title="Unresolved failure"
+                  message={
+                    selectedRun.error ??
+                    "One or more problems failed during the run."
+                  }
+                />
+                {selectedRun.conversations.length > 0 ? (
+                  <RunStatisticsRow run={selectedRun} />
+                ) : (
+                  <p className="muted">
+                    No problem progress was recorded before the failure.
+                  </p>
+                )}
               </>
             ) : selectedRun.status === "cancelled" ? (
               <>
-                <p className="results-error">
-                  Run cancelled
-                  {selectedRun.conversations.length > 0
-                    ? ` after ${selectedRun.conversations.length} problem${selectedRun.conversations.length === 1 ? "" : "s"}.`
-                    : " before any problem finished."}
-                </p>
-                {selectedRun.evaluation ? (
-                  <EvaluationSummary run={selectedRun} />
+                <RunWarningBanner
+                  title="Run cancelled"
+                  message={
+                    selectedRun.conversations.length > 0
+                      ? `Stopped after ${selectedRun.conversations.length} problem${selectedRun.conversations.length === 1 ? "" : "s"}. Partial progress is kept.`
+                      : "Cancelled before any problem finished."
+                  }
+                />
+                {selectedRun.conversations.length > 0 ? (
+                  <RunStatisticsRow run={selectedRun} />
                 ) : (
                   <p className="muted">No completed problems to evaluate.</p>
                 )}
               </>
-            ) : selectedRun.evaluation ? (
-              <EvaluationSummary run={selectedRun} />
+            ) : selectedRun.evaluation ||
+              selectedRun.conversations.length > 0 ? (
+              <RunStatisticsRow run={selectedRun} />
             ) : (
               <p className="muted empty-state">
                 Select a completed run to inspect results.
@@ -398,7 +627,60 @@ export function ConversationInspector({
           </div>
         )}
       </aside>
-    </div>
+      </ResizableSplit>
+
+      {runJsonOpen && selectedRun ? (
+        <TextPreviewModal
+          title="Run JSON"
+          text={runJsonText}
+          onClose={() => setRunJsonOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CopyJsonButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="transcript__copy-json"
+      onClick={onClick}
+      aria-label={label}
+    >
+      <svg
+        className="transcript__copy-json-icon"
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <rect
+          x="5.5"
+          y="5.5"
+          width="8"
+          height="8"
+          rx="1.25"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+        />
+        <path
+          d="M10.5 5.5V4.25A1.25 1.25 0 0 0 9.25 3H4.25A1.25 1.25 0 0 0 3 4.25v5A1.25 1.25 0 0 0 4.25 10.5H5.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
+      </svg>
+      {label}
+    </button>
   );
 }
 
@@ -408,6 +690,7 @@ function TranscriptView({
   evaluation,
   evaluationUi,
   onRunEvaluation,
+  onRenameProblem,
   crossword,
 }: {
   conversation: ProblemConversation;
@@ -415,53 +698,34 @@ function TranscriptView({
   evaluation?: ProblemEvaluation;
   evaluationUi?: Props["evaluationUi"];
   onRunEvaluation: Props["onRunEvaluation"];
+  onRenameProblem: Props["onRenameProblem"];
   crossword?: CrosswordSpec;
 }) {
-  const [copied, setCopied] = useState(false);
-  const isCrossword = evaluation?.details?.grader === "crossword";
+  const [convoJsonOpen, setConvoJsonOpen] = useState(false);
+  const crosswordDetails = useMemo(
+    () => resolveCrosswordDetails(crossword, conversation, evaluation),
+    [conversation, crossword, evaluation],
+  );
+  const isCrossword = Boolean(crossword) || evaluation?.details?.grader === "crossword";
   const isMoral = evaluation?.details?.grader === "moral_open_ended";
   const isProof = evaluation?.details?.grader === "proof_collaborative";
   const predictedGrid = useMemo(() => {
+    const fromDetails =
+      typeof crosswordDetails?.predictedGrid === "string"
+        ? crosswordDetails.predictedGrid
+        : undefined;
+    if (gridHasLetters(fromDetails)) return fromDetails;
     const fromEval =
       typeof evaluation?.details?.predictedGrid === "string"
         ? evaluation.details.predictedGrid
         : undefined;
-    if (gridHasLetters(fromEval)) return fromEval;
-    if (!crossword) return fromEval;
-    const predicted =
-      extractFinalAnswerFromMessages(conversation.messages) ??
-      conversation.finalAnswer;
-    if (!predicted?.trim()) return fromEval;
-    return gradeCrosswordPuzzle({
-      predicted,
-      spec: crossword,
-    }).predictedGrid.join("\n");
-  }, [
-    conversation.finalAnswer,
-    conversation.messages,
-    crossword,
-    evaluation?.details?.predictedGrid,
-  ]);
+    return gridHasLetters(fromEval) ? fromEval : fromDetails ?? fromEval;
+  }, [crosswordDetails?.predictedGrid, evaluation?.details?.predictedGrid]);
 
-  useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 1500);
-    return () => window.clearTimeout(timeout);
-  }, [copied]);
-
-  const copyConvoJson = async () => {
-    try {
-      const json = JSON.stringify(
-        serializeConversation(conversation, run),
-        null,
-        2,
-      );
-      await navigator.clipboard.writeText(json);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  };
+  const convoJsonText = useMemo(
+    () => JSON.stringify(serializeConversation(conversation, run), null, 2),
+    [conversation, run],
+  );
 
   const problemEvals = (run.multiAgentEvaluations ?? []).filter(
     (e) => e.problemId === conversation.problemId,
@@ -469,45 +733,45 @@ function TranscriptView({
   const latestProblemEval = [...problemEvals].sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt),
   )[0];
+  const hasProblemTokenUsage =
+    !!conversation.conversationUsage ||
+    !!latestProblemEval?.usage ||
+    typeof conversation.conversationCostUsd === "number" ||
+    typeof latestProblemEval?.costUsd === "number";
+  const problemTokenUsage = (
+    <TokenUsagePanel
+      conversationUsage={conversation.conversationUsage}
+      conversationCostUsd={conversation.conversationCostUsd}
+      evaluationUsage={latestProblemEval?.usage}
+      evaluationCostUsd={latestProblemEval?.costUsd}
+      totalCostUsd={
+        typeof conversation.conversationCostUsd === "number" ||
+        typeof latestProblemEval?.costUsd === "number"
+          ? (conversation.conversationCostUsd ?? 0) +
+            (latestProblemEval?.costUsd ?? 0)
+          : null
+      }
+    />
+  );
 
   return (
     <div className="transcript">
       <header className="transcript__header">
         <div className="transcript__title-row">
-          <h3>{conversation.problemTitle}</h3>
-          <button
-            type="button"
-            className="transcript__copy-json"
-            onClick={copyConvoJson}
-            aria-label="Copy conversation JSON"
-          >
-            <svg
-              className="transcript__copy-json-icon"
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              aria-hidden="true"
-            >
-              <rect
-                x="5.5"
-                y="5.5"
-                width="8"
-                height="8"
-                rx="1.25"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.25"
-              />
-              <path
-                d="M10.5 5.5V4.25A1.25 1.25 0 0 0 9.25 3H4.25A1.25 1.25 0 0 0 3 4.25v5A1.25 1.25 0 0 0 4.25 10.5H5.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.25"
-                strokeLinecap="round"
-              />
-            </svg>
-            {copied ? "Copied!" : "Copy Convo JSON"}
-          </button>
+          <InlineEditableText
+            as="h3"
+            value={conversation.problemTitle}
+            className="transcript__editable-title"
+            inputClassName="transcript__editable-input"
+            ariaLabel={`Rename problem ${conversation.problemTitle}`}
+            onCommit={(next) =>
+              onRenameProblem(run.id, conversation.problemId, next)
+            }
+          />
+          <CopyJsonButton
+            label="Copy Convo JSON"
+            onClick={() => setConvoJsonOpen(true)}
+          />
         </div>
         {crossword ? (
           <>
@@ -515,11 +779,16 @@ function TranscriptView({
               crossword={crossword}
               predictedGrid={predictedGrid}
               aside={
-                evaluation && isCrossword ? (
-                  <CrosswordMetrics
-                    evaluation={evaluation}
-                    messages={conversation.messages}
-                  />
+                crosswordDetails || hasProblemTokenUsage ? (
+                  <div className="results-stats-row">
+                    {crosswordDetails ? (
+                      <CrosswordMetrics
+                        evaluation={{ details: crosswordDetails }}
+                        messages={conversation.messages}
+                      />
+                    ) : null}
+                    {problemTokenUsage}
+                  </div>
                 ) : undefined
               }
             />
@@ -537,6 +806,9 @@ function TranscriptView({
         )}
         <div className="transcript__meta muted">
           stopped: {conversation.stoppedReason}
+          {conversation.stoppedReason === "error" && conversation.error
+            ? ` · ${conversation.error}`
+            : ""}
           {conversation.finalAnswer && !crossword
             ? ` · FINAL_ANSWER: ${
                 conversation.finalAnswer.length > 160
@@ -553,30 +825,30 @@ function TranscriptView({
             : ""}
           {isMoral || isProof ? " · not objectively scored" : ""}
         </div>
-        <TokenUsagePanel
-          conversationUsage={conversation.conversationUsage}
-          conversationCostUsd={conversation.conversationCostUsd}
-          evaluationUsage={latestProblemEval?.usage}
-          evaluationCostUsd={latestProblemEval?.costUsd}
-          totalCostUsd={
-            typeof conversation.conversationCostUsd === "number" ||
-            typeof latestProblemEval?.costUsd === "number"
-              ? (conversation.conversationCostUsd ?? 0) +
-                (latestProblemEval?.costUsd ?? 0)
-              : null
-          }
-        />
+        {!crossword &&
+        (hasProblemTokenUsage ||
+          (evaluation && (isMoral || isProof))) ? (
+          <div className="results-stats-row">
+            {evaluation && isMoral ? (
+              <MoralOpenMetrics
+                evaluation={evaluation}
+                messages={conversation.messages}
+              />
+            ) : null}
+            {evaluation && isProof ? (
+              <ProofOpenMetrics
+                evaluation={evaluation}
+                messages={conversation.messages}
+              />
+            ) : null}
+            {problemTokenUsage}
+          </div>
+        ) : null}
         {evaluation && isMoral ? (
-          <MoralResultDetails
-            evaluation={evaluation}
-            messages={conversation.messages}
-          />
+          <MoralResultDetails evaluation={evaluation} />
         ) : null}
         {evaluation && isProof ? (
-          <ProofResultDetails
-            evaluation={evaluation}
-            messages={conversation.messages}
-          />
+          <ProofResultDetails evaluation={evaluation} />
         ) : null}
         {evaluation && !isCrossword && !isMoral && !isProof ? (
           <ProblemResultDetails evaluation={evaluation} />
@@ -642,6 +914,14 @@ function TranscriptView({
           );
         })}
       </ol>
+
+      {convoJsonOpen ? (
+        <TextPreviewModal
+          title="Conversation JSON"
+          text={convoJsonText}
+          onClose={() => setConvoJsonOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -676,16 +956,20 @@ function CrosswordMetrics({
         Exact solve: {evaluation.details?.exactSolve === true ? "Yes" : "No"}
       </div>
       <div className="results-crossword-metrics__summary">
-        <div>Total time: {hasDuration ? formatDuration(totalDurationMs) : "—"}</div>
         <div>
-          Total tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}
+          Time:{" "}
+          {hasDuration ? formatDuration(totalDurationMs) : "—"}
+        </div>
+        <div>
+          Tokens:{" "}
+          {hasTokens ? formatTokenCount(totalTokens) : "—"}
         </div>
       </div>
     </div>
   );
 }
 
-function MoralResultDetails({
+function MoralOpenMetrics({
   evaluation,
   messages,
 }: {
@@ -700,6 +984,23 @@ function MoralResultDetails({
       : undefined;
 
   return (
+    <div className="results-open-metrics mono">
+      <div>
+        Stance reached:{" "}
+        {evaluation.details?.stanceReached === true ? "Yes" : "No"}
+      </div>
+      <div>Tension signals: {tension !== undefined ? tension : "—"}</div>
+      <div>Gold answer: none (open-ended)</div>
+      <div className="results-open-metrics__summary">
+        <div>Time: {hasDuration ? formatDuration(totalDurationMs) : "—"}</div>
+        <div>Tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}</div>
+      </div>
+    </div>
+  );
+}
+
+function MoralResultDetails({ evaluation }: { evaluation: ProblemEvaluation }) {
+  return (
     <div className="transcript__result-details">
       {evaluation.finalAnswer ? (
         <div className="mono results-answer">
@@ -708,24 +1009,6 @@ function MoralResultDetails({
       ) : (
         <div className="muted">No joint stance recorded.</div>
       )}
-      <div className="results-open-metrics mono">
-        <div>
-          Stance reached:{" "}
-          {evaluation.details?.stanceReached === true ? "Yes" : "No"}
-        </div>
-        <div>
-          Tension signals: {tension !== undefined ? tension : "—"}
-        </div>
-        <div>Gold answer: none (open-ended)</div>
-        <div className="results-open-metrics__summary">
-          <div>
-            Total time: {hasDuration ? formatDuration(totalDurationMs) : "—"}
-          </div>
-          <div>
-            Total tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}
-          </div>
-        </div>
-      </div>
       {evaluation.notes ? (
         <div className="muted">{evaluation.notes}</div>
       ) : null}
@@ -733,7 +1016,7 @@ function MoralResultDetails({
   );
 }
 
-function ProofResultDetails({
+function ProofOpenMetrics({
   evaluation,
   messages,
 }: {
@@ -752,6 +1035,30 @@ function ProofResultDetails({
       : undefined;
 
   return (
+    <div className="results-open-metrics mono">
+      <div>
+        Proof submitted:{" "}
+        {evaluation.details?.proofSubmitted === true ? "Yes" : "No"}
+      </div>
+      <div>
+        Proof-structure signals: {markers !== undefined ? markers : "—"}
+      </div>
+      <div>Objective score: none (collaborative proof)</div>
+      {reference ? (
+        <div className="results-open-metrics__reference">
+          Reference (inspect only): {reference}
+        </div>
+      ) : null}
+      <div className="results-open-metrics__summary">
+        <div>Time: {hasDuration ? formatDuration(totalDurationMs) : "—"}</div>
+        <div>Tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}</div>
+      </div>
+    </div>
+  );
+}
+
+function ProofResultDetails({ evaluation }: { evaluation: ProblemEvaluation }) {
+  return (
     <div className="transcript__result-details">
       {evaluation.finalAnswer ? (
         <div className="mono results-answer">
@@ -760,29 +1067,6 @@ function ProofResultDetails({
       ) : (
         <div className="muted">No joint proof recorded.</div>
       )}
-      <div className="results-open-metrics mono">
-        <div>
-          Proof submitted:{" "}
-          {evaluation.details?.proofSubmitted === true ? "Yes" : "No"}
-        </div>
-        <div>
-          Proof-structure signals: {markers !== undefined ? markers : "—"}
-        </div>
-        <div>Objective score: none (collaborative proof)</div>
-        {reference ? (
-          <div className="results-open-metrics__reference">
-            Reference (inspect only): {reference}
-          </div>
-        ) : null}
-        <div className="results-open-metrics__summary">
-          <div>
-            Total time: {hasDuration ? formatDuration(totalDurationMs) : "—"}
-          </div>
-          <div>
-            Total tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}
-          </div>
-        </div>
-      </div>
       {evaluation.notes ? (
         <div className="muted">{evaluation.notes}</div>
       ) : null}
@@ -839,31 +1123,6 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
           </div>
         </div>
       </div>
-      <TokenUsagePanel
-        conversationUsage={
-          costSummary.hasConversationUsage
-            ? costSummary.conversationUsage
-            : null
-        }
-        conversationCostUsd={
-          costSummary.hasConversationUsage
-            ? costSummary.actualConversationCost
-            : null
-        }
-        evaluationUsage={
-          costSummary.evaluationsRan ? costSummary.evaluationUsage : null
-        }
-        evaluationCostUsd={
-          costSummary.evaluationsRan ? costSummary.actualEvaluationCost : null
-        }
-        totalCostUsd={
-          costSummary.hasConversationUsage || costSummary.evaluationsRan
-            ? costSummary.actualTotalCost
-            : null
-        }
-        usageIncomplete={costSummary.usageIncomplete}
-        evaluationsRan={costSummary.evaluationsRan}
-      />
       <dl className="results-summary">
         <div>
           <dt>Problem</dt>
@@ -1189,7 +1448,8 @@ function RunResultsMultiAgentEval({
 }
 
 function runTotals(run: ExperimentRun): {
-  totalDurationMs: number;
+  meanDurationMs: number | null;
+  meanTokens: number | null;
   totalTokens: number;
   hasDuration: boolean;
   hasTokens: boolean;
@@ -1206,7 +1466,8 @@ function runTotals(run: ExperimentRun): {
   const durationStats = meanSd(durations);
   const tokenStats = meanSd(tokens);
   return {
-    totalDurationMs: durations.reduce((sum, v) => sum + v, 0),
+    meanDurationMs: durationStats.mean,
+    meanTokens: tokenStats.mean,
     totalTokens: tokens.reduce((sum, v) => sum + v, 0),
     hasDuration: durations.length > 0,
     hasTokens: tokens.length > 0,
@@ -1217,7 +1478,8 @@ function runTotals(run: ExperimentRun): {
 
 function MetricsBlock({
   rows,
-  totalDurationMs,
+  meanDurationMs,
+  meanTokens,
   totalTokens,
   hasDuration,
   hasTokens,
@@ -1225,7 +1487,8 @@ function MetricsBlock({
   tokensSd,
 }: {
   rows: Array<{ label: string; mean: string; sd: string }>;
-  totalDurationMs: number;
+  meanDurationMs: number | null;
+  meanTokens: number | null;
   totalTokens: number;
   hasDuration: boolean;
   hasTokens: boolean;
@@ -1237,26 +1500,91 @@ function MetricsBlock({
       rows={rows}
       footer={[
         {
-          label: "Total time",
-          mean: hasDuration ? formatDuration(totalDurationMs) : "—",
+          label: "Time",
+          mean:
+            hasDuration && meanDurationMs !== null
+              ? formatDuration(meanDurationMs)
+              : "—",
           sd: durationSdMs !== null ? formatDuration(durationSdMs) : "—",
+        },
+        {
+          label: "Tokens",
+          mean:
+            hasTokens && meanTokens !== null
+              ? formatTokenCount(meanTokens)
+              : "—",
+          sd: tokensSd !== null ? formatTokenCount(tokensSd) : "—",
         },
         {
           label: "Total tokens",
           mean: hasTokens ? formatTokenCount(totalTokens) : "—",
-          sd: tokensSd !== null ? formatTokenCount(tokensSd) : "—",
+          sd: "—",
         },
       ]}
     />
   );
 }
 
+function RunStatisticsRow({ run }: { run: ExperimentRun }) {
+  const costSummary = useMemo(() => getRunCostSummary(run), [run]);
+
+  return (
+    <div className="results-stats-row">
+      <EvaluationSummary run={run} />
+      <TokenUsagePanel
+        conversationUsage={
+          costSummary.hasConversationUsage
+            ? costSummary.conversationUsage
+            : null
+        }
+        conversationCostUsd={
+          costSummary.hasConversationUsage
+            ? costSummary.actualConversationCost
+            : null
+        }
+        evaluationUsage={
+          costSummary.evaluationsRan ? costSummary.evaluationUsage : null
+        }
+        evaluationCostUsd={
+          costSummary.evaluationsRan ? costSummary.actualEvaluationCost : null
+        }
+        totalCostUsd={
+          costSummary.hasConversationUsage || costSummary.evaluationsRan
+            ? costSummary.actualTotalCost
+            : null
+        }
+        usageIncomplete={costSummary.usageIncomplete}
+        evaluationsRan={costSummary.evaluationsRan}
+      />
+    </div>
+  );
+}
+
 function EvaluationSummary({ run }: { run: ExperimentRun }) {
-  const evaluation = run.evaluation;
+  // Re-grade when stored evaluation is missing/incomplete so crossword metrics
+  // (letter/word/completion/crossing) still appear for finished runs.
+  const evaluation = useMemo(() => {
+    const stored = run.evaluation;
+    const hasCrosswordGrades = stored?.problems.some(
+      (p) =>
+        p.details?.grader === "crossword" &&
+        typeof p.details.letterAccuracy === "number",
+    );
+    if (
+      run.config.problemCategory === "crossword" &&
+      run.conversations.length > 0 &&
+      !hasCrosswordGrades
+    ) {
+      return evaluateRun(run);
+    }
+    return stored;
+  }, [run]);
+
   if (!evaluation) return null;
 
   const {
-    totalDurationMs,
+    meanDurationMs,
+    meanTokens,
     totalTokens,
     hasDuration,
     hasTokens,
@@ -1266,8 +1594,10 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
   const crosswordProblems = evaluation.problems.filter(
     (p) => p.details?.grader === "crossword",
   );
+  const showCrossword =
+    crosswordProblems.length > 0 || run.config.problemCategory === "crossword";
 
-  if (crosswordProblems.length > 0) {
+  if (showCrossword) {
     const letter = meanSd(
       crosswordProblems.map((p) =>
         typeof p.details?.letterAccuracy === "number"
@@ -1294,32 +1624,54 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
           : null,
       ),
     );
+    const summary = evaluation.summary;
+    const letterMean =
+      letter.mean ??
+      (typeof summary.crosswordLetterAccuracy === "number"
+        ? summary.crosswordLetterAccuracy
+        : null);
+    const wordMean =
+      word.mean ??
+      (typeof summary.crosswordWordAccuracy === "number"
+        ? summary.crosswordWordAccuracy
+        : null);
+    const completionMean =
+      completion.mean ??
+      (typeof summary.crosswordCompletion === "number"
+        ? summary.crosswordCompletion
+        : null);
+    const crossingMean =
+      crossing.mean ??
+      (typeof summary.crosswordCrossingConsistency === "number"
+        ? summary.crosswordCrossingConsistency
+        : null);
 
     return (
       <MetricsBlock
         rows={[
           {
             label: "Letter accuracy",
-            mean: formatPct(letter.mean) ?? "—",
+            mean: formatPct(letterMean) ?? "—",
             sd: formatPctSd(letter.sd),
           },
           {
             label: "Word accuracy",
-            mean: formatPct(word.mean) ?? "—",
+            mean: formatPct(wordMean) ?? "—",
             sd: formatPctSd(word.sd),
           },
           {
             label: "Completion",
-            mean: formatPct(completion.mean) ?? "—",
+            mean: formatPct(completionMean) ?? "—",
             sd: formatPctSd(completion.sd),
           },
           {
             label: "Crossing consistency",
-            mean: formatPct(crossing.mean) ?? "n/a",
+            mean: formatPct(crossingMean) ?? "n/a",
             sd: formatPctSd(crossing.sd),
           },
         ]}
-        totalDurationMs={totalDurationMs}
+        meanDurationMs={meanDurationMs}
+        meanTokens={meanTokens}
         totalTokens={totalTokens}
         hasDuration={hasDuration}
         hasTokens={hasTokens}
@@ -1371,7 +1723,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
                 : "—",
           },
         ]}
-        totalDurationMs={totalDurationMs}
+        meanDurationMs={meanDurationMs}
+        meanTokens={meanTokens}
         totalTokens={totalTokens}
         hasDuration={hasDuration}
         hasTokens={hasTokens}
@@ -1406,7 +1759,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
             sd: "—",
           },
         ]}
-        totalDurationMs={totalDurationMs}
+        meanDurationMs={meanDurationMs}
+        meanTokens={meanTokens}
         totalTokens={totalTokens}
         hasDuration={hasDuration}
         hasTokens={hasTokens}
@@ -1449,7 +1803,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
           sd: turns.sd !== null ? String(Number(turns.sd.toFixed(2))) : "—",
         },
       ]}
-      totalDurationMs={totalDurationMs}
+      meanDurationMs={meanDurationMs}
+      meanTokens={meanTokens}
       totalTokens={totalTokens}
       hasDuration={hasDuration}
       hasTokens={hasTokens}

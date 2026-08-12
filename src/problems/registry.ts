@@ -38,14 +38,26 @@ export function getProblemsForCategory(category: ProblemCategory): Problem[] {
   return BY_CATEGORY[category];
 }
 
+/** Uniform sample without replacement. Order is shuffled even when taking the full pool. */
+function sampleProblems(pool: Problem[], count: number): Problem[] {
+  const n = Math.min(count, pool.length);
+  const copy = [...pool];
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (copy.length - i));
+    const a = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = a;
+  }
+  return copy.slice(0, n);
+}
+
 export function selectProblems(
   category: ProblemCategory,
   count: number,
 ): Problem[] {
   const pool = getProblemsForCategory(category);
   if (count <= 0) return [];
-  if (count >= pool.length) return [...pool];
-  return pool.slice(0, count);
+  return sampleProblems(pool, count);
 }
 
 export function getCategoryMeta(

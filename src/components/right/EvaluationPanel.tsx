@@ -1,4 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
+import { formatPolicyValue } from "../../communication";
+import type { CommunicationPolicy } from "../../communication/types";
 import {
   loadRunSettingsOpen,
   saveRunSettingsOpen,
@@ -16,13 +19,28 @@ import type { ProblemCategory } from "../../problems/types";
 import { NumberStepper } from "../ui/NumberStepper";
 import { ModelSelect } from "../ui/ModelSelect";
 
+export type ActiveRunMedallion = {
+  id: string;
+  title?: string;
+  config?: RunConfig;
+  policy?: CommunicationPolicy;
+  progress: RunProgress;
+  selected?: boolean;
+};
+
 type Props = {
   config: RunConfig;
   onConfigChange: (partial: Partial<RunConfig>) => void;
   onRun: () => void;
-  onCancel: () => void;
-  isRunning: boolean;
-  runProgress?: RunProgress;
+  onCancelRun: (runId: string) => void;
+  onSelectRun?: (runId: string) => void;
+  activeRuns: ActiveRunMedallion[];
+};
+
+type TooltipAnchor = {
+  runId: string;
+  left: number;
+  top: number;
 };
 
 function categoryLabel(id: ProblemCategory): string {
@@ -33,12 +51,14 @@ export function EvaluationPanel({
   config,
   onConfigChange,
   onRun,
-  onCancel,
-  isRunning,
-  runProgress,
+  onCancelRun,
+  onSelectRun,
+  activeRuns,
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(loadRunSettingsOpen);
-  const progressPct = Math.round((runProgress?.fraction ?? 0) * 100);
+  const [tooltipAnchor, setTooltipAnchor] = useState<TooltipAnchor | null>(
+    null,
+  );
 
   const costEstimate = useMemo(
     () =>
@@ -57,6 +77,23 @@ export function EvaluationPanel({
       config.maxTurns,
     ],
   );
+
+  const hoveredRun = activeRuns.find((r) => r.id === tooltipAnchor?.runId);
+  const hoveredConfig = hoveredRun?.config;
+  const hoveredPolicy = hoveredRun?.policy;
+
+  function showTooltip(runId: string, el: HTMLElement) {
+    const rect = el.getBoundingClientRect();
+    setTooltipAnchor({
+      runId,
+      left: rect.left + rect.width / 2,
+      top: rect.bottom + 6,
+    });
+  }
+
+  function hideTooltip(runId: string) {
+    setTooltipAnchor((prev) => (prev?.runId === runId ? null : prev));
+  }
 
   return (
     <div className="evaluation-panel">
@@ -187,26 +224,147 @@ export function EvaluationPanel({
 
         <button
           type="button"
-          className={
-            isRunning ? "run-button run-button--running" : "run-button"
-          }
-          style={
-            isRunning
-              ? ({
-                  "--run-progress": `${progressPct}%`,
-                } as CSSProperties)
-              : undefined
-          }
-          title={isRunning ? "Cancel" : undefined}
-          aria-label={isRunning ? "Cancel run" : "Run"}
-          onClick={isRunning ? onCancel : onRun}
+          className="run-button"
+          aria-label="Run"
+          onClick={onRun}
         >
-          <span className="run-button__fill" aria-hidden="true" />
-          <span className="run-button__label">
-            {isRunning ? `${progressPct}%` : "Run"}
-          </span>
+          <span className="run-button__label">Run</span>
         </button>
-        {!isRunning && !settingsOpen ? (
+
+        {activeRuns.length > 0 ? (
+          <div className="run-medallions-wrap">
+            <div className="run-medallions" role="list" aria-label="Active runs">
+              {activeRuns.map((run) => {
+                const progressPct = Math.round(
+                  (run.progress.fraction ?? 0) * 100,
+                );
+                const label = run.title?.trim() || "Run";
+                return (
+                  <div
+                    key={run.id}
+                    role="listitem"
+                    className={
+                      run.selected
+                        ? "run-medallion run-medallion--selected"
+                        : "run-medallion"
+                    }
+                    style={
+                      {
+                        "--run-progress": `${progressPct}%`,
+                      } as CSSProperties
+                    }
+                    onMouseEnter={(e) =>
+                      showTooltip(run.id, e.currentTarget)
+                    }
+                    onMouseLeave={() => hideTooltip(run.id)}
+                  >
+                    <button
+                      type="button"
+                      className="run-medallion__body"
+                      aria-label={`${label}, ${progressPct}% complete`}
+                      onClick={() => onSelectRun?.(run.id)}
+                    >
+                      <span className="run-medallion__fill" aria-hidden="true" />
+                      <span className="run-medallion__pct" aria-hidden="true">
+                        {progressPct}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="run-medallion__cancel"
+                      aria-label={`Cancel ${label}`}
+                      title="Cancel"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCancelRun(run.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {tooltipAnchor &&
+          hoveredRun &&
+          hoveredConfig &&
+          createPortal(
+            <div
+              className="run-medallion__tooltip"
+              role="tooltip"
+              style={{
+                left: tooltipAnchor.left,
+                top: tooltipAnchor.top,
+              }}
+            >
+              <div className="run-medallion__tooltip-title">
+                {hoveredRun.title?.trim() || "Run"}
+                <span className="muted">
+                  {" "}
+                  · {Math.round((hoveredRun.progress.fraction ?? 0) * 100)}%
+                </span>
+              </div>
+              <dl className="run-medallion__tooltip-settings">
+                <div>
+                  <dt>Category</dt>
+                  <dd>{categoryLabel(hoveredConfig.problemCategory)}</dd>
+                </div>
+                <div>
+                  <dt>Problems</dt>
+                  <dd>{hoveredConfig.problemCount}</dd>
+                </div>
+                <div>
+                  <dt>Model</dt>
+                  <dd>{displayNameForModel(hoveredConfig.runModel)}</dd>
+                </div>
+                <div>
+                  <dt>Turns</dt>
+                  <dd>{hoveredConfig.maxTurns}</dd>
+                </div>
+                <div>
+                  <dt>Reasoning</dt>
+                  <dd>{hoveredConfig.runReasoningEffort}</dd>
+                </div>
+              </dl>
+              {hoveredPolicy ? (
+                <>
+                  <div className="run-medallion__tooltip-divider" />
+                  <dl className="run-medallion__tooltip-settings">
+                    <div>
+                      <dt>Trust A→B</dt>
+                      <dd className="mono">
+                        {formatPolicyValue(hoveredPolicy.trustA)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Trust B→A</dt>
+                      <dd className="mono">
+                        {formatPolicyValue(hoveredPolicy.trustB)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Authority</dt>
+                      <dd className="mono">
+                        {formatPolicyValue(hoveredPolicy.authority)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Familiarity</dt>
+                      <dd className="mono">
+                        {formatPolicyValue(hoveredPolicy.familiarity)}
+                      </dd>
+                    </div>
+                  </dl>
+                </>
+              ) : null}
+            </div>,
+            document.body,
+          )}
+
+        {!settingsOpen ? (
           <p className="run-button__estimate muted">
             Estimated conversation cost:{" "}
             <span className="mono">{formatEstimatedCostRange(costEstimate)}</span>

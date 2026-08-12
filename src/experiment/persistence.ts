@@ -28,12 +28,18 @@ const VALID_CATEGORIES = new Set<ProblemCategory>([
 ]);
 
 const VALID_STATUSES = new Set([
+  "queued",
   "running",
   "completed",
   "failed",
   "cancelled",
 ]);
-const VALID_STOPPED = new Set(["final_answer", "max_turns", "cancelled"]);
+const VALID_STOPPED = new Set([
+  "final_answer",
+  "max_turns",
+  "cancelled",
+  "error",
+]);
 
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
@@ -255,6 +261,12 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     messages,
     finalAnswer: typeof c.finalAnswer === "string" ? c.finalAnswer : undefined,
     stoppedReason: c.stoppedReason as ProblemConversation["stoppedReason"],
+    error: typeof c.error === "string" ? c.error : undefined,
+    status: c.status === "running" ? "running" : undefined,
+    speakingAgentId:
+      c.speakingAgentId === "agent_a" || c.speakingAgentId === "agent_b"
+        ? c.speakingAgentId
+        : undefined,
     conversationUsage: parseModelUsage(c.conversationUsage),
     conversationCostUsd: parseOptionalCost(c.conversationCostUsd),
   };
@@ -349,12 +361,9 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
   let status = r.status as ExperimentRun["status"];
   let error = typeof r.error === "string" ? r.error : undefined;
   let finishedAt = typeof r.finishedAt === "string" ? r.finishedAt : undefined;
-  // A reload interrupts any in-flight run.
-  if (status === "running") {
-    status = "failed";
-    error = error ?? "Interrupted (page reload)";
-    finishedAt = finishedAt ?? new Date().toISOString();
-  }
+  // Browser reload must NOT fail runs — server owns execution. Legacy
+  // localStorage snapshots of in-flight runs are only used for one-time
+  // migration onto the server (see loadLegacyRunsForMigration).
 
   const multiAgentEvaluations = Array.isArray(r.multiAgentEvaluations)
     ? r.multiAgentEvaluations
@@ -365,7 +374,12 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
   return {
     id: r.id,
     createdAt: r.createdAt,
+    startedAt: typeof r.startedAt === "string" ? r.startedAt : undefined,
     finishedAt,
+    title:
+      typeof r.title === "string" && r.title.trim().length > 0
+        ? r.title.trim()
+        : undefined,
     policy: createCommunicationPolicy(r.policy),
     agentPrompts: { agentA: prompts.agentA, agentB: prompts.agentB },
     config,
@@ -385,6 +399,30 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
   };
 }
 
+const LEGACY_MIGRATED_KEY = "communication-policy:runs-migrated-to-server";
+
+/**
+ * One-time read of historical browser-local runs for server import.
+ * No longer authoritative — server `.data/runs.json` owns execution state.
+ */
+export function loadLegacyRunsForMigration(): ExperimentRun[] {
+  try {
+    if (localStorage.getItem(LEGACY_MIGRATED_KEY) === "true") return [];
+    return loadRuns();
+  } catch {
+    return [];
+  }
+}
+
+export function markLegacyRunsMigrated(): void {
+  try {
+    localStorage.setItem(LEGACY_MIGRATED_KEY, "true");
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
+/** @deprecated Prefer server `/api/runs`. Kept for one-time migration. */
 export function loadRuns(): ExperimentRun[] {
   try {
     const raw = localStorage.getItem(RUNS_KEY);
@@ -404,10 +442,7 @@ export function loadRuns(): ExperimentRun[] {
   }
 }
 
-export function saveRuns(runs: ExperimentRun[]): void {
-  try {
-    localStorage.setItem(RUNS_KEY, JSON.stringify(runs));
-  } catch {
-    // Ignore quota / private-mode failures.
-  }
+/** @deprecated Runs are persisted on the server. */
+export function saveRuns(_runs: ExperimentRun[]): void {
+  // No-op: server RunManager is authoritative.
 }

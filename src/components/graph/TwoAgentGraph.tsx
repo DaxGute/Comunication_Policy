@@ -3,13 +3,15 @@ import type { AgentId } from "../../agents/types";
 
 type Props = {
   speakingAgentId?: AgentId;
+  /** Compact embedding inside Problem Inspector (no page-level header). */
+  compact?: boolean;
 };
 
 type HandoffDirection = "a-to-b" | "b-to-a";
 
 const HANDOFF_MS = 900;
 
-export function TwoAgentGraph({ speakingAgentId }: Props) {
+export function TwoAgentGraph({ speakingAgentId, compact }: Props) {
   const prevSpeakingRef = useRef<AgentId | undefined>(undefined);
   const [handoff, setHandoff] = useState<HandoffDirection | null>(null);
 
@@ -35,14 +37,16 @@ export function TwoAgentGraph({ speakingAgentId }: Props) {
   }, [speakingAgentId]);
 
   return (
-    <div className="graph-pane">
-      <header className="graph-pane__header">
-        <h1>Agent A — Agent B</h1>
-        <p className="muted">
-          Two general-purpose agents. Edge = interpersonal communication under
-          the current policy.
-        </p>
-      </header>
+    <div className={compact ? "graph-pane graph-pane--compact" : "graph-pane"}>
+      {compact ? null : (
+        <header className="graph-pane__header">
+          <h1>Agent A — Agent B</h1>
+          <p className="muted">
+            Two general-purpose agents. Edge = interpersonal communication under
+            the current policy.
+          </p>
+        </header>
+      )}
 
       <div className="graph-canvas" aria-label="Two agent communication graph">
         <svg

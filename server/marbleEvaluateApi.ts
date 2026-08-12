@@ -79,7 +79,8 @@ function resolveMarblePython(marbleRoot: string | undefined): string {
   return "python3";
 }
 
-function runPosthoc(payload: unknown, apiKey: string | undefined): Promise<{
+/** Direct Python MARBLE bridge for server-side evaluation (no HTTP hop). */
+export function runPosthoc(payload: unknown, apiKey: string | undefined): Promise<{
   ok: boolean;
   body: Record<string, unknown>;
   status: number;

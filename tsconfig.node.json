@@ -6,8 +6,9 @@
     "types": ["node"],
     "skipLibCheck": true,
 
-    /* Bundler mode */
-    "module": "nodenext",
+    /* Bundler mode — server imports shared src/ modules via Vite. */
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
@@ -22,7 +23,6 @@
   "include": [
     "vite.config.ts",
     "vite-plugin-generate-api.ts",
-    "server/**/*.ts",
-    "src/runtime/models.ts"
+    "server/**/*.ts"
   ]
 }

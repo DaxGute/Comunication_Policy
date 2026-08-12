@@ -36,6 +36,13 @@ export type OrchestratorOptions = {
   retryFrom?: MultiAgentEvaluation;
   signal?: AbortSignal;
   onProgress?: (progress: OrchestratorProgress) => void;
+  /** Injected model client (server direct OpenAI). */
+  client?: import("../runtime/modelClient").ModelClient;
+  /** Injected MARBLE invoker (server Python bridge). */
+  invokeMarble?: (
+    request: unknown,
+    signal?: AbortSignal,
+  ) => Promise<Record<string, unknown>>;
 };
 
 function newId(prefix: string): string {
@@ -229,6 +236,7 @@ export async function runMultiAgentEvaluation(
           conversation,
           evaluatorModel,
           signal: options.signal,
+          invoke: options.invokeMarble,
         });
         if (
           result.cost.estimatedCostUsd == null &&
@@ -294,6 +302,7 @@ export async function runMultiAgentEvaluation(
           priorTaskNotes: priorTask?.notes,
           evaluatorModel,
           reasoningEffort,
+          client: options.client,
           signal: options.signal,
         });
         stages = setStage(stages, "belief_extraction", "completed");

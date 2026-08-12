@@ -64,6 +64,6 @@ export function createInitialExperimentState(
     selectedProblemId,
     speakingAgentId: undefined,
     isRunning: false,
-    runProgress: undefined,
+    runProgressById: {},
   };
 }

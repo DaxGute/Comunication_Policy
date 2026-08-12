@@ -2,7 +2,7 @@ import type { AgentId } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
-import { abortableDelay, throwIfAborted } from "./abort";
+import { abortableDelay, isAbortError, throwIfAborted } from "./abort";
 import {
   isMockModel,
   isOpenAIModel,
@@ -59,7 +59,30 @@ export interface ModelClient {
 export type ModelClientOptions = {
   /** Absolute or relative URL for the local OpenAI proxy. */
   generateUrl?: string;
+  /**
+   * Server-side direct OpenAI call (skips HTTP hop through /api/generate).
+   * When set, OpenAI models use this instead of fetch.
+   */
+  directOpenAIGenerate?: (
+    input: ModelRequest,
+  ) => Promise<ModelResponse>;
 };
+
+const NETWORK_RETRY_MAX_ATTEMPTS = 5;
+
+/** Fetch failures that often clear after a Vite restart / brief outage. */
+function isTransientNetworkError(error: unknown): boolean {
+  if (isAbortError(error)) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : "";
+  return (
+    name === "TypeError" ||
+    name === "NetworkError" ||
+    /networkerror|failed to fetch|load failed|network request failed|econnrefused|econnreset|socket hang up/i.test(
+      message,
+    )
+  );
+}
 
 /**
  * Deterministic mock used for UI plumbing and policy-band inspectability.
@@ -219,6 +242,9 @@ type ProxyGenerateError = {
 export class ConfigurableModelClient implements ModelClient {
   private readonly mock: MockModelClient;
   private readonly generateUrl: string;
+  private readonly directOpenAIGenerate?: (
+    input: ModelRequest,
+  ) => Promise<ModelResponse>;
 
   constructor(
     mock: MockModelClient = new MockModelClient(),
@@ -226,6 +252,7 @@ export class ConfigurableModelClient implements ModelClient {
   ) {
     this.mock = mock;
     this.generateUrl = options.generateUrl ?? "/api/generate";
+    this.directOpenAIGenerate = options.directOpenAIGenerate;
   }
 
   async generate(input: ModelRequest): Promise<ModelResponse> {
@@ -234,6 +261,12 @@ export class ConfigurableModelClient implements ModelClient {
     }
 
     if (isOpenAIModel(input.model)) {
+      if (this.directOpenAIGenerate) {
+        throwIfAborted(input.signal);
+        const response = await this.directOpenAIGenerate(input);
+        throwIfAborted(input.signal);
+        return response;
+      }
       return this.generateOpenAI(input);
     }
 
@@ -250,103 +283,158 @@ export class ConfigurableModelClient implements ModelClient {
     throwIfAborted(input.signal);
 
     const startedAt = Date.now();
-    let response: Response;
-    try {
-      response = await fetch(this.generateUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: input.model,
-          temperature: input.temperature,
-          ...(input.reasoningEffort
-            ? { reasoningEffort: input.reasoningEffort }
-            : {}),
-          messages: input.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-        signal: input.signal,
-      });
-    } catch (error) {
+    const body = JSON.stringify({
+      model: input.model,
+      temperature: input.temperature,
+      ...(input.reasoningEffort
+        ? { reasoningEffort: input.reasoningEffort }
+        : {}),
+      messages: input.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    });
+
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= NETWORK_RETRY_MAX_ATTEMPTS; attempt++) {
       throwIfAborted(input.signal);
-      const detail =
-        error instanceof Error ? error.message : "Network request failed.";
-      throw new Error(
-        `OpenAI proxy request failed (${this.generateUrl}): ${detail}`,
-      );
-    }
+      try {
+        const response = await fetch(this.generateUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: input.signal,
+        });
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error(
-        `OpenAI proxy returned non-JSON (HTTP ${response.status}).`,
-      );
-    }
-
-    if (!response.ok) {
-      const message =
-        payload &&
-        typeof payload === "object" &&
-        typeof (payload as ProxyGenerateError).error === "string"
-          ? (payload as ProxyGenerateError).error
-          : `OpenAI proxy error (HTTP ${response.status}).`;
-      throw new Error(message);
-    }
-
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      typeof (payload as ProxyGenerateSuccess).content !== "string"
-    ) {
-      throw new Error("OpenAI proxy returned a malformed success payload.");
-    }
-
-    const success = payload as ProxyGenerateSuccess;
-    const content = success.content;
-    if (content.trim() === "") {
-      throw new Error("OpenAI proxy returned an empty content string.");
-    }
-
-    const rawUsage = success.usage;
-    const inputTokens =
-      typeof rawUsage?.inputTokens === "number"
-        ? rawUsage.inputTokens
-        : typeof rawUsage?.promptTokens === "number"
-          ? rawUsage.promptTokens
-          : undefined;
-    const outputTokens =
-      typeof rawUsage?.outputTokens === "number"
-        ? rawUsage.outputTokens
-        : typeof rawUsage?.completionTokens === "number"
-          ? rawUsage.completionTokens
-          : undefined;
-    const usage =
-      rawUsage &&
-      typeof rawUsage.totalTokens === "number" &&
-      Number.isFinite(rawUsage.totalTokens)
-        ? {
-            inputTokens,
-            promptTokens: inputTokens,
-            cachedInputTokens:
-              typeof rawUsage.cachedInputTokens === "number"
-                ? rawUsage.cachedInputTokens
-                : undefined,
-            outputTokens,
-            completionTokens: outputTokens,
-            totalTokens: rawUsage.totalTokens,
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch {
+          const nonJson = new Error(
+            `OpenAI proxy returned non-JSON (HTTP ${response.status}).`,
+          );
+          if (
+            (response.status === 502 ||
+              response.status === 503 ||
+              response.status === 504 ||
+              response.status === 0) &&
+            attempt < NETWORK_RETRY_MAX_ATTEMPTS
+          ) {
+            lastError = nonJson;
+            const backoff = Math.min(8_000, 300 * 2 ** (attempt - 1));
+            await abortableDelay(
+              backoff + Math.floor(Math.random() * 120),
+              input.signal,
+            );
+            continue;
           }
-        : undefined;
+          throw nonJson;
+        }
 
-    const durationMs =
-      typeof success.durationMs === "number" &&
-      Number.isFinite(success.durationMs)
-        ? Math.max(0, success.durationMs)
-        : Math.max(0, Date.now() - startedAt);
+        if (!response.ok) {
+          const message =
+            payload &&
+            typeof payload === "object" &&
+            typeof (payload as ProxyGenerateError).error === "string"
+              ? (payload as ProxyGenerateError).error
+              : `OpenAI proxy error (HTTP ${response.status}).`;
+          // 429 / transient 5xx from the proxy are worth retrying (Vite restart,
+          // brief TPM spikes handled upstream, etc.).
+          if (
+            (response.status === 429 ||
+              response.status === 502 ||
+              response.status === 503 ||
+              response.status === 504) &&
+            attempt < NETWORK_RETRY_MAX_ATTEMPTS
+          ) {
+            lastError = new Error(message);
+            const backoff = Math.min(8_000, 300 * 2 ** (attempt - 1));
+            await abortableDelay(
+              backoff + Math.floor(Math.random() * 120),
+              input.signal,
+            );
+            continue;
+          }
+          throw new Error(message);
+        }
 
-    return { content, provider: "openai", usage, durationMs };
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          typeof (payload as ProxyGenerateSuccess).content !== "string"
+        ) {
+          throw new Error("OpenAI proxy returned a malformed success payload.");
+        }
+
+        const success = payload as ProxyGenerateSuccess;
+        const content = success.content;
+        if (content.trim() === "") {
+          throw new Error("OpenAI proxy returned an empty content string.");
+        }
+
+        const rawUsage = success.usage;
+        const inputTokens =
+          typeof rawUsage?.inputTokens === "number"
+            ? rawUsage.inputTokens
+            : typeof rawUsage?.promptTokens === "number"
+              ? rawUsage.promptTokens
+              : undefined;
+        const outputTokens =
+          typeof rawUsage?.outputTokens === "number"
+            ? rawUsage.outputTokens
+            : typeof rawUsage?.completionTokens === "number"
+              ? rawUsage.completionTokens
+              : undefined;
+        const usage =
+          rawUsage &&
+          typeof rawUsage.totalTokens === "number" &&
+          Number.isFinite(rawUsage.totalTokens)
+            ? {
+                inputTokens,
+                promptTokens: inputTokens,
+                cachedInputTokens:
+                  typeof rawUsage.cachedInputTokens === "number"
+                    ? rawUsage.cachedInputTokens
+                    : undefined,
+                outputTokens,
+                completionTokens: outputTokens,
+                totalTokens: rawUsage.totalTokens,
+              }
+            : undefined;
+
+        const durationMs =
+          typeof success.durationMs === "number" &&
+          Number.isFinite(success.durationMs)
+            ? Math.max(0, success.durationMs)
+            : Math.max(0, Date.now() - startedAt);
+
+        return { content, provider: "openai", usage, durationMs };
+      } catch (error) {
+        throwIfAborted(input.signal);
+        lastError = error;
+        if (
+          !isTransientNetworkError(error) ||
+          attempt === NETWORK_RETRY_MAX_ATTEMPTS
+        ) {
+          break;
+        }
+        const backoff = Math.min(8_000, 300 * 2 ** (attempt - 1));
+        await abortableDelay(
+          backoff + Math.floor(Math.random() * 120),
+          input.signal,
+        );
+      }
+    }
+
+    const detail =
+      lastError instanceof Error ? lastError.message : "Network request failed.";
+    // Avoid double-prefixing when the last attempt already formatted the error.
+    if (detail.startsWith("OpenAI proxy")) {
+      throw new Error(detail);
+    }
+    throw new Error(
+      `OpenAI proxy request failed (${this.generateUrl}): ${detail}`,
+    );
   }
 }
 

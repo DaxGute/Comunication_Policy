@@ -213,3 +213,74 @@ export function serializeConversation(
     ),
   };
 }
+
+export type RunExport = {
+  schema_version: "1.1";
+  run_id: string;
+  title?: string;
+  created_at: string;
+  finished_at?: string;
+  status: ExperimentRun["status"];
+  error?: string;
+  usage: {
+    conversation?: {
+      input_tokens: number;
+      cached_input_tokens?: number;
+      output_tokens: number;
+      cost_usd?: number | null;
+    };
+    evaluation?: {
+      input_tokens: number;
+      cached_input_tokens?: number;
+      output_tokens: number;
+      cost_usd?: number | null;
+    };
+    total_cost_usd?: number | null;
+  };
+  conversations: ConversationExport[];
+};
+
+/**
+ * Canonical machine-parseable export of an entire experiment run.
+ * Conversations reuse {@link serializeConversation} so per-problem analysis
+ * scripts keep working on nested entries.
+ */
+export function serializeRun(run: ExperimentRun): RunExport {
+  return {
+    schema_version: "1.1",
+    run_id: run.id,
+    ...(run.title ? { title: run.title } : {}),
+    created_at: run.createdAt,
+    ...(run.finishedAt ? { finished_at: run.finishedAt } : {}),
+    status: run.status,
+    ...(run.error ? { error: run.error } : {}),
+    usage: {
+      ...(run.conversationUsage
+        ? {
+            conversation: {
+              input_tokens: run.conversationUsage.inputTokens,
+              cached_input_tokens: run.conversationUsage.cachedInputTokens,
+              output_tokens: run.conversationUsage.outputTokens,
+              cost_usd: run.conversationCostUsd,
+            },
+          }
+        : {}),
+      ...(run.evaluationUsage
+        ? {
+            evaluation: {
+              input_tokens: run.evaluationUsage.inputTokens,
+              cached_input_tokens: run.evaluationUsage.cachedInputTokens,
+              output_tokens: run.evaluationUsage.outputTokens,
+              cost_usd: run.evaluationCostUsd,
+            },
+          }
+        : {}),
+      ...(run.totalCostUsd !== undefined
+        ? { total_cost_usd: run.totalCostUsd }
+        : {}),
+    },
+    conversations: run.conversations.map((conversation) =>
+      serializeConversation(conversation, run),
+    ),
+  };
+}
