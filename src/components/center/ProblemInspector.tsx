@@ -46,6 +46,9 @@ export function ProblemInspector({
           <span className={`center-status center-status--${problem.status}`}>
             {problem.status}
           </span>
+          {problem.status === "incomplete" ? (
+            <span className="muted">max turns</span>
+          ) : null}
           {problem.hasScore ? (
             <span className="mono">score {formatScore(problem.score!)}</span>
           ) : null}

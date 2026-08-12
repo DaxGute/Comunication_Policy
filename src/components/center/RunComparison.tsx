@@ -21,6 +21,7 @@ const COMPARE_METRICS: { id: RunMetricId; label: string }[] = [
   { id: "medianTurns", label: "Median turns" },
   { id: "problemCount", label: "Problems" },
   { id: "completedProblems", label: "Completed" },
+  { id: "incompleteProblems", label: "Incomplete" },
   { id: "totalMessages", label: "Messages" },
   { id: "totalTokens", label: "Tokens" },
   { id: "durationMs", label: "Duration" },
@@ -35,6 +36,7 @@ function resultGlyph(p?: ProblemSummary): string {
   if (p.status === "failed") return "✗";
   if (p.status === "running") return "●";
   if (p.status === "cancelled") return "⚠";
+  if (p.status === "incomplete") return "○";
   if (p.isCorrect === true) return "✓";
   if (p.isCorrect === false) return "✗";
   if (p.hasScore) return formatScore(p.score!);

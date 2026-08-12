@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentId } from "../../agents/types";
 import type { ExperimentRun } from "../../experiment/types";
 import {
@@ -23,14 +23,18 @@ type Props = {
   runs: ExperimentRun[];
   speakingAgentId?: AgentId;
   selectedRunId?: string;
+  selectedProblemId?: string;
+  problemSelectGeneration?: number;
   onSelectRun: (runId: string | undefined) => void;
-  onSelectProblem: (problemId: string | undefined) => void;
+  onSelectProblem: (problemId: string | undefined, runId?: string) => void;
 };
 
 export function CenterPane({
   runs,
   speakingAgentId,
   selectedRunId: storeRunId,
+  selectedProblemId: storeProblemId,
+  problemSelectGeneration = 0,
   onSelectRun,
   onSelectProblem,
 }: Props) {
@@ -59,6 +63,7 @@ export function CenterPane({
   const [resultFilter, setResultFilter] = useState<ResultFilter>("all");
   const [sort, setSort] = useState<ProblemSort>("anomalous");
   const [search, setSearch] = useState("");
+  const lastProblemSelectGen = useRef(problemSelectGeneration);
 
   const resolvedRunId =
     (localRunId && runById.has(localRunId) ? localRunId : undefined) ??
@@ -78,6 +83,29 @@ export function CenterPane({
     (c) => c.problemId === localProblemId,
   );
 
+  useEffect(() => {
+    if (problemSelectGeneration === lastProblemSelectGen.current) return;
+    lastProblemSelectGen.current = problemSelectGeneration;
+    if (!storeRunId || !storeProblemId) return;
+    if (
+      viewMode === "problem" &&
+      localRunId === storeRunId &&
+      localProblemId === storeProblemId
+    ) {
+      return;
+    }
+    setLocalRunId(storeRunId);
+    setLocalProblemId(storeProblemId);
+    setViewMode("problem");
+  }, [
+    problemSelectGeneration,
+    storeRunId,
+    storeProblemId,
+    viewMode,
+    localRunId,
+    localProblemId,
+  ]);
+
   function openRun(runId: string) {
     setLocalRunId(runId);
     setLocalProblemId(undefined);
@@ -89,8 +117,7 @@ export function CenterPane({
     setLocalRunId(runId);
     setLocalProblemId(problemId);
     setViewMode("problem");
-    onSelectRun(runId);
-    onSelectProblem(problemId);
+    onSelectProblem(problemId, runId);
   }
 
   function goExperiment() {

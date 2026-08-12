@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatPolicyValue } from "../../communication";
 import { evaluateRun } from "../../evaluation/evaluateRun";
+import { isIncompleteConversation } from "../../evaluation/evaluators";
 import { extractFinalAnswerFromMessages } from "../../evaluation/graders/answerExtraction";
 import { gradeCrosswordPuzzle } from "../../evaluation/graders/crosswordGrader";
 import type {
@@ -84,7 +85,7 @@ type Props = {
   selectedRun?: ExperimentRun;
   selectedProblemId?: string;
   onSelectRun: (runId: string) => void;
-  onSelectProblem: (problemId: string) => void;
+  onSelectProblem: (problemId: string, runId?: string) => void;
   onDeleteRun: (runId: string) => void;
   onRenameRun: (runId: string, title: string) => void;
   onRenameProblem: (runId: string, problemId: string, title: string) => void;
@@ -328,9 +329,13 @@ export function ConversationInspector({
               const active = selectedRun?.id === run.id;
               const multiProblem = run.conversations.length > 1;
               const expanded = multiProblem && expandedRunIds.has(run.id);
-              const activeProblemId =
-                selectedConversation?.problemId ??
-                run.conversations[0]?.problemId;
+              const activeProblemIdForRun =
+                selectedRun?.id === run.id
+                  ? (selectedConversation?.problemId ??
+                    (selectedProblemId
+                      ? undefined
+                      : run.conversations[0]?.problemId))
+                  : undefined;
               return (
                 <li key={run.id} className="conv-tree__item">
                   <div
@@ -444,9 +449,11 @@ export function ConversationInspector({
                     <ul className="conv-tree__problems">
                       {run.conversations.map((conversation, index) => {
                         const problemActive =
-                          conversation.problemId === activeProblemId;
+                          conversation.problemId === activeProblemIdForRun;
                         const problemRunning =
                           conversation.status === "running";
+                        const selectThisProblem = () =>
+                          onSelectProblem(conversation.problemId, run.id);
                         return (
                           <li key={conversation.problemId}>
                             <div
@@ -458,13 +465,11 @@ export function ConversationInspector({
                               role="button"
                               tabIndex={0}
                               aria-busy={problemRunning || undefined}
-                              onClick={() =>
-                                onSelectProblem(conversation.problemId)
-                              }
+                              onClick={selectThisProblem}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
-                                  onSelectProblem(conversation.problemId);
+                                  selectThisProblem();
                                 }
                               }}
                             >
@@ -476,9 +481,8 @@ export function ConversationInspector({
                                 className="conv-tree__problem-title conv-tree__editable-title"
                                 inputClassName="conv-tree__editable-input conv-tree__editable-input--problem"
                                 ariaLabel={`Rename problem ${conversation.problemTitle}`}
-                                onEditStart={() =>
-                                  onSelectProblem(conversation.problemId)
-                                }
+                                allowEditOnClick={problemActive}
+                                onEditStart={selectThisProblem}
                                 onCommit={(next) =>
                                   onRenameProblem(
                                     run.id,
@@ -502,6 +506,14 @@ export function ConversationInspector({
                                   }
                                 >
                                   !
+                                </span>
+                              ) : isIncompleteConversation(conversation) ? (
+                                <span
+                                  className="conv-tree__problem-incomplete"
+                                  aria-label="Incomplete"
+                                  title="Reached max turns without finishing"
+                                >
+                                  ○
                                 </span>
                               ) : null}
                             </div>
@@ -1459,6 +1471,7 @@ function runTotals(run: ExperimentRun): {
   const durations: number[] = [];
   const tokens: number[] = [];
   for (const conversation of run.conversations) {
+    if (isIncompleteConversation(conversation)) continue;
     const part = conversationTotals(conversation.messages);
     if (part.hasDuration) durations.push(part.totalDurationMs);
     if (part.hasTokens) tokens.push(part.totalTokens);
@@ -1561,8 +1574,8 @@ function RunStatisticsRow({ run }: { run: ExperimentRun }) {
 }
 
 function EvaluationSummary({ run }: { run: ExperimentRun }) {
-  // Re-grade when stored evaluation is missing/incomplete so crossword metrics
-  // (letter/word/completion/crossing) still appear for finished runs.
+  // Re-grade when stored evaluation is missing crossword metrics or does not
+  // yet exclude max-turn (incomplete) problems from aggregates.
   const evaluation = useMemo(() => {
     const stored = run.evaluation;
     const hasCrosswordGrades = stored?.problems.some(
@@ -1570,10 +1583,12 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
         p.details?.grader === "crossword" &&
         typeof p.details.letterAccuracy === "number",
     );
+    const accountsForIncomplete =
+      typeof stored?.summary.incompleteProblems === "number";
     if (
-      run.config.problemCategory === "crossword" &&
       run.conversations.length > 0 &&
-      !hasCrosswordGrades
+      (!accountsForIncomplete ||
+        (run.config.problemCategory === "crossword" && !hasCrosswordGrades))
     ) {
       return evaluateRun(run);
     }
@@ -1581,6 +1596,21 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
   }, [run]);
 
   if (!evaluation) return null;
+
+  const incompleteIds = new Set(
+    run.conversations
+      .filter(isIncompleteConversation)
+      .map((c) => c.problemId),
+  );
+  const incompleteCount = incompleteIds.size;
+  const graded = evaluation.problems.filter(
+    (p) => !incompleteIds.has(p.problemId),
+  );
+  const incompleteRow = {
+    label: "Incomplete",
+    mean: String(incompleteCount),
+    sd: "—",
+  };
 
   const {
     meanDurationMs,
@@ -1591,7 +1621,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
     durationSdMs,
     tokensSd,
   } = runTotals(run);
-  const crosswordProblems = evaluation.problems.filter(
+  const crosswordProblems = graded.filter(
     (p) => p.details?.grader === "crossword",
   );
   const showCrossword =
@@ -1625,24 +1655,26 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
       ),
     );
     const summary = evaluation.summary;
+    const useStored =
+      typeof summary.incompleteProblems === "number";
     const letterMean =
       letter.mean ??
-      (typeof summary.crosswordLetterAccuracy === "number"
+      (useStored && typeof summary.crosswordLetterAccuracy === "number"
         ? summary.crosswordLetterAccuracy
         : null);
     const wordMean =
       word.mean ??
-      (typeof summary.crosswordWordAccuracy === "number"
+      (useStored && typeof summary.crosswordWordAccuracy === "number"
         ? summary.crosswordWordAccuracy
         : null);
     const completionMean =
       completion.mean ??
-      (typeof summary.crosswordCompletion === "number"
+      (useStored && typeof summary.crosswordCompletion === "number"
         ? summary.crosswordCompletion
         : null);
     const crossingMean =
       crossing.mean ??
-      (typeof summary.crosswordCrossingConsistency === "number"
+      (useStored && typeof summary.crosswordCrossingConsistency === "number"
         ? summary.crosswordCrossingConsistency
         : null);
 
@@ -1669,6 +1701,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
             mean: formatPct(crossingMean) ?? "n/a",
             sd: formatPctSd(crossing.sd),
           },
+          incompleteRow,
         ]}
         meanDurationMs={meanDurationMs}
         meanTokens={meanTokens}
@@ -1681,7 +1714,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
     );
   }
 
-  const moralProblems = evaluation.problems.filter(
+  const moralProblems = graded.filter(
     (p) => p.details?.grader === "moral_open_ended",
   );
   if (moralProblems.length > 0) {
@@ -1722,6 +1755,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
                 ? String(Number(tension.sd.toFixed(2)))
                 : "—",
           },
+          incompleteRow,
         ]}
         meanDurationMs={meanDurationMs}
         meanTokens={meanTokens}
@@ -1734,7 +1768,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
     );
   }
 
-  const proofProblems = evaluation.problems.filter(
+  const proofProblems = graded.filter(
     (p) =>
       p.details?.grader === "proof_collaborative" ||
       p.details?.grader === "proof",
@@ -1758,6 +1792,7 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
             ),
             sd: "—",
           },
+          incompleteRow,
         ]}
         meanDurationMs={meanDurationMs}
         meanTokens={meanTokens}
@@ -1771,11 +1806,9 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
   }
 
   const scores = meanSd(
-    evaluation.problems.map((p) =>
-      typeof p.score === "number" ? p.score : null,
-    ),
+    graded.map((p) => (typeof p.score === "number" ? p.score : null)),
   );
-  const turns = meanSd(evaluation.problems.map((p) => p.turns));
+  const turns = meanSd(graded.map((p) => p.turns));
 
   return (
     <MetricsBlock
@@ -1793,9 +1826,10 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
         },
         {
           label: "Problems completed",
-          mean: String(evaluation.problems.length),
+          mean: String(graded.length),
           sd: "—",
         },
+        incompleteRow,
         {
           label: "Average turns",
           mean:

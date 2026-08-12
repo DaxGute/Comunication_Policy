@@ -66,7 +66,9 @@ export type ExperimentStore = {
   setPolicy: (partial: Partial<CommunicationPolicy>) => void;
   setRunConfig: (partial: Partial<RunConfig>) => void;
   selectRun: (runId: string | undefined) => void;
-  selectProblem: (problemId: string | undefined) => void;
+  selectProblem: (problemId: string | undefined, runId?: string) => void;
+  /** Increments only when the user explicitly selects a problem. */
+  problemSelectGeneration: number;
   deleteRun: (runId: string) => void;
   renameRun: (runId: string, title: string) => void;
   renameProblem: (runId: string, problemId: string, title: string) => void;
@@ -271,6 +273,7 @@ export function useExperimentStore(): ExperimentStore {
     { runId: string; problemId?: string; batch?: boolean } | undefined
   >();
   const [hydrated, setHydrated] = useState(false);
+  const [problemSelectGeneration, setProblemSelectGeneration] = useState(0);
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -445,16 +448,21 @@ export function useExperimentStore(): ExperimentStore {
     });
   }
 
-  function selectProblem(problemId: string | undefined) {
-    setState((prev) => ({
-      ...prev,
-      selectedProblemId: problemId,
-      speakingAgentId: speakingFromSelection(
-        prev.runs,
-        prev.selectedRunId,
-        problemId,
-      ),
-    }));
+  function selectProblem(problemId: string | undefined, runId?: string) {
+    setProblemSelectGeneration((n) => n + 1);
+    setState((prev) => {
+      const selectedRunId = runId ?? prev.selectedRunId;
+      return {
+        ...prev,
+        selectedRunId,
+        selectedProblemId: problemId,
+        speakingAgentId: speakingFromSelection(
+          prev.runs,
+          selectedRunId,
+          problemId,
+        ),
+      };
+    });
   }
 
   function mergeRun(run: ExperimentRun) {
@@ -704,6 +712,7 @@ export function useExperimentStore(): ExperimentStore {
     setRunConfig,
     selectRun,
     selectProblem,
+    problemSelectGeneration,
     deleteRun,
     renameRun,
     renameProblem,

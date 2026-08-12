@@ -1,6 +1,6 @@
 import type { ExperimentRun } from "../experiment/types";
 import { getProblemsForCategory } from "../problems/registry";
-import { evaluateProblem } from "./evaluators";
+import { evaluateProblem, isIncompleteConversation } from "./evaluators";
 import type { EvaluationResult } from "./types";
 
 export function evaluateRun(run: ExperimentRun): EvaluationResult {
@@ -15,13 +15,17 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
     ),
   );
 
-  const completed = problems.length;
-  const withScores = problems.filter((p) => typeof p.score === "number");
-  const crossword = problems.filter((p) => p.details?.grader === "crossword");
-  const moral = problems.filter(
+  const incompleteCount = run.conversations.filter((c) =>
+    isIncompleteConversation(c),
+  ).length;
+  const included = problems.filter((p) => p.details?.incomplete !== true);
+  const completed = included.length;
+  const withScores = included.filter((p) => typeof p.score === "number");
+  const crossword = included.filter((p) => p.details?.grader === "crossword");
+  const moral = included.filter(
     (p) => p.details?.grader === "moral_open_ended",
   );
-  const proof = problems.filter(
+  const proof = included.filter(
     (p) =>
       p.details?.grader === "proof_collaborative" ||
       p.details?.grader === "proof",
@@ -29,10 +33,11 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
   const avgTurns =
     completed === 0
       ? 0
-      : problems.reduce((sum, p) => sum + p.turns, 0) / completed;
+      : included.reduce((sum, p) => sum + p.turns, 0) / completed;
 
   const summary: Record<string, number | string> = {
     problemsCompleted: completed,
+    incompleteProblems: incompleteCount,
     averageTurns: Number(avgTurns.toFixed(2)),
     category: run.config.problemCategory,
   };

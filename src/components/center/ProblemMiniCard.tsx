@@ -14,6 +14,8 @@ function statusGlyph(status: ProblemSummary["status"]): string {
   switch (status) {
     case "complete":
       return "✓";
+    case "incomplete":
+      return "○";
     case "running":
       return "●";
     case "failed":
@@ -43,7 +45,11 @@ export function ProblemMiniCard({
         .filter(Boolean)
         .join(" ")}
       onClick={onSelect}
-      title={problem.title}
+      title={
+        problem.status === "incomplete"
+          ? `${problem.title} (incomplete — max turns)`
+          : problem.title
+      }
     >
       <span className="center-problem-card__id mono">{problem.shortLabel}</span>
       <span className="center-problem-card__glyph" aria-hidden>
@@ -51,6 +57,7 @@ export function ProblemMiniCard({
       </span>
       <span className="center-problem-card__meta muted">
         {problem.turnCount > 0 ? `${problem.turnCount}t` : "—"}
+        {problem.status === "incomplete" ? " · inc" : ""}
         {problem.hasScore ? ` · ${formatScore(problem.score!)}` : ""}
       </span>
       {showMicro ? (

@@ -187,16 +187,38 @@ function scoreWithExpected(
   };
 }
 
+function markIncomplete(evaluation: ProblemEvaluation): ProblemEvaluation {
+  return {
+    ...evaluation,
+    label: "incomplete",
+    notes: [evaluation.notes, "Reached max turns without finishing."]
+      .filter(Boolean)
+      .join(" · "),
+    details: {
+      ...evaluation.details,
+      incomplete: true,
+    },
+  };
+}
+
+export function isIncompleteConversation(
+  conversation: Pick<ProblemConversation, "stoppedReason" | "status">,
+): boolean {
+  return (
+    conversation.status !== "running" &&
+    conversation.stoppedReason === "max_turns"
+  );
+}
+
 export function evaluateProblem(
   category: ProblemCategory,
   conversation: ProblemConversation,
   problem: Problem | undefined,
 ): ProblemEvaluation {
+  let evaluation: ProblemEvaluation;
   if (category === "moral_philosophical" || problem?.kind === "moral") {
-    return evaluateMoral(conversation, problem);
-  }
-
-  if (
+    evaluation = evaluateMoral(conversation, problem);
+  } else if (
     problem?.kind === "crossword_puzzle" ||
     problem?.crossword ||
     category === "crossword"
@@ -205,19 +227,27 @@ export function evaluateProblem(
       const finalAnswer =
         extractFinalAnswerFromMessages(conversation.messages) ??
         conversation.finalAnswer;
-      return {
+      evaluation = {
         ...baseFields(conversation, finalAnswer),
         label: "no_answer",
         notes: "Crossword problem missing from local pool; cannot grade.",
         details: { grader: "crossword" },
       };
+    } else {
+      evaluation = evaluateCrossword(conversation, problem);
     }
-    return evaluateCrossword(conversation, problem);
+  } else if (
+    category === "proof" ||
+    problem?.kind === "proof" ||
+    problem?.proof
+  ) {
+    evaluation = evaluateProof(conversation, problem);
+  } else {
+    evaluation = scoreWithExpected(conversation, problem);
   }
 
-  if (category === "proof" || problem?.kind === "proof" || problem?.proof) {
-    return evaluateProof(conversation, problem);
+  if (isIncompleteConversation(conversation)) {
+    return markIncomplete(evaluation);
   }
-
-  return scoreWithExpected(conversation, problem);
+  return evaluation;
 }

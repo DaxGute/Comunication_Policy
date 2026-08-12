@@ -46,6 +46,9 @@ export function RunCard({
         <span>
           Problems {run.completedCount}/{run.problemCount}
         </span>
+        {run.incompleteCount > 0 ? (
+          <span>Incomplete {run.incompleteCount}</span>
+        ) : null}
         {run.aggregateScore !== undefined ? (
           <span>Score {formatScore(run.aggregateScore)}</span>
         ) : null}

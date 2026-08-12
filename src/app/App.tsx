@@ -37,6 +37,8 @@ export default function App() {
           runs={store.state.runs}
           speakingAgentId={store.state.speakingAgentId}
           selectedRunId={store.state.selectedRunId}
+          selectedProblemId={store.state.selectedProblemId}
+          problemSelectGeneration={store.problemSelectGeneration}
           onSelectRun={store.selectRun}
           onSelectProblem={store.selectProblem}
         />

@@ -14,13 +14,19 @@ import type {
   ProblemConversation,
 } from "../../experiment/types";
 
-export type ProblemStatus = "running" | "complete" | "failed" | "cancelled";
+export type ProblemStatus =
+  | "running"
+  | "complete"
+  | "incomplete"
+  | "failed"
+  | "cancelled";
 
 export type RunMetricId =
   | "aggregateScore"
   | "accuracy"
   | "problemCount"
   | "completedProblems"
+  | "incompleteProblems"
   | "meanTurns"
   | "medianTurns"
   | "totalMessages"
@@ -39,6 +45,7 @@ export const RUN_METRIC_LABELS: Record<RunMetricId, string> = {
   accuracy: "Accuracy",
   problemCount: "Problems",
   completedProblems: "Completed",
+  incompleteProblems: "Incomplete",
   meanTurns: "Mean turns",
   medianTurns: "Median turns",
   totalMessages: "Total messages",
@@ -55,6 +62,7 @@ export const RUN_METRIC_LABELS: Record<RunMetricId, string> = {
 
 export type AttentionKind =
   | "failed"
+  | "incomplete"
   | "high_turns"
   | "high_duration"
   | "high_tokens"
@@ -105,6 +113,7 @@ export type RunSummary = {
   familiarity: number;
   problemCount: number;
   completedCount: number;
+  incompleteCount: number;
   runningCount: number;
   failedCount: number;
   cancelledCount: number;
@@ -191,6 +200,7 @@ function problemStatus(conversation: ProblemConversation): ProblemStatus {
   if (conversation.status === "running") return "running";
   if (conversation.stoppedReason === "error") return "failed";
   if (conversation.stoppedReason === "cancelled") return "cancelled";
+  if (conversation.stoppedReason === "max_turns") return "incomplete";
   return "complete";
 }
 
@@ -265,8 +275,13 @@ export function getProblemSummary(
 ): ProblemSummary {
   const status = problemStatus(conversation);
   const score =
-    typeof evaluation?.score === "number" ? evaluation.score : undefined;
-  const isCorrect = correctnessFromEval(evaluation);
+    status === "incomplete"
+      ? undefined
+      : typeof evaluation?.score === "number"
+        ? evaluation.score
+        : undefined;
+  const isCorrect =
+    status === "incomplete" ? undefined : correctnessFromEval(evaluation);
   const tokenTotal = usageTotal(conversation.conversationUsage);
   const durationMs = conversationDurationMs(conversation);
   const last = conversation.messages[conversation.messages.length - 1];
@@ -294,7 +309,9 @@ export function getProblemSummary(
 
 function buildAttention(problems: ProblemSummary[]): AttentionItem[] {
   const items: AttentionItem[] = [];
-  const finished = problems.filter((p) => p.status !== "running");
+  const finished = problems.filter(
+    (p) => p.status !== "running" && p.status !== "incomplete",
+  );
 
   for (const p of problems) {
     if (p.status === "failed") {
@@ -304,6 +321,15 @@ function buildAttention(problems: ProblemSummary[]): AttentionItem[] {
         kind: "failed",
         detail: p.error?.slice(0, 80) || "Failed",
         severity: 100,
+      });
+    }
+    if (p.status === "incomplete") {
+      items.push({
+        problemId: p.problemId,
+        label: p.shortLabel,
+        kind: "incomplete",
+        detail: "Reached max turns",
+        severity: 80,
       });
     }
   }
@@ -448,40 +474,57 @@ export function getRunSummary(
   );
 
   const completedCount = problems.filter((p) => p.status === "complete").length;
+  const incompleteCount = problems.filter(
+    (p) => p.status === "incomplete",
+  ).length;
   const runningCount = problems.filter((p) => p.status === "running").length;
   const failedCount = problems.filter((p) => p.status === "failed").length;
   const cancelledCount = problems.filter((p) => p.status === "cancelled").length;
 
-  const withCorrectness = problems.filter((p) => p.isCorrect !== undefined);
+  const statProblems = problems.filter((p) => p.status !== "incomplete");
+
+  const withCorrectness = statProblems.filter((p) => p.isCorrect !== undefined);
   const correctCount =
     withCorrectness.length > 0
       ? withCorrectness.filter((p) => p.isCorrect).length
       : undefined;
 
-  const scored = problems.filter((p) => p.hasScore);
+  const scored = statProblems.filter((p) => p.hasScore);
   const scoreFromProblems = mean(scored.map((p) => p.score!));
-  const summaryScore = numericSummaryField(run.evaluation?.summary, "score");
+  const storedExcludesIncomplete =
+    typeof run.evaluation?.summary.incompleteProblems === "number";
+  const summaryScore = storedExcludesIncomplete
+    ? numericSummaryField(run.evaluation?.summary, "score")
+    : undefined;
   const aggregateScore = summaryScore ?? scoreFromProblems;
 
   const accuracy =
-    numericSummaryField(run.evaluation?.summary, "crosswordLetterAccuracy") ??
-    numericSummaryField(run.evaluation?.summary, "crosswordExactSolveRate") ??
+    (storedExcludesIncomplete
+      ? (numericSummaryField(
+          run.evaluation?.summary,
+          "crosswordLetterAccuracy",
+        ) ??
+        numericSummaryField(
+          run.evaluation?.summary,
+          "crosswordExactSolveRate",
+        ))
+      : undefined) ??
     (correctCount !== undefined && withCorrectness.length > 0
       ? correctCount / withCorrectness.length
       : undefined);
 
-  const turnVals = problems
+  const turnVals = statProblems
     .filter((p) => p.status !== "running" || p.turnCount > 0)
     .map((p) => p.turnCount);
   const meanTurns = mean(turnVals);
   const medianTurns = median(turnVals);
 
-  const totalMessages = problems.reduce((s, p) => s + p.messageCount, 0);
+  const totalMessages = statProblems.reduce((s, p) => s + p.messageCount, 0);
   const meanMessages =
-    problems.length > 0 ? totalMessages / problems.length : undefined;
+    statProblems.length > 0 ? totalMessages / statProblems.length : undefined;
 
   const runTok = usageTotal(run.conversationUsage);
-  const problemToks = problems
+  const problemToks = statProblems
     .map((p) => p.tokenTotal)
     .filter((v): v is number => typeof v === "number");
   const totalTok =
@@ -489,13 +532,10 @@ export function getRunSummary(
     (problemToks.length > 0
       ? problemToks.reduce((a, b) => a + b, 0)
       : undefined);
-  const meanTok =
-    totalTok !== undefined && problems.length > 0
-      ? totalTok / problems.length
-      : mean(problemToks);
+  const meanTok = mean(problemToks);
 
   const durationMs = runDurationMs(run);
-  const problemDurs = problems
+  const problemDurs = statProblems
     .map((p) => p.durationMs)
     .filter((v): v is number => typeof v === "number");
   const meanProblemDurationMs = mean(problemDurs);
@@ -507,6 +547,7 @@ export function getRunSummary(
     familiarity: run.policy.familiarity,
     problemCount: problems.length,
     completedProblems: completedCount,
+    incompleteProblems: incompleteCount,
   };
   if (aggregateScore !== undefined) metrics.aggregateScore = aggregateScore;
   if (accuracy !== undefined) metrics.accuracy = accuracy;
@@ -534,6 +575,7 @@ export function getRunSummary(
     familiarity: run.policy.familiarity,
     problemCount: problems.length,
     completedCount,
+    incompleteCount,
     runningCount,
     failedCount,
     cancelledCount,
@@ -572,6 +614,7 @@ export function getAvailableRunMetrics(runs: RunSummary[]): RunMetricId[] {
     "medianTurns",
     "problemCount",
     "completedProblems",
+    "incompleteProblems",
     "totalMessages",
     "meanMessages",
     "totalTokens",
@@ -657,6 +700,8 @@ export function attentionKindLabel(kind: AttentionKind): string {
   switch (kind) {
     case "failed":
       return "Failed";
+    case "incomplete":
+      return "Incomplete";
     case "high_turns":
       return "High turns";
     case "high_duration":

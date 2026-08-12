@@ -8,7 +8,12 @@ import {
 import { ProblemMiniCard } from "./ProblemMiniCard";
 import type { AgentId } from "../../agents/types";
 
-export type StatusFilter = "all" | "running" | "complete" | "failed";
+export type StatusFilter =
+  | "all"
+  | "running"
+  | "complete"
+  | "incomplete"
+  | "failed";
 export type ResultFilter = "all" | "correct" | "incorrect";
 export type ProblemSort =
   | "anomalous"
@@ -118,6 +123,9 @@ export function RunOverview({
           label="Completed"
           value={`${run.completedCount} / ${run.problemCount}`}
         />
+        {run.incompleteCount > 0 ? (
+          <SummaryStat label="Incomplete" value={String(run.incompleteCount)} />
+        ) : null}
         {run.correctCount !== undefined ? (
           <SummaryStat
             label="Correct"
@@ -174,6 +182,7 @@ export function RunOverview({
               ["all", "All"],
               ["running", "Running"],
               ["complete", "Complete"],
+              ["incomplete", "Incomplete"],
               ["failed", "Failed"],
             ] as const
           ).map(([id, label]) => (

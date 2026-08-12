@@ -5,6 +5,11 @@ type Props = {
   onCommit: (next: string) => void;
   /** Called when the user starts editing (e.g. to select the parent row). */
   onEditStart?: () => void;
+  /**
+   * When false, click/Enter only fires `onEditStart` (select the row)
+   * without entering rename mode. Default true.
+   */
+  allowEditOnClick?: boolean;
   className?: string;
   inputClassName?: string;
   ariaLabel?: string;
@@ -19,6 +24,7 @@ export function InlineEditableText({
   value,
   onCommit,
   onEditStart,
+  allowEditOnClick = true,
   className,
   inputClassName,
   ariaLabel,
@@ -91,14 +97,14 @@ export function InlineEditableText({
       onClick={(e) => {
         e.stopPropagation();
         onEditStart?.();
-        setEditing(true);
+        if (allowEditOnClick) setEditing(true);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           e.stopPropagation();
           onEditStart?.();
-          setEditing(true);
+          if (allowEditOnClick) setEditing(true);
         }
       }}
     >

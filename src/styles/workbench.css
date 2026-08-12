@@ -1264,6 +1264,10 @@ body.is-resizing-panes * {
   color: #c4a35a;
 }
 
+.center-status--incomplete {
+  color: #c4a35a;
+}
+
 .center-scatter {
   margin-bottom: 0.75rem;
 }
@@ -1531,6 +1535,10 @@ body.is-resizing-panes * {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border-soft));
 }
 
+.center-problem-card--incomplete {
+  border-color: color-mix(in srgb, #c4a35a 45%, var(--border-soft));
+}
+
 .center-problem-card__id {
   font-size: 0.7rem;
   font-weight: 560;
@@ -1547,6 +1555,10 @@ body.is-resizing-panes * {
 
 .center-problem-card--failed .center-problem-card__glyph {
   color: var(--danger);
+}
+
+.center-problem-card--incomplete .center-problem-card__glyph {
+  color: #c4a35a;
 }
 
 .center-problem-card--running .center-problem-card__glyph {
@@ -2912,6 +2924,13 @@ body.is-resizing-panes * {
   line-height: 1;
   color: var(--bg-0, #111);
   background: var(--danger);
+}
+
+.conv-tree__problem-incomplete {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: #c4a35a;
 }
 
 /* —— Conversation inspector —— */
