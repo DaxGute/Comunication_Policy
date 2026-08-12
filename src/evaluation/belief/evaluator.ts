@@ -1,4 +1,6 @@
 import type { ExperimentRun, ProblemConversation } from "../../experiment/types";
+import { calculateModelCost } from "../../models/cost";
+import type { ReasoningEffort } from "../../models/modelRegistry";
 import type { Problem } from "../../problems/types";
 import { createModelClient, type ModelClient } from "../../runtime/modelClient";
 import { isMockModel } from "../../runtime/models";
@@ -39,6 +41,7 @@ export async function evaluateBeliefDynamics(options: {
   priorTaskLabel?: string;
   priorTaskNotes?: string;
   evaluatorModel: string;
+  reasoningEffort?: ReasoningEffort;
   client?: ModelClient;
   signal?: AbortSignal;
 }): Promise<BeliefEvaluateResult> {
@@ -62,6 +65,7 @@ export async function evaluateBeliefDynamics(options: {
       cost: {
         model: options.evaluatorModel,
         provider: "mock",
+        evaluator: "belief",
         latencyMs: Date.now() - started,
         totalTokens: 0,
         estimatedCostUsd: 0,
@@ -78,6 +82,7 @@ export async function evaluateBeliefDynamics(options: {
   });
 
   let totalPrompt = 0;
+  let totalCached = 0;
   let totalCompletion = 0;
   let rawText = "";
   let lastErrors: string[] = [];
@@ -109,13 +114,17 @@ export async function evaluateBeliefDynamics(options: {
     const response = await client.generate({
       model: options.evaluatorModel,
       temperature: 0,
+      reasoningEffort: options.reasoningEffort,
       messages,
       signal: options.signal,
     });
 
     rawText = response.content;
-    totalPrompt += response.usage?.promptTokens ?? 0;
-    totalCompletion += response.usage?.completionTokens ?? 0;
+    totalPrompt +=
+      response.usage?.inputTokens ?? response.usage?.promptTokens ?? 0;
+    totalCached += response.usage?.cachedInputTokens ?? 0;
+    totalCompletion +=
+      response.usage?.outputTokens ?? response.usage?.completionTokens ?? 0;
 
     const json = extractJsonObject(rawText);
     if (!json) {
@@ -133,6 +142,11 @@ export async function evaluateBeliefDynamics(options: {
 
     const metrics = computeBeliefMetrics(validation.claims, validation.events);
     const normalized = toBeliefDynamicsEvaluation(validation, metrics);
+    const usage = {
+      inputTokens: totalPrompt,
+      cachedInputTokens: totalCached > 0 ? totalCached : undefined,
+      outputTokens: totalCompletion,
+    };
     return {
       artifact: {
         normalized,
@@ -141,14 +155,16 @@ export async function evaluateBeliefDynamics(options: {
       cost: {
         model: options.evaluatorModel,
         provider: "openai",
+        evaluator: "belief",
         inputTokens: totalPrompt || undefined,
+        cachedInputTokens: totalCached > 0 ? totalCached : undefined,
         outputTokens: totalCompletion || undefined,
         totalTokens:
           totalPrompt + totalCompletion > 0
             ? totalPrompt + totalCompletion
             : response.usage?.totalTokens,
         latencyMs: Date.now() - started,
-        estimatedCostUsd: null,
+        estimatedCostUsd: calculateModelCost(options.evaluatorModel, usage),
       },
     };
   }
@@ -162,6 +178,11 @@ export async function evaluateBeliefDynamics(options: {
     failedValidation.events,
   );
   const normalized = toBeliefDynamicsEvaluation(failedValidation, metrics);
+  const usage = {
+    inputTokens: totalPrompt,
+    cachedInputTokens: totalCached > 0 ? totalCached : undefined,
+    outputTokens: totalCompletion,
+  };
   return {
     artifact: {
       normalized,
@@ -174,14 +195,16 @@ export async function evaluateBeliefDynamics(options: {
     cost: {
       model: options.evaluatorModel,
       provider: "openai",
+      evaluator: "belief",
       inputTokens: totalPrompt || undefined,
+      cachedInputTokens: totalCached > 0 ? totalCached : undefined,
       outputTokens: totalCompletion || undefined,
       totalTokens:
         totalPrompt + totalCompletion > 0
           ? totalPrompt + totalCompletion
           : undefined,
       latencyMs: Date.now() - started,
-      estimatedCostUsd: null,
+      estimatedCostUsd: calculateModelCost(options.evaluatorModel, usage),
     },
   };
 }

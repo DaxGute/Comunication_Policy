@@ -1,5 +1,6 @@
 import type { AgentId } from "../agents/types";
 import type { ProblemEvaluation } from "../evaluation/types";
+import { resolveRunModel } from "./configAccessors";
 import type { ExperimentRun, ProblemConversation } from "./types";
 
 export type ConversationExportMessage = {
@@ -9,6 +10,12 @@ export type ConversationExportMessage = {
   role: "assistant";
   content: string;
   timestamp?: string;
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    total_tokens: number;
+  };
 };
 
 export type ConversationExportAgent = {
@@ -17,7 +24,7 @@ export type ConversationExportAgent = {
 };
 
 export type ConversationExport = {
-  schema_version: "1.0";
+  schema_version: "1.1";
   run_id: string;
   conversation_id: string;
   problem: {
@@ -27,6 +34,11 @@ export type ConversationExport = {
     prompt: string;
   };
   configuration: {
+    run_model: string;
+    run_reasoning_effort: string;
+    evaluation_model: string;
+    evaluation_reasoning_effort: string;
+    /** @deprecated Prefer run_model; kept for older analysis scripts. */
     model: string;
     provider: "mock" | "openai";
     temperature: number;
@@ -44,6 +56,14 @@ export type ConversationExport = {
     final_answer?: string;
     status: ProblemConversation["stoppedReason"];
   };
+  usage: {
+    conversation?: {
+      input_tokens: number;
+      cached_input_tokens?: number;
+      output_tokens: number;
+      cost_usd?: number | null;
+    };
+  };
   /** Per-problem evaluation when available; empty object if not yet evaluated. */
   evaluations: Record<string, unknown>;
 };
@@ -54,10 +74,15 @@ function otherAgent(agentId: AgentId): AgentId {
 
 function serializeEvaluations(
   evaluation: ProblemEvaluation | undefined,
+  run: ExperimentRun,
+  problemId: string,
 ): Record<string, unknown> {
-  if (!evaluation) return {};
-  return {
-    problem: {
+  const multi = (run.multiAgentEvaluations ?? []).filter(
+    (e) => e.problemId === problemId,
+  );
+  const out: Record<string, unknown> = {};
+  if (evaluation) {
+    out.problem = {
       problem_id: evaluation.problemId,
       problem_title: evaluation.problemTitle,
       turns: evaluation.turns,
@@ -70,8 +95,25 @@ function serializeEvaluations(
       ...(evaluation.details !== undefined
         ? { details: evaluation.details }
         : {}),
-    },
-  };
+    };
+  }
+  if (multi.length > 0) {
+    out.multi_agent = multi.map((e) => ({
+      id: e.id,
+      evaluator_model: e.evaluatorModel,
+      reasoning_effort: e.reasoningEffort,
+      created_at: e.createdAt,
+      finished_at: e.finishedAt,
+      status: e.status,
+      usage: e.usage,
+      cost_usd: e.costUsd,
+      metrics: {
+        marble: e.marble?.normalized,
+        belief_dynamics: e.beliefDynamics?.normalized.metrics,
+      },
+    }));
+  }
+  return out;
 }
 
 /**
@@ -85,9 +127,10 @@ export function serializeConversation(
   const evaluation = run.evaluation?.problems.find(
     (problem) => problem.problemId === conversation.problemId,
   );
+  const runModel = resolveRunModel(run.config);
 
   return {
-    schema_version: "1.0",
+    schema_version: "1.1",
     run_id: run.id,
     conversation_id: conversation.problemId,
     problem: {
@@ -97,7 +140,11 @@ export function serializeConversation(
       prompt: conversation.problemText,
     },
     configuration: {
-      model: run.config.model,
+      run_model: runModel,
+      run_reasoning_effort: run.config.runReasoningEffort,
+      evaluation_model: run.config.evaluationModel,
+      evaluation_reasoning_effort: run.config.evaluationReasoningEffort,
+      model: runModel,
       provider: run.config.provider,
       temperature: run.config.temperature,
       max_turns: run.config.maxTurns,
@@ -129,6 +176,15 @@ export function serializeConversation(
       if (message.timestamp) {
         exported.timestamp = message.timestamp;
       }
+      if (message.usage) {
+        exported.usage = {
+          input_tokens: message.usage.inputTokens ?? message.usage.promptTokens,
+          cached_input_tokens: message.usage.cachedInputTokens,
+          output_tokens:
+            message.usage.outputTokens ?? message.usage.completionTokens,
+          total_tokens: message.usage.totalTokens,
+        };
+      }
       return exported;
     }),
     result: {
@@ -137,6 +193,23 @@ export function serializeConversation(
         : {}),
       status: conversation.stoppedReason,
     },
-    evaluations: serializeEvaluations(evaluation),
+    usage: {
+      ...(conversation.conversationUsage
+        ? {
+            conversation: {
+              input_tokens: conversation.conversationUsage.inputTokens,
+              cached_input_tokens:
+                conversation.conversationUsage.cachedInputTokens,
+              output_tokens: conversation.conversationUsage.outputTokens,
+              cost_usd: conversation.conversationCostUsd,
+            },
+          }
+        : {}),
+    },
+    evaluations: serializeEvaluations(
+      evaluation,
+      run,
+      conversation.problemId,
+    ),
   };
 }

@@ -27,10 +27,10 @@ async function listen(
 }
 
 async function main(): Promise<void> {
-  if (modelSupportsCustomTemperature("gpt-4o-mini") !== true) {
-    throw new Error("gpt-4o-mini should allow custom temperature");
+  if (modelSupportsCustomTemperature("gpt-4o") !== true) {
+    throw new Error("gpt-4o should allow custom temperature");
   }
-  for (const model of ["gpt-5", "gpt-5-mini", "gpt-5-nano"]) {
+  for (const model of ["gpt-5.6-terra", "gpt-5-mini", "gpt-5.4-nano"]) {
     if (modelSupportsCustomTemperature(model) !== false) {
       throw new Error(`${model} should not allow custom temperature`);
     }

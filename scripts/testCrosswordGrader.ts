@@ -335,6 +335,37 @@ assert.equal(
 const single = extractFinalAnswerFromText("FINAL_ANSWER: 42");
 assert.equal(single, "42");
 
+// Blank lines between Across/Down (and trailing commentary) must not truncate.
+section("FINAL_ANSWER blank-line Across/Down extraction");
+const withBlanks = extractFinalAnswerFromText(
+  [
+    "Locked in.",
+    "FINAL_ANSWER:",
+    "ACROSS",
+    "",
+    "1: HI",
+    "3: DOG",
+    "5: GO",
+    "",
+    "DOWN",
+    "1: HD",
+    "2: IOG",
+    "4: GO",
+    "",
+    "Looks consistent to me.",
+  ].join("\n"),
+);
+assert.ok(withBlanks?.includes("DOWN"), "DOWN section dropped at blank line");
+assert.ok(withBlanks?.includes("2: IOG"), "down clues truncated");
+assert.ok(
+  !withBlanks?.includes("Looks consistent"),
+  "trailing commentary should be stripped",
+);
+assert.equal(
+  gradeCrosswordPuzzle({ predicted: withBlanks, spec }).exactSolve,
+  true,
+);
+
 console.log(
   `ok — ${subset.items.length} CrossWordBench puzzles + fixture metrics + leak checks`,
 );

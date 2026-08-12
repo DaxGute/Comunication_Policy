@@ -7,6 +7,8 @@ import { buildAgentPromptPair } from "../src/agents/buildAgentPrompt";
 import { selectProblems } from "../src/problems/registry";
 import { formatCrosswordProblemText } from "../src/problems/crossword/formatCrosswordProblem";
 import { getCrosswordBenchPuzzles } from "../src/problems/crossword/loadCrosswordBench";
+import { normalizeRunConfig } from "../src/experiment/configAccessors";
+import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults";
 import { runExperiment } from "../src/runtime/runExperiment";
 import { MOCK_MODEL_ID } from "../src/runtime/models";
 import type { ProblemCategory } from "../src/problems/types";
@@ -14,14 +16,16 @@ import type { ProblemCategory } from "../src/problems/types";
 async function runCategory(category: ProblemCategory) {
   const run = await runExperiment({
     policy: DEFAULT_COMMUNICATION_POLICY,
-    config: {
-      problemCategory: category,
-      problemCount: 1,
-      model: MOCK_MODEL_ID,
-      provider: "mock",
-      maxTurns: 4,
-      temperature: 0.2,
-    },
+    config: normalizeRunConfig(
+      {
+        problemCategory: category,
+        problemCount: 1,
+        runModel: MOCK_MODEL_ID,
+        maxTurns: 4,
+        temperature: 0.2,
+      },
+      { ...DEFAULT_RUN_CONFIG, runModel: MOCK_MODEL_ID, provider: "mock" },
+    ),
   });
   const evaluation = evaluateRun(run);
   const conv = run.conversations[0];

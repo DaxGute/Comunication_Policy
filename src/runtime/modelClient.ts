@@ -1,5 +1,6 @@
 import type { AgentId } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
+import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
 import { abortableDelay, throwIfAborted } from "./abort";
 import {
@@ -18,6 +19,7 @@ export type ModelRequest = {
   model: string;
   temperature: number;
   messages: ModelMessage[];
+  reasoningEffort?: ReasoningEffort;
   signal?: AbortSignal;
   /** Context available to adapters for deterministic mocks. */
   meta?: {
@@ -28,8 +30,12 @@ export type ModelRequest = {
   };
 };
 
+/** Per-call usage. Prefer input/output; legacy prompt/completion aliases kept. */
 export type ModelUsage = {
+  inputTokens?: number;
   promptTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
   completionTokens?: number;
   totalTokens: number;
 };
@@ -179,7 +185,9 @@ export class MockModelClient implements ModelClient {
       provider: "mock",
       durationMs,
       usage: {
+        inputTokens: promptTokens,
         promptTokens,
+        outputTokens: completionTokens,
         completionTokens,
         totalTokens: promptTokens + completionTokens,
       },
@@ -190,7 +198,14 @@ export class MockModelClient implements ModelClient {
 type ProxyGenerateSuccess = {
   content: string;
   provider?: "openai";
-  usage?: ModelUsage;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cachedInputTokens?: number;
+  };
   durationMs?: number;
 };
 
@@ -243,6 +258,9 @@ export class ConfigurableModelClient implements ModelClient {
         body: JSON.stringify({
           model: input.model,
           temperature: input.temperature,
+          ...(input.reasoningEffort
+            ? { reasoningEffort: input.reasoningEffort }
+            : {}),
           messages: input.messages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -292,20 +310,33 @@ export class ConfigurableModelClient implements ModelClient {
       throw new Error("OpenAI proxy returned an empty content string.");
     }
 
+    const rawUsage = success.usage;
+    const inputTokens =
+      typeof rawUsage?.inputTokens === "number"
+        ? rawUsage.inputTokens
+        : typeof rawUsage?.promptTokens === "number"
+          ? rawUsage.promptTokens
+          : undefined;
+    const outputTokens =
+      typeof rawUsage?.outputTokens === "number"
+        ? rawUsage.outputTokens
+        : typeof rawUsage?.completionTokens === "number"
+          ? rawUsage.completionTokens
+          : undefined;
     const usage =
-      success.usage &&
-      typeof success.usage.totalTokens === "number" &&
-      Number.isFinite(success.usage.totalTokens)
+      rawUsage &&
+      typeof rawUsage.totalTokens === "number" &&
+      Number.isFinite(rawUsage.totalTokens)
         ? {
-            promptTokens:
-              typeof success.usage.promptTokens === "number"
-                ? success.usage.promptTokens
+            inputTokens,
+            promptTokens: inputTokens,
+            cachedInputTokens:
+              typeof rawUsage.cachedInputTokens === "number"
+                ? rawUsage.cachedInputTokens
                 : undefined,
-            completionTokens:
-              typeof success.usage.completionTokens === "number"
-                ? success.usage.completionTokens
-                : undefined,
-            totalTokens: success.usage.totalTokens,
+            outputTokens,
+            completionTokens: outputTokens,
+            totalTokens: rawUsage.totalTokens,
           }
         : undefined;
 

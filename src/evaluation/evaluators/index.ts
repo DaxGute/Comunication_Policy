@@ -30,9 +30,11 @@ function evaluateCrossword(
   conversation: ProblemConversation,
   problem: Problem,
 ): ProblemEvaluation {
+  // Prefer re-extraction from messages so blank-line Across/Down blocks
+  // are recovered even when a truncated finalAnswer was stored earlier.
   const finalAnswer =
-    conversation.finalAnswer ??
-    extractFinalAnswerFromMessages(conversation.messages);
+    extractFinalAnswerFromMessages(conversation.messages) ??
+    conversation.finalAnswer;
 
   if (!problem.crossword) {
     return {

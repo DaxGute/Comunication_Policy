@@ -4,11 +4,22 @@ import type {
   EvaluationResult,
   MultiAgentEvaluation,
 } from "../evaluation/types";
+import type { ModelUsage } from "../models/usage";
+import type { ReasoningEffort } from "../models/modelRegistry";
 import type { ProblemCategory } from "../problems/types";
+
+export type { ModelUsage, ReasoningEffort };
 
 /** Token counts returned by the model provider for one turn. */
 export type MessageUsage = {
+  /** Preferred canonical field. */
+  inputTokens?: number;
+  /** Legacy alias for inputTokens. */
   promptTokens?: number;
+  cachedInputTokens?: number;
+  /** Preferred canonical field. */
+  outputTokens?: number;
+  /** Legacy alias for outputTokens. */
   completionTokens?: number;
   totalTokens: number;
 };
@@ -32,13 +43,32 @@ export type ProblemConversation = {
   messages: ConversationMessage[];
   finalAnswer?: string;
   stoppedReason: "final_answer" | "max_turns" | "cancelled";
+  /**
+   * Set while this problem is mid-run (streaming into the inspector).
+   * Omitted once the problem finishes or when loaded from persistence.
+   */
+  status?: "running";
+  /** Sum of all agent model calls for this problem. */
+  conversationUsage?: ModelUsage;
+  conversationCostUsd?: number | null;
 };
 
+/**
+ * Experiment run settings. Model fields are experimental conditions —
+ * snapshotted onto each run and never inferred from current UI later.
+ */
 export type RunConfig = {
   problemCategory: ProblemCategory;
   problemCount: number;
-  model: string;
-  /** Derived from model id; snapshotted onto each run for experiment integrity. */
+  /** Conversation / agent model. */
+  runModel: string;
+  runReasoningEffort: ReasoningEffort;
+  /** Independent judge model for post-hoc evaluation. */
+  evaluationModel: string;
+  evaluationReasoningEffort: ReasoningEffort;
+  /** When true, pre-run cost estimate includes an evaluation pass. */
+  evaluationEnabled: boolean;
+  /** Derived from runModel; snapshotted onto each run for experiment integrity. */
   provider: "mock" | "openai";
   maxTurns: number;
   temperature: number;
@@ -57,10 +87,17 @@ export type ExperimentRun = {
   conversations: ProblemConversation[];
   evaluation?: EvaluationResult;
   /**
-   * Post-hoc multi-agent evaluations. At most one record per conversation
-   * (problemId); reruns replace the previous evaluation.
+   * Post-hoc multi-agent evaluations. Multiple records per conversation are
+   * kept so re-runs with a different judge model do not overwrite history.
    */
   multiAgentEvaluations?: MultiAgentEvaluation[];
+  /** Aggregated conversation token usage across all problems. */
+  conversationUsage?: ModelUsage;
+  conversationCostUsd?: number | null;
+  /** Aggregated evaluation token usage across all evaluation executions. */
+  evaluationUsage?: ModelUsage;
+  evaluationCostUsd?: number | null;
+  totalCostUsd?: number | null;
   status: "running" | "completed" | "failed" | "cancelled";
   error?: string;
 };

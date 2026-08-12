@@ -47,14 +47,14 @@ function cleanExtractedAnswer(raw: string): string | undefined {
   const rest = lines.slice(1);
 
   if (looksLikeCrosswordBlock(lines)) {
-    // Keep multi-line clue-assignment / grid blocks intact.
-    let block = text;
-    // Drop a trailing blank-line commentary paragraph if present after a dense block.
-    const parts = block.split(/\n\s*\n/);
-    if (parts.length > 1 && looksLikeCrosswordBlock(parts[0].split("\n"))) {
-      block = parts[0].trim();
+    // Keep Across/Down sections even when separated by blank lines.
+    // Only drop trailing commentary paragraphs that are not crossword-like.
+    const parts = text.split(/\n\s*\n/);
+    let end = parts.length;
+    while (end > 1 && !looksLikeCrosswordBlock(parts[end - 1].split("\n"))) {
+      end -= 1;
     }
-    return block;
+    return parts.slice(0, end).join("\n\n").trim();
   }
 
   if (looksLikeMultiLineProof(text, lines)) {

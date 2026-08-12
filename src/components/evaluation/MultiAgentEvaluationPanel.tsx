@@ -5,9 +5,22 @@ import type {
   MarbleEvaluation,
   MultiAgentEvaluation,
 } from "../../evaluation/types";
+import {
+  latestEvaluationForProblem,
+  resolveRunModel,
+} from "../../experiment/configAccessors";
 import type { EvaluationUiState } from "../../experiment/store";
 import type { ExperimentRun, ProblemConversation } from "../../experiment/types";
-import { AVAILABLE_MODELS, OPENAI_MODEL_ID } from "../../runtime/models";
+import {
+  estimateExperimentCost,
+  formatEstimatedUsd,
+} from "../../models/cost";
+import {
+  DEFAULT_EVALUATION_MODEL_ID,
+  formatReasoningEffort,
+} from "../../models/modelRegistry";
+import { ModelSelect } from "../ui/ModelSelect";
+import { TokenUsagePanel } from "../ui/TokenUsagePanel";
 
 type Props = {
   run: ExperimentRun;
@@ -17,19 +30,10 @@ type Props = {
     runId: string;
     problemId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
     retryFrom?: MultiAgentEvaluation;
   }) => Promise<unknown>;
 };
-
-function latestEvaluation(
-  run: ExperimentRun,
-  problemId: string,
-): MultiAgentEvaluation | undefined {
-  const list = (run.multiAgentEvaluations ?? [])
-    .filter((e) => e.problemId === problemId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return list[0];
-}
 
 function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
@@ -205,6 +209,12 @@ function EvaluationResults({
 }) {
   return (
     <div className="mae-panel__results">
+      <p className="muted mono">
+        {evaluation.evaluatorModel}
+        {evaluation.reasoningEffort
+          ? ` · reasoning ${formatReasoningEffort(evaluation.reasoningEffort)}`
+          : ""}
+      </p>
       {evaluation.componentStatus.marble === "failed" ? (
         <section className="mae-section mae-section--error">
           <h4>MultiAgentBench / MARBLE</h4>
@@ -227,6 +237,11 @@ function EvaluationResults({
       ) : evaluation.beliefDynamics ? (
         <BeliefSection data={evaluation.beliefDynamics.normalized} />
       ) : null}
+      <TokenUsagePanel
+        evaluationUsage={evaluation.usage}
+        evaluationCostUsd={evaluation.costUsd}
+        evaluationsRan
+      />
     </div>
   );
 }
@@ -238,10 +253,23 @@ export function MultiAgentEvaluationPanel({
   onRunEvaluation,
 }: Props) {
   const [evaluatorModel, setEvaluatorModel] = useState(
-    run.config.provider === "openai" ? run.config.model : OPENAI_MODEL_ID,
+    run.config.evaluationModel || DEFAULT_EVALUATION_MODEL_ID,
   );
+  const [evaluationReasoningEffort, setEvaluationReasoningEffort] = useState(
+    run.config.evaluationReasoningEffort,
+  );
+  const evalCostEstimate = useMemo(() => {
+    const estimate = estimateExperimentCost({
+      runModel: resolveRunModel(run.config),
+      evaluationModel: evaluatorModel,
+      problemCount: 1,
+      maxTurns: run.config.maxTurns,
+      evaluationEnabled: true,
+    });
+    return formatEstimatedUsd(estimate.evaluationUsd);
+  }, [run.config, evaluatorModel]);
   const latest = useMemo(
-    () => latestEvaluation(run, conversation.problemId),
+    () => latestEvaluationForProblem(run, conversation.problemId),
     [run, conversation.problemId],
   );
   const isThisRunning =
@@ -273,20 +301,22 @@ export function MultiAgentEvaluationPanel({
           </div>
           {!isThisRunning ? (
             <div className="mae-panel__controls">
-              <label className="mae-panel__model">
-                <span>Evaluator Model</span>
-                <select
+              <span className="mae-panel__estimate muted">
+                Estimated evaluation cost{" "}
+                <span className="mono">{evalCostEstimate}</span>
+              </span>
+              <div className="mae-panel__model">
+                <ModelSelect
+                  label="Evaluation model"
+                  purpose="evaluation"
                   value={evaluatorModel}
-                  onChange={(e) => setEvaluatorModel(e.target.value)}
+                  onChange={setEvaluatorModel}
+                  reasoningEffort={evaluationReasoningEffort}
+                  onReasoningEffortChange={setEvaluationReasoningEffort}
                   disabled={!canEvaluate}
-                >
-                  {AVAILABLE_MODELS.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  hideLabel
+                />
+              </div>
               <button
                 type="button"
                 className="mae-panel__run"
@@ -296,6 +326,7 @@ export function MultiAgentEvaluationPanel({
                     runId: run.id,
                     problemId: conversation.problemId,
                     evaluatorModel,
+                    evaluationReasoningEffort,
                   });
                 }}
               >
@@ -310,6 +341,7 @@ export function MultiAgentEvaluationPanel({
                       runId: run.id,
                       problemId: conversation.problemId,
                       evaluatorModel,
+                      evaluationReasoningEffort,
                       retryFrom: latest,
                     });
                   }}
@@ -337,7 +369,7 @@ export function MultiAgentEvaluationPanel({
         <EvaluationResults evaluation={displayEvaluation} />
       ) : !isThisRunning && !isBatchElsewhere ? (
         <p className="muted">
-          Evaluation does not run automatically. Choose an evaluator model and
+          Evaluation does not run automatically. Choose an evaluation model and
           click Run Evaluation after the conversation completes.
         </p>
       ) : null}

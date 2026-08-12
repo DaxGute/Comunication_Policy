@@ -2,24 +2,35 @@ import { DEFAULT_COMMUNICATION_POLICY } from "../communication/policy";
 import {
   AVAILABLE_MODEL_IDS,
   AVAILABLE_MODELS,
+  DEFAULT_EVALUATION_MODEL_ID,
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_RUN_MODEL_ID,
   OPENAI_MODEL_ID,
   providerForModel,
   type ModelProvider,
+  type ReasoningEffort,
 } from "../runtime/models";
 import type { ExperimentRun, ExperimentState, RunConfig } from "./types";
 
 export {
   AVAILABLE_MODEL_IDS,
   AVAILABLE_MODELS,
+  DEFAULT_EVALUATION_MODEL_ID,
+  DEFAULT_REASONING_EFFORT,
+  DEFAULT_RUN_MODEL_ID,
   OPENAI_MODEL_ID,
   providerForModel,
 };
-export type { ModelProvider };
+export type { ModelProvider, ReasoningEffort };
 
 export const DEFAULT_RUN_CONFIG: RunConfig = {
   problemCategory: "crossword",
   problemCount: 1,
-  model: OPENAI_MODEL_ID,
+  runModel: DEFAULT_RUN_MODEL_ID,
+  runReasoningEffort: DEFAULT_REASONING_EFFORT,
+  evaluationModel: DEFAULT_EVALUATION_MODEL_ID,
+  evaluationReasoningEffort: DEFAULT_REASONING_EFFORT,
+  evaluationEnabled: true,
   provider: "openai",
   maxTurns: 8,
   temperature: 0.4,

@@ -4,12 +4,11 @@ import type {
   MultiAgentEvaluation,
   ProblemEvaluation,
 } from "../evaluation/types";
+import { normalizeUsage, type ModelUsage } from "../models/usage";
 import type { ProblemCategory } from "../problems/types";
-import {
-  AVAILABLE_MODEL_IDS,
-  DEFAULT_RUN_CONFIG,
-  providerForModel,
-} from "./defaults";
+import { normalizeRunConfig } from "./configAccessors";
+import { AVAILABLE_MODEL_IDS, DEFAULT_RUN_CONFIG } from "./defaults";
+import { syncRunCostFields } from "./runCost";
 import type {
   ConversationMessage,
   ExperimentRun,
@@ -41,31 +40,63 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+function parseOptionalCost(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function parseModelUsage(raw: unknown): ModelUsage | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  return normalizeUsage(raw as Record<string, unknown>);
+}
+
 export function loadRunConfig(): RunConfig {
   try {
     const raw = localStorage.getItem(RUN_CONFIG_KEY);
     if (!raw) return { ...DEFAULT_RUN_CONFIG };
 
-    const parsed = JSON.parse(raw) as Partial<RunConfig>;
+    const parsed = JSON.parse(raw) as Partial<RunConfig> & { model?: string };
     const category = parsed.problemCategory;
-    const model =
-      typeof parsed.model === "string" &&
-      AVAILABLE_MODEL_IDS.includes(parsed.model)
-        ? parsed.model
-        : DEFAULT_RUN_CONFIG.model;
 
-    return {
-      problemCategory:
-        typeof category === "string" &&
-        VALID_CATEGORIES.has(category as ProblemCategory)
-          ? (category as ProblemCategory)
-          : DEFAULT_RUN_CONFIG.problemCategory,
-      problemCount: clamp(Number(parsed.problemCount), 1, 150),
-      model,
-      provider: providerForModel(model),
-      maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
-      temperature: clamp(Number(parsed.temperature), 0, 2),
-    };
+    // Prefer registry allowlist for the *current* settings picker; unknown
+    // historical IDs fall back to the default Terra model.
+    const candidateRunModel =
+      typeof parsed.runModel === "string"
+        ? parsed.runModel
+        : typeof parsed.model === "string"
+          ? parsed.model
+          : undefined;
+    const runModel =
+      candidateRunModel && AVAILABLE_MODEL_IDS.includes(candidateRunModel)
+        ? candidateRunModel
+        : DEFAULT_RUN_CONFIG.runModel;
+
+    const candidateEvalModel =
+      typeof parsed.evaluationModel === "string"
+        ? parsed.evaluationModel
+        : undefined;
+    const evaluationModel =
+      candidateEvalModel && AVAILABLE_MODEL_IDS.includes(candidateEvalModel)
+        ? candidateEvalModel
+        : DEFAULT_RUN_CONFIG.evaluationModel;
+
+    return normalizeRunConfig(
+      {
+        ...parsed,
+        problemCategory:
+          typeof category === "string" &&
+          VALID_CATEGORIES.has(category as ProblemCategory)
+            ? (category as ProblemCategory)
+            : DEFAULT_RUN_CONFIG.problemCategory,
+        problemCount: clamp(Number(parsed.problemCount), 1, 150),
+        runModel,
+        evaluationModel,
+        maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
+        temperature: clamp(Number(parsed.temperature), 0, 2),
+      },
+      DEFAULT_RUN_CONFIG,
+    );
   } catch {
     return { ...DEFAULT_RUN_CONFIG };
   }
@@ -132,7 +163,7 @@ export function saveSelection(selection: PersistedSelection): void {
 
 function parseRunConfig(raw: unknown): RunConfig | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const parsed = raw as Partial<RunConfig>;
+  const parsed = raw as Partial<RunConfig> & { model?: string };
   const category = parsed.problemCategory;
   if (
     typeof category !== "string" ||
@@ -140,48 +171,39 @@ function parseRunConfig(raw: unknown): RunConfig | undefined {
   ) {
     return undefined;
   }
-  const model =
-    typeof parsed.model === "string" &&
-    AVAILABLE_MODEL_IDS.includes(parsed.model)
-      ? parsed.model
-      : typeof parsed.model === "string"
-        ? parsed.model
-        : DEFAULT_RUN_CONFIG.model;
-  let provider: RunConfig["provider"] = DEFAULT_RUN_CONFIG.provider;
-  try {
-    provider = providerForModel(model);
-  } catch {
-    if (parsed.provider === "mock" || parsed.provider === "openai") {
-      provider = parsed.provider;
-    }
-  }
-  return {
-    problemCategory: category as ProblemCategory,
-    problemCount: clamp(Number(parsed.problemCount), 1, 150),
-    model,
-    provider,
-    maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
-    temperature: clamp(Number(parsed.temperature), 0, 2),
-  };
+
+  // Historical runs may contain model IDs no longer in the picker allowlist.
+  return normalizeRunConfig(
+    {
+      ...parsed,
+      problemCategory: category as ProblemCategory,
+      problemCount: clamp(Number(parsed.problemCount), 1, 150),
+      maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
+      temperature: clamp(Number(parsed.temperature), 0, 2),
+    },
+    DEFAULT_RUN_CONFIG,
+  );
 }
 
 function parseUsage(raw: unknown): ConversationMessage["usage"] | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const u = raw as Record<string, unknown>;
-  if (typeof u.totalTokens !== "number" || !Number.isFinite(u.totalTokens)) {
-    return undefined;
+  const normalized = normalizeUsage(u);
+  if (!normalized) {
+    if (typeof u.totalTokens !== "number" || !Number.isFinite(u.totalTokens)) {
+      return undefined;
+    }
+    return {
+      totalTokens: Math.max(0, Math.round(u.totalTokens)),
+    };
   }
   return {
-    totalTokens: Math.max(0, Math.round(u.totalTokens)),
-    promptTokens:
-      typeof u.promptTokens === "number" && Number.isFinite(u.promptTokens)
-        ? Math.max(0, Math.round(u.promptTokens))
-        : undefined,
-    completionTokens:
-      typeof u.completionTokens === "number" &&
-      Number.isFinite(u.completionTokens)
-        ? Math.max(0, Math.round(u.completionTokens))
-        : undefined,
+    inputTokens: normalized.inputTokens,
+    promptTokens: normalized.inputTokens,
+    cachedInputTokens: normalized.cachedInputTokens,
+    outputTokens: normalized.outputTokens,
+    completionTokens: normalized.outputTokens,
+    totalTokens: normalized.inputTokens + normalized.outputTokens,
   };
 }
 
@@ -233,6 +255,8 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     messages,
     finalAnswer: typeof c.finalAnswer === "string" ? c.finalAnswer : undefined,
     stoppedReason: c.stoppedReason as ProblemConversation["stoppedReason"],
+    conversationUsage: parseModelUsage(c.conversationUsage),
+    conversationCostUsd: parseOptionalCost(c.conversationCostUsd),
   };
 }
 
@@ -351,6 +375,11 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
       multiAgentEvaluations && multiAgentEvaluations.length > 0
         ? multiAgentEvaluations
         : undefined,
+    conversationUsage: parseModelUsage(r.conversationUsage),
+    conversationCostUsd: parseOptionalCost(r.conversationCostUsd),
+    evaluationUsage: parseModelUsage(r.evaluationUsage),
+    evaluationCostUsd: parseOptionalCost(r.evaluationCostUsd),
+    totalCostUsd: parseOptionalCost(r.totalCostUsd),
     status,
     error,
   };
@@ -364,7 +393,12 @@ export function loadRuns(): ExperimentRun[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .map(parseRun)
-      .filter((r): r is ExperimentRun => Boolean(r));
+      .filter((r): r is ExperimentRun => Boolean(r))
+      .map((run) => {
+        // Re-derive totals from usage records so evaluation spend survives reload.
+        syncRunCostFields(run);
+        return run;
+      });
   } catch {
     return [];
   }

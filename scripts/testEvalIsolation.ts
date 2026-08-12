@@ -4,6 +4,8 @@
  */
 import assert from "node:assert/strict";
 import { runMultiAgentEvaluation } from "../src/evaluation/orchestrator";
+import { normalizeRunConfig } from "../src/experiment/configAccessors";
+import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults";
 import type { ExperimentRun, ProblemConversation } from "../src/experiment/types";
 
 const conversation: ProblemConversation = {
@@ -43,14 +45,16 @@ const run: ExperimentRun = {
   finishedAt: new Date().toISOString(),
   policy: { trustA: 0.5, trustB: 0.5, authority: 0.5, familiarity: 0.5 },
   agentPrompts: { agentA: "A", agentB: "B" },
-  config: {
-    problemCategory: "proof",
-    problemCount: 1,
-    model: "mock-deterministic",
-    provider: "mock",
-    maxTurns: 6,
-    temperature: 0,
-  },
+  config: normalizeRunConfig(
+    {
+      problemCategory: "proof",
+      problemCount: 1,
+      runModel: "mock-deterministic",
+      maxTurns: 6,
+      temperature: 0,
+    },
+    { ...DEFAULT_RUN_CONFIG, runModel: "mock-deterministic", provider: "mock" },
+  ),
   conversations: [conversation],
   evaluation: {
     summary: { score: 1 },

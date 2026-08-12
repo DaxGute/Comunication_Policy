@@ -1,6 +1,8 @@
 import { buildAgentDefinition } from "../agents/buildAgentPrompt";
 import type { CommunicationPolicy } from "../communication/types";
 import type { ProblemConversation, RunConfig } from "../experiment/types";
+import { calculateModelCost } from "../models/cost";
+import { normalizeUsage, sumUsage } from "../models/usage";
 import type { Problem } from "../problems/types";
 import {
   runInteractionLoop,
@@ -34,13 +36,35 @@ export async function runProblem(args: {
     agentA,
     agentB,
     policy,
-    model: config.model,
+    model: config.runModel,
     temperature: config.temperature,
     maxTurns: config.maxTurns,
+    reasoningEffort: config.runReasoningEffort,
     client,
     signal,
     callbacks,
   });
+
+  const conversationUsage = sumUsage(
+    result.messages.map((m) => normalizeUsage(m.usage ?? { totalTokens: 0 })),
+  );
+  const hasUsage = result.messages.some((m) => m.usage);
+  // Price each message call with the run model (preserves per-call accounting).
+  let conversationCostUsd: number | null = null;
+  if (hasUsage) {
+    let sum = 0;
+    let anyPriced = false;
+    for (const message of result.messages) {
+      if (!message.usage) continue;
+      const usage = normalizeUsage(message.usage);
+      if (!usage) continue;
+      const priced = calculateModelCost(config.runModel, usage);
+      if (priced === null) continue;
+      sum += priced;
+      anyPriced = true;
+    }
+    conversationCostUsd = anyPriced ? sum : null;
+  }
 
   return {
     problemId: problem.id,
@@ -49,5 +73,7 @@ export async function runProblem(args: {
     messages: result.messages,
     finalAnswer: result.finalAnswer,
     stoppedReason: result.stoppedReason,
+    conversationUsage: hasUsage ? conversationUsage : undefined,
+    conversationCostUsd,
   };
 }

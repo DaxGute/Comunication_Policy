@@ -80,14 +80,16 @@ async function main(): Promise<void> {
   const conversation = await runProblem({
     problem,
     policy: DEFAULT_COMMUNICATION_POLICY,
-    config: {
-      problemCategory: "crossword",
-      problemCount: 1,
-      model: OPENAI_MODEL_ID,
-      provider: "openai",
-      maxTurns: 6,
-      temperature: 0.4,
-    },
+    config: normalizeRunConfig(
+      {
+        problemCategory: "crossword",
+        problemCount: 1,
+        runModel: OPENAI_MODEL_ID,
+        maxTurns: 6,
+        temperature: 0.4,
+      },
+      DEFAULT_RUN_CONFIG,
+    ),
     client,
   });
 
@@ -96,14 +98,16 @@ async function main(): Promise<void> {
     createdAt: new Date().toISOString(),
     policy: DEFAULT_COMMUNICATION_POLICY,
     agentPrompts: prompts,
-    config: {
-      problemCategory: "crossword" as const,
-      problemCount: 1,
-      model: OPENAI_MODEL_ID,
-      provider: "openai" as const,
-      maxTurns: 6,
-      temperature: 0.4,
-    },
+    config: normalizeRunConfig(
+      {
+        problemCategory: "crossword",
+        problemCount: 1,
+        runModel: OPENAI_MODEL_ID,
+        maxTurns: 6,
+        temperature: 0.4,
+      },
+      DEFAULT_RUN_CONFIG,
+    ),
     conversations: [conversation],
     status: "completed" as const,
   };

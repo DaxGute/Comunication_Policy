@@ -2,8 +2,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import OpenAI from "openai";
 import {
   isOpenAIModel,
+  isReasoningEffort,
   modelSupportsCustomTemperature,
+  modelSupportsReasoningEffort,
   supportedOpenAIModelList,
+  type ReasoningEffort,
 } from "../src/runtime/models.ts";
 
 export type GenerateApiMessage = {
@@ -15,12 +18,16 @@ export type GenerateApiRequest = {
   model: string;
   temperature: number;
   messages: GenerateApiMessage[];
+  reasoningEffort?: ReasoningEffort;
 };
 
 export type GenerateApiUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cachedInputTokens?: number;
+  inputTokens: number;
+  outputTokens: number;
 };
 
 export type GenerateApiSuccess = {
@@ -44,7 +51,7 @@ export function parseGenerateRequest(body: unknown): GenerateApiRequest {
   }
 
   const raw = body as Record<string, unknown>;
-  const { model, temperature, messages } = raw;
+  const { model, temperature, messages, reasoningEffort } = raw;
 
   if (typeof model !== "string" || model.trim() === "") {
     throw new GenerateApiHttpError(400, 'Field "model" must be a non-empty string.');
@@ -94,7 +101,19 @@ export function parseGenerateRequest(body: unknown): GenerateApiRequest {
     return { role: message.role, content: message.content };
   });
 
-  return { model, temperature, messages: normalized };
+  const effort =
+    reasoningEffort === undefined
+      ? undefined
+      : isReasoningEffort(reasoningEffort)
+        ? reasoningEffort
+        : (() => {
+            throw new GenerateApiHttpError(
+              400,
+              'Field "reasoningEffort" must be "low", "medium", or "high".',
+            );
+          })();
+
+  return { model, temperature, messages: normalized, reasoningEffort: effort };
 }
 
 export class GenerateApiHttpError extends Error {
@@ -134,6 +153,16 @@ export async function generateWithOpenAI(
     createParams.temperature = request.temperature;
   }
 
+  if (
+    request.reasoningEffort &&
+    modelSupportsReasoningEffort(request.model)
+  ) {
+    // OpenAI reasoning models accept reasoning_effort on chat completions.
+    (createParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming & {
+      reasoning_effort?: ReasoningEffort;
+    }).reasoning_effort = request.reasoningEffort;
+  }
+
   const startedAt = Date.now();
   let completion: OpenAI.Chat.Completions.ChatCompletion;
   try {
@@ -163,12 +192,25 @@ export async function generateWithOpenAI(
   }
 
   const rawUsage = completion.usage;
+  const cachedInputTokens =
+    rawUsage &&
+    typeof rawUsage === "object" &&
+    rawUsage.prompt_tokens_details &&
+    typeof rawUsage.prompt_tokens_details.cached_tokens === "number"
+      ? rawUsage.prompt_tokens_details.cached_tokens
+      : undefined;
+
   const usage =
     rawUsage && typeof rawUsage.total_tokens === "number"
       ? {
           promptTokens: rawUsage.prompt_tokens ?? 0,
           completionTokens: rawUsage.completion_tokens ?? 0,
           totalTokens: rawUsage.total_tokens,
+          inputTokens: rawUsage.prompt_tokens ?? 0,
+          outputTokens: rawUsage.completion_tokens ?? 0,
+          ...(typeof cachedInputTokens === "number"
+            ? { cachedInputTokens }
+            : {}),
         }
       : undefined;
 

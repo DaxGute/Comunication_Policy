@@ -150,7 +150,10 @@ export function CrosswordPreview({
     ?.split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  const hasPrediction = Boolean(predictedRows && predictedRows.length > 0);
+  // Empty geometry (`.` / `#` only) is not a prediction — require letters.
+  const hasPrediction = Boolean(
+    predictedRows?.some((row) => /[A-Za-z]/.test(row)),
+  );
 
   return (
     <div className="crossword-preview">

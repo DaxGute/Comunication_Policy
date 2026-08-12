@@ -1,4 +1,8 @@
+import { resolveRunModel } from "../experiment/configAccessors";
 import type { ExperimentRun, ProblemConversation } from "../experiment/types";
+import { calculateModelCost } from "../models/cost";
+import type { ReasoningEffort } from "../models/modelRegistry";
+import { emptyUsage, normalizeUsage, sumUsage } from "../models/usage";
 import { getProblemById } from "../problems/registry";
 import { evaluateBeliefDynamics } from "./belief/evaluator";
 import { evaluateMarblePosthoc } from "./marble/evaluator";
@@ -27,6 +31,7 @@ export type OrchestratorOptions = {
   run: ExperimentRun;
   conversation: ProblemConversation;
   evaluatorModel: string;
+  reasoningEffort?: ReasoningEffort;
   /** Retry only failed components from a previous evaluation. */
   retryFrom?: MultiAgentEvaluation;
   signal?: AbortSignal;
@@ -62,6 +67,57 @@ function setStage(
   );
 }
 
+function finalizeEvaluationUsage(record: MultiAgentEvaluation): void {
+  const usage = sumUsage(
+    record.costs.map((c) =>
+      normalizeUsage({
+        inputTokens: c.inputTokens,
+        cachedInputTokens: c.cachedInputTokens,
+        outputTokens: c.outputTokens,
+        totalTokens: c.totalTokens,
+      }),
+    ),
+  );
+  const hasTokens = record.costs.some(
+    (c) =>
+      typeof c.inputTokens === "number" ||
+      typeof c.outputTokens === "number" ||
+      typeof c.totalTokens === "number",
+  );
+  record.usage = hasTokens ? usage : emptyUsage();
+
+  // Price each call with its own model — never assume one model for the whole eval.
+  let pricedTotal: number | null = null;
+  for (const cost of record.costs) {
+    let callCost =
+      typeof cost.estimatedCostUsd === "number"
+        ? cost.estimatedCostUsd
+        : null;
+    if (
+      callCost === null &&
+      (typeof cost.inputTokens === "number" ||
+        typeof cost.outputTokens === "number" ||
+        typeof cost.totalTokens === "number")
+    ) {
+      const callUsage =
+        normalizeUsage({
+          inputTokens: cost.inputTokens,
+          cachedInputTokens: cost.cachedInputTokens,
+          outputTokens: cost.outputTokens,
+          totalTokens: cost.totalTokens,
+        }) ?? emptyUsage();
+      callCost = calculateModelCost(cost.model, callUsage);
+      if (typeof callCost === "number") {
+        cost.estimatedCostUsd = callCost;
+      }
+    }
+    if (typeof callCost === "number") {
+      pricedTotal = (pricedTotal ?? 0) + callCost;
+    }
+  }
+  record.costUsd = pricedTotal;
+}
+
 /**
  * Post-hoc multi-agent evaluation orchestrator.
  * Never mutates the conversation transcript.
@@ -71,6 +127,10 @@ export async function runMultiAgentEvaluation(
   options: OrchestratorOptions,
 ): Promise<MultiAgentEvaluation> {
   const { run, conversation, evaluatorModel } = options;
+  const reasoningEffort =
+    options.reasoningEffort ??
+    options.retryFrom?.reasoningEffort ??
+    run.config.evaluationReasoningEffort;
   const evaluationId = options.retryFrom?.id ?? newId("mae");
   let stages = initialStages();
 
@@ -82,6 +142,7 @@ export async function runMultiAgentEvaluation(
     run.config.problemCategory,
     conversation.problemId,
   );
+  const agentModel = resolveRunModel(run.config);
 
   const record: MultiAgentEvaluation = {
     id: evaluationId,
@@ -90,6 +151,7 @@ export async function runMultiAgentEvaluation(
     runId: run.id,
     createdAt: options.retryFrom?.createdAt ?? new Date().toISOString(),
     evaluatorModel,
+    reasoningEffort,
     status: "running",
     stages,
     componentStatus: {
@@ -99,14 +161,15 @@ export async function runMultiAgentEvaluation(
     errors: [],
     costs: options.retryFrom ? [...options.retryFrom.costs] : [],
     metadata: {
-      agentAModel: run.config.model,
-      agentBModel: run.config.model,
+      agentAModel: agentModel,
+      agentBModel: agentModel,
       trust: (run.policy.trustA + run.policy.trustB) / 2,
       trustA: run.policy.trustA,
       trustB: run.policy.trustB,
       authority: run.policy.authority,
       familiarity: run.policy.familiarity,
       evaluatorModel,
+      evaluationReasoningEffort: reasoningEffort,
       marbleVersion: MARBLE_VERSION,
       marbleCommit: MARBLE_COMMIT,
       marbleAdapterVersion: MARBLE_ADAPTER_VERSION,
@@ -167,6 +230,21 @@ export async function runMultiAgentEvaluation(
           evaluatorModel,
           signal: options.signal,
         });
+        if (
+          result.cost.estimatedCostUsd == null &&
+          (typeof result.cost.inputTokens === "number" ||
+            typeof result.cost.outputTokens === "number")
+        ) {
+          result.cost.estimatedCostUsd = calculateModelCost(
+            result.cost.model,
+            normalizeUsage({
+              inputTokens: result.cost.inputTokens,
+              cachedInputTokens: result.cost.cachedInputTokens,
+              outputTokens: result.cost.outputTokens,
+              totalTokens: result.cost.totalTokens,
+            }) ?? emptyUsage(),
+          );
+        }
         record.marble = result.artifact;
         record.costs.push(result.cost);
         record.componentStatus.marble = "completed";
@@ -215,6 +293,7 @@ export async function runMultiAgentEvaluation(
           priorTaskLabel: priorTask?.label,
           priorTaskNotes: priorTask?.notes,
           evaluatorModel,
+          reasoningEffort,
           signal: options.signal,
         });
         stages = setStage(stages, "belief_extraction", "completed");
@@ -262,6 +341,7 @@ export async function runMultiAgentEvaluation(
     stages = setStage(stages, "saving", "running");
     emit();
     record.finishedAt = new Date().toISOString();
+    finalizeEvaluationUsage(record);
     const anyCompleted =
       record.componentStatus.marble === "completed" ||
       record.componentStatus.belief === "completed";
@@ -276,6 +356,7 @@ export async function runMultiAgentEvaluation(
   } catch (error) {
     record.status = "failed";
     record.finishedAt = new Date().toISOString();
+    finalizeEvaluationUsage(record);
     record.errors.push({
       component: "belief",
       message: error instanceof Error ? error.message : String(error),

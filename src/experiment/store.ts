@@ -11,6 +11,8 @@ import type {
   EvaluationStageState,
   MultiAgentEvaluation,
 } from "../evaluation/types";
+import type { ReasoningEffort } from "../models/modelRegistry";
+import { modelSupportsReasoningEffort } from "../models/modelRegistry";
 import { runExperiment } from "../runtime/runExperiment";
 import { createInitialExperimentState, providerForModel } from "./defaults";
 import {
@@ -21,6 +23,7 @@ import {
   saveRuns,
   saveSelection,
 } from "./persistence";
+import { syncRunCostFields } from "./runCost";
 import type {
   ConversationMessage,
   ExperimentRun,
@@ -34,6 +37,7 @@ export type EvaluationUiState = {
   problemId: string;
   evaluationId?: string;
   evaluatorModel: string;
+  evaluationReasoningEffort?: ReasoningEffort;
   status: "idle" | "running" | "completed" | "failed";
   stages: EvaluationStageState[];
   /** In-flight / latest partial evaluation for progressive UI. */
@@ -67,11 +71,13 @@ export type ExperimentStore = {
     runId: string;
     problemId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: ReasoningEffort;
     retryFrom?: MultiAgentEvaluation;
   }) => Promise<MultiAgentEvaluation | undefined>;
   runAllConversationEvaluations: (options: {
     runId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: ReasoningEffort;
   }) => Promise<void>;
 };
 
@@ -125,9 +131,17 @@ export function useExperimentStore(): ExperimentStore {
   function setRunConfig(partial: Partial<RunConfig>) {
     setState((prev) => {
       const currentRunConfig = { ...prev.currentRunConfig, ...partial };
-      if (partial.model !== undefined) {
-        currentRunConfig.provider = providerForModel(partial.model);
+
+      if (partial.runModel !== undefined) {
+        currentRunConfig.provider = providerForModel(partial.runModel);
+        if (
+          !modelSupportsReasoningEffort(partial.runModel) &&
+          currentRunConfig.runReasoningEffort
+        ) {
+          // Keep stored value for when the user switches back; API will omit it.
+        }
       }
+
       saveRunConfig(currentRunConfig);
       return { ...prev, currentRunConfig };
     });
@@ -205,6 +219,7 @@ export function useExperimentStore(): ExperimentStore {
                 problemText: "",
                 messages: [message],
                 stoppedReason: "max_turns" as const,
+                status: "running" as const,
               },
             ],
           };
@@ -216,7 +231,11 @@ export function useExperimentStore(): ExperimentStore {
           ...run,
           conversations: run.conversations.map((c) =>
             c.problemId === problemId
-              ? { ...c, messages: [...c.messages, message] }
+              ? {
+                  ...c,
+                  messages: [...c.messages, message],
+                  status: "running" as const,
+                }
               : c,
           ),
         };
@@ -317,14 +336,17 @@ export function useExperimentStore(): ExperimentStore {
       runs: prev.runs.map((run) => {
         if (run.id !== runId) return run;
         const existing = run.multiAgentEvaluations ?? [];
-        // Reruns replace the prior evaluation for this conversation.
-        const without = existing.filter(
-          (e) => e.problemId !== evaluation.problemId,
-        );
-        return {
+        // Retries with the same evaluation id replace that record (costs are
+        // carried forward inside the orchestrator via retryFrom). Otherwise
+        // append so intentional re-runs keep full historical spend.
+        const withoutSameId = existing.filter((e) => e.id !== evaluation.id);
+        const multiAgentEvaluations = [...withoutSameId, evaluation];
+        const next: ExperimentRun = {
           ...run,
-          multiAgentEvaluations: [...without, evaluation],
+          multiAgentEvaluations,
         };
+        syncRunCostFields(next);
+        return next;
       }),
     }));
   }
@@ -333,6 +355,7 @@ export function useExperimentStore(): ExperimentStore {
     runId: string;
     problemId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: ReasoningEffort;
     retryFrom?: MultiAgentEvaluation;
   }): Promise<MultiAgentEvaluation | undefined> {
     const run = stateRef.current.runs.find((r) => r.id === options.runId);
@@ -340,6 +363,10 @@ export function useExperimentStore(): ExperimentStore {
       (c) => c.problemId === options.problemId,
     );
     if (!run || !conversation) return undefined;
+
+    const evaluationReasoningEffort =
+      options.evaluationReasoningEffort ??
+      run.config.evaluationReasoningEffort;
 
     evalAbortRef.current?.abort();
     const abortController = new AbortController();
@@ -349,6 +376,7 @@ export function useExperimentStore(): ExperimentStore {
       runId: options.runId,
       problemId: options.problemId,
       evaluatorModel: options.evaluatorModel,
+      evaluationReasoningEffort,
       status: "running",
       stages: [],
       partial: undefined,
@@ -359,6 +387,7 @@ export function useExperimentStore(): ExperimentStore {
       run,
       conversation,
       evaluatorModel: options.evaluatorModel,
+      reasoningEffort: evaluationReasoningEffort,
       retryFrom: options.retryFrom,
       signal: abortController.signal,
       onProgress: (progress: OrchestratorProgress) => {
@@ -387,6 +416,7 @@ export function useExperimentStore(): ExperimentStore {
       problemId: options.problemId,
       evaluationId: evaluation.id,
       evaluatorModel: options.evaluatorModel,
+      evaluationReasoningEffort,
       status: evaluation.status === "completed" ? "completed" : "failed",
       stages: evaluation.stages,
       partial: evaluation,
@@ -398,9 +428,14 @@ export function useExperimentStore(): ExperimentStore {
   async function runAllConversationEvaluations(options: {
     runId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: ReasoningEffort;
   }): Promise<void> {
     const run = stateRef.current.runs.find((r) => r.id === options.runId);
     if (!run || run.conversations.length === 0) return;
+
+    const evaluationReasoningEffort =
+      options.evaluationReasoningEffort ??
+      run.config.evaluationReasoningEffort;
 
     evalAbortRef.current?.abort();
     const abortController = new AbortController();
@@ -421,6 +456,7 @@ export function useExperimentStore(): ExperimentStore {
         runId: options.runId,
         problemId: conversation.problemId,
         evaluatorModel: options.evaluatorModel,
+        evaluationReasoningEffort,
         status: "running",
         stages: [],
         partial: undefined,
@@ -432,6 +468,7 @@ export function useExperimentStore(): ExperimentStore {
         run: latestRun,
         conversation,
         evaluatorModel: options.evaluatorModel,
+        reasoningEffort: evaluationReasoningEffort,
         signal: abortController.signal,
         onProgress: (progress: OrchestratorProgress) => {
           setEvaluationUi((prev) =>

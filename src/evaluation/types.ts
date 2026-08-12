@@ -40,10 +40,17 @@ export type EvaluationComponentError = {
 export type EvaluationCost = {
   model: string;
   provider: "mock" | "openai" | "marble_litellm" | "unknown";
+  /**
+   * Which evaluator produced this inference call (e.g. "marble", "belief").
+   * Used for breakdown accounting without hard-coding evaluator sums.
+   */
+  evaluator?: string;
   inputTokens?: number;
+  cachedInputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
   latencyMs?: number;
+  /** Actual USD from calculateModelCost when token usage is available. */
   estimatedCostUsd?: number | null;
 };
 
@@ -197,6 +204,7 @@ export type EvaluationMetadata = {
   trustA: number;
   trustB: number;
   evaluatorModel: string;
+  evaluationReasoningEffort?: string;
   marbleVersion?: string;
   marbleCommit?: string;
   marbleAdapterVersion?: string;
@@ -218,6 +226,7 @@ export type MultiAgentEvaluation = {
   createdAt: string;
   finishedAt?: string;
   evaluatorModel: string;
+  reasoningEffort?: "low" | "medium" | "high";
   status: "pending" | "running" | "completed" | "failed";
   stages: EvaluationStageState[];
   marble?: EvaluationArtifact<MarbleEvaluation>;
@@ -228,5 +237,12 @@ export type MultiAgentEvaluation = {
   };
   errors: EvaluationComponentError[];
   costs: EvaluationCost[];
+  /** Aggregated usage across all LLM calls for this evaluation execution. */
+  usage?: {
+    inputTokens: number;
+    cachedInputTokens?: number;
+    outputTokens: number;
+  };
+  costUsd?: number | null;
   metadata: EvaluationMetadata;
 };

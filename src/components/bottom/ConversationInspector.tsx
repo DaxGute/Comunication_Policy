@@ -1,33 +1,58 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatPolicyValue } from "../../communication";
+import { extractFinalAnswerFromMessages } from "../../evaluation/graders/answerExtraction";
+import { gradeCrosswordPuzzle } from "../../evaluation/graders/crosswordGrader";
 import type {
   MultiAgentEvaluation,
   ProblemEvaluation,
 } from "../../evaluation/types";
+import { resolveRunModel } from "../../experiment/configAccessors";
 import type { EvaluationUiState } from "../../experiment/store";
 import { serializeConversation } from "../../experiment/serializeConversation";
+import {
+  formatActualUsd,
+  getRunCostSummary,
+} from "../../experiment/runCost";
 import type { ExperimentRun, ProblemConversation, ConversationMessage } from "../../experiment/types";
+import {
+  estimateExperimentCost,
+  formatEstimatedUsd,
+} from "../../models/cost";
+import {
+  DEFAULT_EVALUATION_MODEL_ID,
+  displayNameForModel,
+  formatReasoningEffort,
+} from "../../models/modelRegistry";
 import type { CrosswordSpec } from "../../problems/crossword/types";
 import { getProblemById } from "../../problems/registry";
-import { AVAILABLE_MODELS, OPENAI_MODEL_ID } from "../../runtime/models";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
 import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
+import { ModelSelect } from "../ui/ModelSelect";
+import { TokenUsagePanel } from "../ui/TokenUsagePanel";
+
+function gridHasLetters(grid?: string): boolean {
+  return Boolean(grid && /[A-Za-z]/.test(grid));
+}
 
 type Props = {
   runs: ExperimentRun[];
   selectedRun?: ExperimentRun;
+  selectedProblemId?: string;
   onSelectRun: (runId: string) => void;
+  onSelectProblem: (problemId: string) => void;
   onDeleteRun: (runId: string) => void;
   evaluationUi?: EvaluationUiState;
   onRunEvaluation: (options: {
     runId: string;
     problemId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
     retryFrom?: MultiAgentEvaluation;
   }) => Promise<unknown>;
   onRunAllEvaluations: (options: {
     runId: string;
     evaluatorModel: string;
+    evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
   }) => Promise<unknown>;
 };
 
@@ -61,13 +86,18 @@ function formatRunFinishTitle(run: ExperimentRun): string {
 
 function runMetaLine(run: ExperimentRun): string {
   const { config, policy } = run;
-  return [
+  const parts = [
     config.problemCategory,
-    config.model,
+    displayNameForModel(resolveRunModel(config)),
     `Tₐ ${formatPolicyValue(policy.trustA)} Tᵦ ${formatPolicyValue(policy.trustB)}`,
     `Auth ${formatPolicyValue(policy.authority)}`,
     `F ${formatPolicyValue(policy.familiarity)}`,
-  ].join(" · ");
+  ];
+  const summary = getRunCostSummary(run);
+  if (summary.hasConversationUsage || summary.evaluationsRan) {
+    parts.push(formatActualUsd(summary.actualTotalCost));
+  }
+  return parts.join(" · ");
 }
 
 function formatPct(value: unknown): string | undefined {
@@ -153,12 +183,18 @@ function conversationTotals(messages: ConversationMessage[]): {
 export function ConversationInspector({
   runs,
   selectedRun,
+  selectedProblemId,
   onSelectRun,
+  onSelectProblem,
   onDeleteRun,
   evaluationUi,
   onRunEvaluation,
   onRunAllEvaluations,
 }: Props) {
+  const selectedConversation =
+    selectedRun?.conversations.find((c) => c.problemId === selectedProblemId) ??
+    selectedRun?.conversations[0];
+
   return (
     <div className="conversation-inspector">
       <aside className="conversation-inspector__nav">
@@ -174,8 +210,13 @@ export function ConversationInspector({
             {runs.map((run) => {
               const title = formatRunFinishTitle(run);
               const active = selectedRun?.id === run.id;
+              const multiProblem = run.conversations.length > 1;
+              const showProblems = active && multiProblem;
+              const activeProblemId =
+                selectedConversation?.problemId ??
+                run.conversations[0]?.problemId;
               return (
-                <li key={run.id}>
+                <li key={run.id} className="conv-tree__item">
                   <div
                     className={
                       active
@@ -187,15 +228,40 @@ export function ConversationInspector({
                       type="button"
                       className="conv-tree__run"
                       onClick={() => onSelectRun(run.id)}
+                      aria-expanded={showProblems ? true : undefined}
                     >
                       <span className="conv-tree__run-title">
-                        {title}
+                        <span className="conv-tree__run-title-text">
+                          {multiProblem ? (
+                            <span
+                              className={
+                                showProblems
+                                  ? "conv-tree__chevron conv-tree__chevron--open"
+                                  : "conv-tree__chevron"
+                              }
+                              aria-hidden="true"
+                            >
+                              ▸
+                            </span>
+                          ) : null}
+                          {title}
+                        </span>
                         <span className="conv-tree__run-status">
+                          {run.status === "running" && !multiProblem ? (
+                            <span
+                              className="conv-tree__problem-spinner"
+                              aria-label="Running"
+                              title="Running"
+                            />
+                          ) : null}
                           {run.status}
                         </span>
                       </span>
                       <span className="muted conv-tree__run-meta">
                         {runMetaLine(run)}
+                        {multiProblem
+                          ? ` · ${run.conversations.length} problems`
+                          : ""}
                       </span>
                     </button>
                     <button
@@ -207,6 +273,46 @@ export function ConversationInspector({
                       ×
                     </button>
                   </div>
+                  {showProblems ? (
+                    <ul className="conv-tree__problems">
+                      {run.conversations.map((conversation, index) => {
+                        const problemActive =
+                          conversation.problemId === activeProblemId;
+                        const problemRunning =
+                          conversation.status === "running";
+                        return (
+                          <li key={conversation.problemId}>
+                            <button
+                              type="button"
+                              className={
+                                problemActive
+                                  ? "conv-tree__problem conv-tree__problem--active"
+                                  : "conv-tree__problem"
+                              }
+                              aria-busy={problemRunning || undefined}
+                              onClick={() =>
+                                onSelectProblem(conversation.problemId)
+                              }
+                            >
+                              <span className="conv-tree__problem-index">
+                                {index + 1}.
+                              </span>
+                              <span className="conv-tree__problem-title">
+                                {conversation.problemTitle}
+                              </span>
+                              {problemRunning ? (
+                                <span
+                                  className="conv-tree__problem-spinner"
+                                  aria-label="Running"
+                                  title="Running"
+                                />
+                              ) : null}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                 </li>
               );
             })}
@@ -217,36 +323,29 @@ export function ConversationInspector({
       <div className="conversation-inspector__transcript">
         {!selectedRun ? (
           <p className="muted empty-state">Select a run.</p>
-        ) : selectedRun.conversations.length === 0 ? (
+        ) : !selectedConversation ? (
           <p className="muted empty-state">
             No transcripts yet for this run.
           </p>
         ) : (
-          <div className="transcript-stack">
-            {selectedRun.conversations.map((conversation) => {
-              const evaluation = selectedRun.evaluation?.problems.find(
-                (p) => p.problemId === conversation.problemId,
-              );
-              return (
-                <TranscriptView
-                  key={conversation.problemId}
-                  conversation={conversation}
-                  run={selectedRun}
-                  evaluation={evaluation}
-                  evaluationUi={evaluationUi}
-                  onRunEvaluation={onRunEvaluation}
-                  crossword={
-                    selectedRun.config.problemCategory === "crossword"
-                      ? getProblemById(
-                          selectedRun.config.problemCategory,
-                          conversation.problemId,
-                        )?.crossword
-                      : undefined
-                  }
-                />
-              );
-            })}
-          </div>
+          <TranscriptView
+            key={`${selectedRun.id}:${selectedConversation.problemId}`}
+            conversation={selectedConversation}
+            run={selectedRun}
+            evaluation={selectedRun.evaluation?.problems.find(
+              (p) => p.problemId === selectedConversation.problemId,
+            )}
+            evaluationUi={evaluationUi}
+            onRunEvaluation={onRunEvaluation}
+            crossword={
+              selectedRun.config.problemCategory === "crossword"
+                ? getProblemById(
+                    selectedRun.config.problemCategory,
+                    selectedConversation.problemId,
+                  )?.crossword
+                : undefined
+            }
+          />
         )}
       </div>
 
@@ -322,10 +421,27 @@ function TranscriptView({
   const isCrossword = evaluation?.details?.grader === "crossword";
   const isMoral = evaluation?.details?.grader === "moral_open_ended";
   const isProof = evaluation?.details?.grader === "proof_collaborative";
-  const predictedGrid =
-    typeof evaluation?.details?.predictedGrid === "string"
-      ? evaluation.details.predictedGrid
-      : undefined;
+  const predictedGrid = useMemo(() => {
+    const fromEval =
+      typeof evaluation?.details?.predictedGrid === "string"
+        ? evaluation.details.predictedGrid
+        : undefined;
+    if (gridHasLetters(fromEval)) return fromEval;
+    if (!crossword) return fromEval;
+    const predicted =
+      extractFinalAnswerFromMessages(conversation.messages) ??
+      conversation.finalAnswer;
+    if (!predicted?.trim()) return fromEval;
+    return gradeCrosswordPuzzle({
+      predicted,
+      spec: crossword,
+    }).predictedGrid.join("\n");
+  }, [
+    conversation.finalAnswer,
+    conversation.messages,
+    crossword,
+    evaluation?.details?.predictedGrid,
+  ]);
 
   useEffect(() => {
     if (!copied) return;
@@ -346,6 +462,13 @@ function TranscriptView({
       setCopied(false);
     }
   };
+
+  const problemEvals = (run.multiAgentEvaluations ?? []).filter(
+    (e) => e.problemId === conversation.problemId,
+  );
+  const latestProblemEval = [...problemEvals].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  )[0];
 
   return (
     <div className="transcript">
@@ -430,6 +553,19 @@ function TranscriptView({
             : ""}
           {isMoral || isProof ? " · not objectively scored" : ""}
         </div>
+        <TokenUsagePanel
+          conversationUsage={conversation.conversationUsage}
+          conversationCostUsd={conversation.conversationCostUsd}
+          evaluationUsage={latestProblemEval?.usage}
+          evaluationCostUsd={latestProblemEval?.costUsd}
+          totalCostUsd={
+            typeof conversation.conversationCostUsd === "number" ||
+            typeof latestProblemEval?.costUsd === "number"
+              ? (conversation.conversationCostUsd ?? 0) +
+                (latestProblemEval?.costUsd ?? 0)
+              : null
+          }
+        />
         {evaluation && isMoral ? (
           <MoralResultDetails
             evaluation={evaluation}
@@ -678,10 +814,56 @@ function ProblemResultDetails({
 
 function RunSpecView({ run }: { run: ExperimentRun }) {
   const { config, policy } = run;
+  const costSummary = useMemo(() => getRunCostSummary(run), [run]);
 
   return (
     <details className="results-spec">
       <summary>Run settings</summary>
+      <div className="results-models">
+        <h4 className="token-usage__title">Models</h4>
+        <div className="results-models__grid">
+          <div className="results-models__card">
+            <h4>Conversation</h4>
+            <p>{displayNameForModel(resolveRunModel(config))}</p>
+            <p className="muted">
+              Reasoning: {formatReasoningEffort(config.runReasoningEffort)}
+            </p>
+          </div>
+          <div className="results-models__card">
+            <h4>Evaluation</h4>
+            <p>{displayNameForModel(config.evaluationModel)}</p>
+            <p className="muted">
+              Reasoning:{" "}
+              {formatReasoningEffort(config.evaluationReasoningEffort)}
+            </p>
+          </div>
+        </div>
+      </div>
+      <TokenUsagePanel
+        conversationUsage={
+          costSummary.hasConversationUsage
+            ? costSummary.conversationUsage
+            : null
+        }
+        conversationCostUsd={
+          costSummary.hasConversationUsage
+            ? costSummary.actualConversationCost
+            : null
+        }
+        evaluationUsage={
+          costSummary.evaluationsRan ? costSummary.evaluationUsage : null
+        }
+        evaluationCostUsd={
+          costSummary.evaluationsRan ? costSummary.actualEvaluationCost : null
+        }
+        totalCostUsd={
+          costSummary.hasConversationUsage || costSummary.evaluationsRan
+            ? costSummary.actualTotalCost
+            : null
+        }
+        usageIncomplete={costSummary.usageIncomplete}
+        evaluationsRan={costSummary.evaluationsRan}
+      />
       <dl className="results-summary">
         <div>
           <dt>Problem</dt>
@@ -692,8 +874,12 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
           <dd className="mono">{config.problemCount}</dd>
         </div>
         <div>
-          <dt>Model</dt>
-          <dd className="mono">{config.model}</dd>
+          <dt>Conversation model</dt>
+          <dd className="mono">{resolveRunModel(config)}</dd>
+        </div>
+        <div>
+          <dt>Evaluation model</dt>
+          <dd className="mono">{config.evaluationModel}</dd>
         </div>
         <div>
           <dt>Provider</dt>
@@ -702,10 +888,6 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
         <div>
           <dt>Max turns</dt>
           <dd className="mono">{config.maxTurns}</dd>
-        </div>
-        <div>
-          <dt>Temperature</dt>
-          <dd className="mono">{formatPolicyValue(config.temperature)}</dd>
         </div>
         <div>
           <dt>Trust A→B</dt>
@@ -723,6 +905,18 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
           <dt>Familiarity</dt>
           <dd className="mono">{formatPolicyValue(policy.familiarity)}</dd>
         </div>
+        {costSummary.hasConversationUsage || costSummary.evaluationsRan ? (
+          <div>
+            <dt>
+              {costSummary.usageIncomplete
+                ? "Total recorded cost"
+                : "Total actual cost"}
+            </dt>
+            <dd className="mono">
+              {formatActualUsd(costSummary.actualTotalCost)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
     </details>
   );
@@ -808,8 +1002,21 @@ function RunResultsMultiAgentEval({
   onRunAllEvaluations: Props["onRunAllEvaluations"];
 }) {
   const [evaluatorModel, setEvaluatorModel] = useState(
-    run.config.provider === "openai" ? run.config.model : OPENAI_MODEL_ID,
+    run.config.evaluationModel || DEFAULT_EVALUATION_MODEL_ID,
   );
+  const [evaluationReasoningEffort, setEvaluationReasoningEffort] = useState(
+    run.config.evaluationReasoningEffort,
+  );
+  const evalCostEstimate = useMemo(() => {
+    const estimate = estimateExperimentCost({
+      runModel: resolveRunModel(run.config),
+      evaluationModel: evaluatorModel,
+      problemCount: Math.max(1, run.conversations.length),
+      maxTurns: run.config.maxTurns,
+      evaluationEnabled: true,
+    });
+    return formatEstimatedUsd(estimate.evaluationUsd);
+  }, [run, evaluatorModel]);
   const isBatchRunning =
     evaluationUi?.status === "running" &&
     evaluationUi.runId === run.id &&
@@ -921,49 +1128,55 @@ function RunResultsMultiAgentEval({
     <div className="results-mae">
       <div className="results-mae__bar">
         <span className="results-mae__title">Multi-agent eval</span>
-        {!isBatchRunning ? (
-          <>
-            <select
-              className="results-mae__model"
-              value={evaluatorModel}
-              onChange={(e) => setEvaluatorModel(e.target.value)}
-              disabled={!canEvaluate}
-              aria-label="Evaluator model"
-            >
-              {AVAILABLE_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="results-mae__run"
-              disabled={!canEvaluate}
-              onClick={() => {
-                void onRunAllEvaluations({
-                  runId: run.id,
-                  evaluatorModel,
-                });
-              }}
-            >
-              Run all
-            </button>
-          </>
-        ) : (
-          <span className="muted results-mae__status">
-            {(evaluationUi?.batch?.currentIndex ?? 0) + 1}/
-            {evaluationUi?.batch?.total ?? total}
-            {currentProblem?.problemTitle
-              ? ` · ${currentProblem.problemTitle}`
-              : ""}
+        <div className="results-mae__controls">
+          <span className="results-mae__estimate muted">
+            Estimated evaluation cost{" "}
+            <span className="mono">{evalCostEstimate}</span>
           </span>
-        )}
-        {!isBatchRunning && evaluatedCount > 0 ? (
-          <span className="muted results-mae__status">
-            {evaluatedCount}/{total} avg
-          </span>
-        ) : null}
+          {!isBatchRunning ? (
+            <>
+              <div className="results-mae__model-wrap">
+                <ModelSelect
+                  label="Evaluation model"
+                  purpose="evaluation"
+                  value={evaluatorModel}
+                  onChange={setEvaluatorModel}
+                  reasoningEffort={evaluationReasoningEffort}
+                  onReasoningEffortChange={setEvaluationReasoningEffort}
+                  disabled={!canEvaluate}
+                  hideLabel
+                />
+              </div>
+              <button
+                type="button"
+                className="results-mae__run"
+                disabled={!canEvaluate}
+                onClick={() => {
+                  void onRunAllEvaluations({
+                    runId: run.id,
+                    evaluatorModel,
+                    evaluationReasoningEffort,
+                  });
+                }}
+              >
+                Run all
+              </button>
+            </>
+          ) : (
+            <span className="muted results-mae__status">
+              {(evaluationUi?.batch?.currentIndex ?? 0) + 1}/
+              {evaluationUi?.batch?.total ?? total}
+              {currentProblem?.problemTitle
+                ? ` · ${currentProblem.problemTitle}`
+                : ""}
+            </span>
+          )}
+          {!isBatchRunning && evaluatedCount > 0 ? (
+            <span className="muted results-mae__status">
+              {evaluatedCount}/{total} avg
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {rows.length > 0 ? (

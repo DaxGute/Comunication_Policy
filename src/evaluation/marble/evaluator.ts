@@ -64,11 +64,16 @@ export async function evaluateMarblePosthoc(options: {
           ? costRaw.model
           : options.evaluatorModel,
       provider: "marble_litellm",
+      evaluator: "marble",
       latencyMs:
         typeof costRaw.latencyMs === "number" ? costRaw.latencyMs : undefined,
       inputTokens:
         typeof costRaw.inputTokens === "number"
           ? costRaw.inputTokens
+          : undefined,
+      cachedInputTokens:
+        typeof costRaw.cachedInputTokens === "number"
+          ? costRaw.cachedInputTokens
           : undefined,
       outputTokens:
         typeof costRaw.outputTokens === "number"
@@ -78,6 +83,7 @@ export async function evaluateMarblePosthoc(options: {
         typeof costRaw.totalTokens === "number"
           ? costRaw.totalTokens
           : undefined,
+      // Priced only when token usage is present (orchestrator / getRunCostSummary).
       estimatedCostUsd: null,
     },
   };

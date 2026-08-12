@@ -3,6 +3,7 @@ import type { CommunicationPolicy } from "../communication/types";
 import { extractFinalAnswerFromText } from "../evaluation/graders/answerExtraction";
 import type { ConversationMessage } from "../experiment/types";
 import { createId } from "../lib/id";
+import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
 import { isAbortError, throwIfAborted } from "./abort";
 import type { ModelClient, ModelMessage } from "./modelClient";
@@ -40,6 +41,7 @@ export async function runInteractionLoop(args: {
   model: string;
   temperature: number;
   maxTurns: number;
+  reasoningEffort?: ReasoningEffort;
   client: ModelClient;
   signal?: AbortSignal;
   callbacks?: InteractionLoopCallbacks;
@@ -52,6 +54,7 @@ export async function runInteractionLoop(args: {
     model,
     temperature,
     maxTurns,
+    reasoningEffort,
     client,
     signal,
     callbacks,
@@ -106,6 +109,7 @@ export async function runInteractionLoop(args: {
       response = await client.generate({
         model,
         temperature,
+        reasoningEffort,
         messages: requestMessages,
         signal,
         meta: {
@@ -129,6 +133,11 @@ export async function runInteractionLoop(args: {
       throw error;
     }
 
+    const inputTokens =
+      response.usage?.inputTokens ?? response.usage?.promptTokens;
+    const outputTokens =
+      response.usage?.outputTokens ?? response.usage?.completionTokens;
+
     const message: ConversationMessage = {
       id: createId("msg"),
       agentId,
@@ -139,8 +148,11 @@ export async function runInteractionLoop(args: {
       durationMs: response.durationMs,
       usage: response.usage
         ? {
-            promptTokens: response.usage.promptTokens,
-            completionTokens: response.usage.completionTokens,
+            inputTokens,
+            promptTokens: inputTokens,
+            cachedInputTokens: response.usage.cachedInputTokens,
+            outputTokens,
+            completionTokens: outputTokens,
             totalTokens: response.usage.totalTokens,
           }
         : undefined,

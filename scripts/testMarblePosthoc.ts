@@ -13,6 +13,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toMarblePosthocRequest } from "../src/evaluation/marble/adapter";
 import { MARBLE_COMMIT } from "../src/evaluation/versions";
+import { normalizeRunConfig } from "../src/experiment/configAccessors";
+import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults";
 import type { ExperimentRun, ProblemConversation } from "../src/experiment/types";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -68,14 +70,16 @@ const run = {
   createdAt: new Date().toISOString(),
   policy: { trustA: 0.5, trustB: 0.5, authority: 0.5, familiarity: 0.5 },
   agentPrompts: { agentA: "You are A", agentB: "You are B" },
-  config: {
-    problemCategory: "proof",
-    problemCount: 1,
-    model: "gpt-4o-mini",
-    provider: "openai",
-    maxTurns: 4,
-    temperature: 0.2,
-  },
+  config: normalizeRunConfig(
+    {
+      problemCategory: "proof",
+      problemCount: 1,
+      runModel: "gpt-5.6-terra",
+      maxTurns: 4,
+      temperature: 0.2,
+    },
+    DEFAULT_RUN_CONFIG,
+  ),
   conversations: [conversation],
   status: "completed",
 } as ExperimentRun;

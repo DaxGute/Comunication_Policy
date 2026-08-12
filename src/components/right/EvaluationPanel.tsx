@@ -1,17 +1,20 @@
-import { useState, type CSSProperties } from "react";
-import { AVAILABLE_MODELS } from "../../experiment/defaults";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   loadRunSettingsOpen,
   saveRunSettingsOpen,
 } from "../../experiment/persistence";
 import type { RunConfig, RunProgress } from "../../experiment/types";
+import {
+  estimateExperimentCost,
+  formatEstimatedCostRange,
+} from "../../models/cost";
+import {
+  displayNameForModel,
+} from "../../models/modelRegistry";
 import { PROBLEM_CATEGORIES, getProblemsForCategory } from "../../problems/registry";
 import type { ProblemCategory } from "../../problems/types";
-import {
-  labelForModel,
-  modelSupportsCustomTemperature,
-} from "../../runtime/models";
 import { NumberStepper } from "../ui/NumberStepper";
+import { ModelSelect } from "../ui/ModelSelect";
 
 type Props = {
   config: RunConfig;
@@ -36,7 +39,24 @@ export function EvaluationPanel({
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(loadRunSettingsOpen);
   const progressPct = Math.round((runProgress?.fraction ?? 0) * 100);
-  const temperatureEditable = modelSupportsCustomTemperature(config.model);
+
+  const costEstimate = useMemo(
+    () =>
+      estimateExperimentCost({
+        runModel: config.runModel,
+        evaluationModel: config.evaluationModel,
+        problemCount: config.problemCount,
+        maxTurns: config.maxTurns,
+        // Evaluation is post-hoc; Run settings only estimate conversation cost.
+        evaluationEnabled: false,
+      }),
+    [
+      config.runModel,
+      config.evaluationModel,
+      config.problemCount,
+      config.maxTurns,
+    ],
+  );
 
   return (
     <div className="evaluation-panel">
@@ -68,15 +88,9 @@ export function EvaluationPanel({
                   <span aria-hidden="true">·</span>
                   <span>{config.problemCount} problems</span>
                   <span aria-hidden="true">·</span>
-                  <span className="mono">{labelForModel(config.model)}</span>
+                  <span>{displayNameForModel(config.runModel)}</span>
                   <span aria-hidden="true">·</span>
                   <span>{config.maxTurns} turns</span>
-                  <span aria-hidden="true">·</span>
-                  <span>
-                    {temperatureEditable
-                      ? `T ${config.temperature}`
-                      : "T default"}
-                  </span>
                 </span>
               ) : null}
             </span>
@@ -118,6 +132,30 @@ export function EvaluationPanel({
                 </select>
               </label>
 
+              <div className="run-settings__section">
+                <h3 className="run-settings__section-title">
+                  Agent configuration
+                </h3>
+                <ModelSelect
+                  label="Conversation model"
+                  purpose="run"
+                  value={config.runModel}
+                  onChange={(runModel) => onConfigChange({ runModel })}
+                  reasoningEffort={config.runReasoningEffort}
+                  onReasoningEffortChange={(runReasoningEffort) =>
+                    onConfigChange({ runReasoningEffort })
+                  }
+                  labelTrailing={
+                    <span className="model-select__estimate muted">
+                      Estimated conversation cost{" "}
+                      <span className="mono">
+                        {formatEstimatedCostRange(costEstimate)}
+                      </span>
+                    </span>
+                  }
+                />
+              </div>
+
               <label className="field">
                 <span className="field__top">
                   <span>Number of problems</span>
@@ -135,53 +173,12 @@ export function EvaluationPanel({
               </label>
 
               <label className="field">
-                <span className="field__top">
-                  <span>Model</span>
-                  <span className="field__top-note muted">
-                    OpenAI calls go through a local{" "}
-                    <span className="mono">/api/generate</span> proxy (key
-                    stays on the server).
-                  </span>
-                </span>
-                <select
-                  value={config.model}
-                  onChange={(e) => onConfigChange({ model: e.target.value })}
-                >
-                  {AVAILABLE_MODELS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
                 <span>Maximum interaction turns</span>
                 <NumberStepper
                   min={1}
                   max={40}
                   value={config.maxTurns}
                   onChange={(maxTurns) => onConfigChange({ maxTurns })}
-                />
-              </label>
-
-              <label className="field">
-                <span className="field__top">
-                  <span>Temperature</span>
-                  {!temperatureEditable ? (
-                    <span className="field__top-note muted">
-                      This model only accepts the API default (parameter
-                      omitted).
-                    </span>
-                  ) : null}
-                </span>
-                <NumberStepper
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={config.temperature}
-                  disabled={!temperatureEditable}
-                  onChange={(temperature) => onConfigChange({ temperature })}
                 />
               </label>
             </div>
@@ -209,6 +206,12 @@ export function EvaluationPanel({
             {isRunning ? `${progressPct}%` : "Run"}
           </span>
         </button>
+        {!isRunning && !settingsOpen ? (
+          <p className="run-button__estimate muted">
+            Estimated conversation cost:{" "}
+            <span className="mono">{formatEstimatedCostRange(costEstimate)}</span>
+          </p>
+        ) : null}
       </section>
     </div>
   );
