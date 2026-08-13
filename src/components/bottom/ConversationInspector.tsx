@@ -1459,6 +1459,10 @@ function RunResultsMultiAgentEval({
   );
 }
 
+function formatMessageCount(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 function runTotals(run: ExperimentRun): {
   meanDurationMs: number | null;
   meanTokens: number | null;
@@ -1467,17 +1471,22 @@ function runTotals(run: ExperimentRun): {
   hasTokens: boolean;
   durationSdMs: number | null;
   tokensSd: number | null;
+  meanMessages: number | null;
+  messagesSd: number | null;
 } {
   const durations: number[] = [];
   const tokens: number[] = [];
+  const messageCounts: number[] = [];
   for (const conversation of run.conversations) {
     if (isIncompleteConversation(conversation)) continue;
+    messageCounts.push(conversation.messages.length);
     const part = conversationTotals(conversation.messages);
     if (part.hasDuration) durations.push(part.totalDurationMs);
     if (part.hasTokens) tokens.push(part.totalTokens);
   }
   const durationStats = meanSd(durations);
   const tokenStats = meanSd(tokens);
+  const messageStats = meanSd(messageCounts);
   return {
     meanDurationMs: durationStats.mean,
     meanTokens: tokenStats.mean,
@@ -1486,6 +1495,8 @@ function runTotals(run: ExperimentRun): {
     hasTokens: tokens.length > 0,
     durationSdMs: durationStats.sd,
     tokensSd: tokenStats.sd,
+    meanMessages: messageStats.mean,
+    messagesSd: messageStats.sd,
   };
 }
 
@@ -1498,6 +1509,8 @@ function MetricsBlock({
   hasTokens,
   durationSdMs,
   tokensSd,
+  meanMessages,
+  messagesSd,
 }: {
   rows: Array<{ label: string; mean: string; sd: string }>;
   meanDurationMs: number | null;
@@ -1507,11 +1520,19 @@ function MetricsBlock({
   hasTokens: boolean;
   durationSdMs: number | null;
   tokensSd: number | null;
+  meanMessages: number | null;
+  messagesSd: number | null;
 }) {
   return (
     <MetricTable
       rows={rows}
       footer={[
+        {
+          label: "Avg run length (msgs)",
+          mean:
+            meanMessages !== null ? formatMessageCount(meanMessages) : "—",
+          sd: messagesSd !== null ? formatMessageCount(messagesSd) : "—",
+        },
         {
           label: "Time",
           mean:
@@ -1620,6 +1641,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
     hasTokens,
     durationSdMs,
     tokensSd,
+    meanMessages,
+    messagesSd,
   } = runTotals(run);
   const crosswordProblems = graded.filter(
     (p) => p.details?.grader === "crossword",
@@ -1710,6 +1733,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
         hasTokens={hasTokens}
         durationSdMs={durationSdMs}
         tokensSd={tokensSd}
+        meanMessages={meanMessages}
+        messagesSd={messagesSd}
       />
     );
   }
@@ -1764,6 +1789,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
         hasTokens={hasTokens}
         durationSdMs={durationSdMs}
         tokensSd={tokensSd}
+        meanMessages={meanMessages}
+        messagesSd={messagesSd}
       />
     );
   }
@@ -1801,6 +1828,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
         hasTokens={hasTokens}
         durationSdMs={durationSdMs}
         tokensSd={tokensSd}
+        meanMessages={meanMessages}
+        messagesSd={messagesSd}
       />
     );
   }
@@ -1808,7 +1837,6 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
   const scores = meanSd(
     graded.map((p) => (typeof p.score === "number" ? p.score : null)),
   );
-  const turns = meanSd(graded.map((p) => p.turns));
 
   return (
     <MetricsBlock
@@ -1830,12 +1858,6 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
           sd: "—",
         },
         incompleteRow,
-        {
-          label: "Average turns",
-          mean:
-            turns.mean !== null ? String(Number(turns.mean.toFixed(2))) : "—",
-          sd: turns.sd !== null ? String(Number(turns.sd.toFixed(2))) : "—",
-        },
       ]}
       meanDurationMs={meanDurationMs}
       meanTokens={meanTokens}
@@ -1844,6 +1866,8 @@ function EvaluationSummary({ run }: { run: ExperimentRun }) {
       hasTokens={hasTokens}
       durationSdMs={durationSdMs}
       tokensSd={tokensSd}
+      meanMessages={meanMessages}
+      messagesSd={messagesSd}
     />
   );
 }

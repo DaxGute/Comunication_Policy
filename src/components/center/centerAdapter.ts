@@ -49,7 +49,7 @@ export const RUN_METRIC_LABELS: Record<RunMetricId, string> = {
   meanTurns: "Mean turns",
   medianTurns: "Median turns",
   totalMessages: "Total messages",
-  meanMessages: "Mean messages",
+  meanMessages: "Avg run length",
   totalTokens: "Total tokens",
   meanTokens: "Mean tokens",
   durationMs: "Duration",

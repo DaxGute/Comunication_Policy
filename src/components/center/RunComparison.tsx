@@ -19,6 +19,7 @@ const COMPARE_METRICS: { id: RunMetricId; label: string }[] = [
   { id: "accuracy", label: "Accuracy" },
   { id: "meanTurns", label: "Mean turns" },
   { id: "medianTurns", label: "Median turns" },
+  { id: "meanMessages", label: "Avg run length" },
   { id: "problemCount", label: "Problems" },
   { id: "completedProblems", label: "Completed" },
   { id: "incompleteProblems", label: "Incomplete" },

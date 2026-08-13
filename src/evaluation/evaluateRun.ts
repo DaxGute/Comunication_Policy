@@ -39,6 +39,7 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
     problemsCompleted: completed,
     incompleteProblems: incompleteCount,
     averageTurns: Number(avgTurns.toFixed(2)),
+    averageRunLength: Number(avgTurns.toFixed(2)),
     category: run.config.problemCategory,
   };
 

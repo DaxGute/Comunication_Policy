@@ -138,6 +138,12 @@ export function RunOverview({
             value={formatScore(run.aggregateScore)}
           />
         ) : null}
+        {run.meanMessages !== undefined ? (
+          <SummaryStat
+            label="Avg run length"
+            value={run.meanMessages.toFixed(1)}
+          />
+        ) : null}
         {run.meanTurns !== undefined ? (
           <SummaryStat label="Mean turns" value={run.meanTurns.toFixed(1)} />
         ) : null}
