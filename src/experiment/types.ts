@@ -7,8 +7,12 @@ import type {
 import type { ModelUsage } from "../models/usage";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { ProblemCategory } from "../problems/types";
+import type { TranscriptProtocol } from "./transcriptProtocol";
 
-export type { ModelUsage, ReasoningEffort };
+export type { ModelUsage, ReasoningEffort, TranscriptProtocol };
+
+/** How token counts on a message were obtained. */
+export type UsageSource = "provider" | "estimated";
 
 /** Token counts returned by the model provider for one turn. */
 export type MessageUsage = {
@@ -22,6 +26,28 @@ export type MessageUsage = {
   /** Legacy alias for outputTokens. */
   completionTokens?: number;
   totalTokens: number;
+  /**
+   * `provider` = authoritative API usage. `estimated` = heuristic (mock).
+   * Absent on historical messages. Never mix an estimate into provider totals.
+   */
+  source?: UsageSource;
+};
+
+/**
+ * Character/structure telemetry for the request that produced a turn.
+ * Independent of provider token counts — always available even when usage is missing.
+ */
+export type TranscriptRequestTelemetry = {
+  turnNumber: number;
+  speaker: AgentId;
+  /** Sum of prior utterance `content` lengths (no speaker prefixes). */
+  transcriptCharactersBeforeTurn: number;
+  transcriptMessagesBeforeTurn: number;
+  requestCharacters: number;
+  systemPromptCharacters: number;
+  problemCharacters: number;
+  /** History as sent to the model, including `[Agent X]:` prefixes. */
+  historyCharacters: number;
 };
 
 export type ConversationMessage = {
@@ -46,6 +72,8 @@ export type ConversationMessage = {
     role: "system" | "user" | "assistant";
     content: string;
   }>;
+  /** Context-size telemetry for the request that produced this utterance. */
+  requestTelemetry?: TranscriptRequestTelemetry;
 };
 
 export type ProblemConversation = {
@@ -70,6 +98,23 @@ export type ProblemConversation = {
   /** Sum of all agent model calls for this problem. */
   conversationUsage?: ModelUsage;
   conversationCostUsd?: number | null;
+  /** Derived communication-efficiency aggregates for analysis/export. */
+  conversationEfficiency?: ConversationEfficiencyStats;
+};
+
+/** Problem-level token/length aggregates. Derived from the transcript. */
+export type ConversationEfficiencyStats = {
+  turnCount: number;
+  finalTranscriptCharacters: number;
+  finalTranscriptMessages: number;
+  totalInputTokens?: number;
+  totalOutputTokens?: number;
+  totalConversationTokens?: number;
+  averageInputTokensPerTurn?: number;
+  averageOutputTokensPerUtterance?: number;
+  conversationCostUsd?: number | null;
+  /** Present when at least one turn recorded a usage source. */
+  usageSource?: UsageSource | "mixed";
 };
 
 /**
@@ -109,6 +154,12 @@ export type ExperimentRun = {
   policy: CommunicationPolicy;
   /** Exact prompts used for this run. */
   agentPrompts: AgentPromptPair;
+  /**
+   * How agent context was constructed for this run. Absent on pre-metadata
+   * snapshots, which still used full-history prefixed-assistant
+   * (`full-history-v1` / prefixed-assistant).
+   */
+  transcriptProtocol?: TranscriptProtocol;
   config: RunConfig;
   conversations: ProblemConversation[];
   evaluation?: EvaluationResult;

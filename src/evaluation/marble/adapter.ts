@@ -34,7 +34,7 @@ export function toMarblePosthocRequest(
 ): MarblePosthocRequest {
   const { run, conversation, evaluatorModel } = input;
   const messages = conversation.messages.map((m) => ({
-    agentId: m.agentId,
+    agentId: m.sender ?? m.agentId,
     turnIndex: m.turnIndex,
     content: m.content,
   }));
@@ -42,6 +42,11 @@ export function toMarblePosthocRequest(
   const communications = messages
     .map((m) => `[Turn ${m.turnIndex}] ${m.agentId}: ${m.content}`)
     .join("\n\n");
+
+  const lastMessage = conversation.messages[conversation.messages.length - 1];
+  const terminalUtterance = lastMessage
+    ? `Terminal utterance [Turn ${lastMessage.turnIndex}] ${lastMessage.sender ?? lastMessage.agentId}:\n${lastMessage.content}`
+    : "";
 
   const agentProfiles = [
     `agent_a: Two-agent collaborative solver. System prompt snapshot length=${run.agentPrompts.agentA.length}.`,
@@ -57,8 +62,11 @@ export function toMarblePosthocRequest(
       ? `FINAL_ANSWER: ${conversation.finalAnswer}`
       : "No FINAL_ANSWER recorded.",
     `stoppedReason: ${conversation.stoppedReason}`,
+    terminalUtterance,
     communications.slice(-4000),
-  ].join("\n\n");
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
 
   return {
     evaluatorModel,

@@ -8,7 +8,7 @@ import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
 import { isAbortError, throwIfAborted } from "./abort";
 import type { ModelClient } from "./modelClient";
-import { renderModelRequest } from "./renderModelRequest";
+import { buildTurnRequestForAgent } from "./renderModelRequest";
 import { utteranceFromMessage } from "./transcript";
 
 export type InteractionLoopCallbacks = {
@@ -55,11 +55,6 @@ export async function runInteractionLoop(args: {
     callbacks,
   } = args;
 
-  const agents: Record<AgentId, AgentDefinition> = {
-    agent_a: agentA,
-    agent_b: agentB,
-  };
-
   const order: AgentId[] = ["agent_a", "agent_b"];
   const messages: ConversationMessage[] = [];
 
@@ -78,13 +73,18 @@ export async function runInteractionLoop(args: {
     }
 
     const agentId = order[(turn - 1) % 2];
-    const agent = agents[agentId];
     callbacks?.onSpeaking?.(agentId);
     callbacks?.onTurnProgress?.(turn, maxTurns);
 
-    const requestMessages = renderModelRequest({
-      speaker: agentId,
-      systemPrompt: agent.systemPrompt,
+    // Transcript is local to this call (one run × one problem). Policy is
+    // already compiled into each agent's snapshotted system prompt and does
+    // not filter history.
+    const { messages: requestMessages, telemetry } = buildTurnRequestForAgent({
+      agentId,
+      agentPrompts: {
+        agentA: agentA.systemPrompt,
+        agentB: agentB.systemPrompt,
+      },
       problemText: problem.text,
       utterances: messages.map(utteranceFromMessage),
       turn,
@@ -152,8 +152,10 @@ export async function runInteractionLoop(args: {
             outputTokens,
             completionTokens: outputTokens,
             totalTokens: response.usage.totalTokens,
+            source: response.usage.source,
           }
         : undefined,
+      requestTelemetry: telemetry,
       modelRequest: requestMessages.map((m) => ({
         role: m.role,
         content: m.content,

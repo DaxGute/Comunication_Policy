@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { formatPolicyValue } from "../../communication";
 import { evaluateRun } from "../../evaluation/evaluateRun";
 import { isIncompleteConversation } from "../../evaluation/evaluators";
@@ -13,7 +13,10 @@ import {
   type MaeMetricRow,
   type MaeMetricSection,
 } from "../evaluation/aggregateMaeMetrics";
-import { resolveRunModel } from "../../experiment/configAccessors";
+import {
+  isSuccessfulMultiAgentEvaluation,
+  resolveRunModel,
+} from "../../experiment/configAccessors";
 import { displayRunTitle } from "../../experiment/runTitle";
 import type { EvaluationUiState } from "../../experiment/store";
 import {
@@ -38,6 +41,7 @@ import type { CrosswordSpec } from "../../problems/crossword/types";
 import { getProblemById } from "../../problems/registry";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
 import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
+import { OverrideEvaluationConfirm } from "../evaluation/OverrideEvaluationConfirm";
 import { InlineEditableText } from "../ui/InlineEditableText";
 import { ModelSelect } from "../ui/ModelSelect";
 import { ResizableSplit } from "../ui/ResizableSplit";
@@ -94,6 +98,8 @@ type Props = {
   runs: ExperimentRun[];
   selectedRun?: ExperimentRun;
   selectedProblemId?: string;
+  /** Bumped when a run is chosen from the scatter plot so the inspector reveals it. */
+  inspectorFocus?: number;
   onSelectRun: (runId: string) => void;
   onSelectProblem: (problemId: string, runId?: string) => void;
   onDeleteRun: (runId: string) => void;
@@ -106,11 +112,13 @@ type Props = {
     evaluatorModel: string;
     evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
     retryFrom?: MultiAgentEvaluation;
+    overrideExisting?: boolean;
   }) => Promise<unknown>;
   onRunAllEvaluations: (options: {
     runId: string;
     evaluatorModel: string;
     evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
+    overrideExisting?: boolean;
   }) => Promise<unknown>;
 };
 
@@ -229,6 +237,7 @@ export function ConversationInspector({
   runs,
   selectedRun,
   selectedProblemId,
+  inspectorFocus = 0,
   onSelectRun,
   onSelectProblem,
   onDeleteRun,
@@ -242,6 +251,8 @@ export function ConversationInspector({
   const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const navRef = useRef<HTMLElement>(null);
+  const resultsRef = useRef<HTMLElement>(null);
   const selectedConversation =
     selectedRun?.conversations.find((c) => c.problemId === selectedProblemId) ??
     // Only fall back when nothing is selected. Never silently switch to
@@ -253,17 +264,47 @@ export function ConversationInspector({
   // still collapse it afterward without losing the selection.
   useEffect(() => {
     const runId = selectedRun?.id;
-    if (!runId || (selectedRun?.conversations.length ?? 0) <= 1) return;
-    setExpandedRunIds((prev) => {
-      if (prev.has(runId)) return prev;
-      const next = new Set(prev);
-      next.add(runId);
-      return next;
+    if (!runId) return;
+    if ((selectedRun?.conversations.length ?? 0) > 1) {
+      setExpandedRunIds((prev) => {
+        if (prev.has(runId)) return prev;
+        const next = new Set(prev);
+        next.add(runId);
+        return next;
+      });
+    }
+    resultsRef.current?.scrollTo({ top: 0 });
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        const root = navRef.current;
+        if (!root) return;
+        const runEl = root.querySelector(
+          `[data-run-id="${CSS.escape(runId)}"]`,
+        );
+        const problemId =
+          selectedConversation?.problemId ??
+          selectedProblemId ??
+          selectedRun.conversations[0]?.problemId;
+        const problemEl = problemId
+          ? root.querySelector(
+              `[data-run-id="${CSS.escape(runId)}"] [data-problem-id="${CSS.escape(problemId)}"]`,
+            )
+          : null;
+        (problemEl ?? runEl)?.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
+      });
     });
-    // Only react to selection changes — not conversation growth mid-run —
-    // so collapsing a selected run stays collapsed.
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+    // Graph clicks bump inspectorFocus so a collapsed selected run re-opens
+    // and the tree / results scroll into view even when the run id is unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [selectedRun?.id]);
+  }, [selectedRun?.id, inspectorFocus]);
 
   const toggleRunExpanded = (runId: string) => {
     setExpandedRunIds((prev) => {
@@ -291,7 +332,7 @@ export function ConversationInspector({
         minSizesPx={[160, 220, 200]}
         storageKey="workbench:inspector"
       >
-      <aside className="conversation-inspector__nav">
+      <aside className="conversation-inspector__nav" ref={navRef}>
         <h2>Conversation Inspector</h2>
         <p className="muted">
           Click a title to rename. Delete with × to remove a run from the saved list.
@@ -314,7 +355,11 @@ export function ConversationInspector({
                       : run.conversations[0]?.problemId))
                   : undefined;
               return (
-                <li key={run.id} className="conv-tree__item">
+                <li
+                  key={run.id}
+                  className="conv-tree__item"
+                  data-run-id={run.id}
+                >
                   <div
                     className={
                       active
@@ -439,6 +484,7 @@ export function ConversationInspector({
                                   ? "conv-tree__problem conv-tree__problem--active"
                                   : "conv-tree__problem"
                               }
+                              data-problem-id={conversation.problemId}
                               role="button"
                               tabIndex={0}
                               aria-busy={problemRunning || undefined}
@@ -550,7 +596,7 @@ export function ConversationInspector({
         )}
       </div>
 
-      <aside className="conversation-inspector__results">
+      <aside className="conversation-inspector__results" ref={resultsRef}>
         <div className="results-header">
           <h2>Run Results</h2>
           {selectedRun ? (
@@ -1318,16 +1364,12 @@ function RunResultsMultiAgentEval({
   const [evaluationReasoningEffort, setEvaluationReasoningEffort] = useState(
     run.config.evaluationReasoningEffort,
   );
-  const evalCostEstimate = useMemo(() => {
-    const estimate = estimateExperimentCost({
-      runModel: resolveRunModel(run.config),
-      evaluationModel: evaluatorModel,
-      problemCount: Math.max(1, run.conversations.length),
-      maxTurns: run.config.maxTurns,
-      evaluationEnabled: true,
-    });
-    return formatEstimatedUsd(estimate.evaluationUsd);
-  }, [run, evaluatorModel]);
+  const [confirmingOverride, setConfirmingOverride] = useState(false);
+
+  useEffect(() => {
+    setConfirmingOverride(false);
+  }, [run.id]);
+
   const isBatchRunning =
     evaluationUi?.status === "running" &&
     evaluationUi.runId === run.id &&
@@ -1342,6 +1384,29 @@ function RunResultsMultiAgentEval({
   const total = run.conversations.length;
   const evals = latestEvalsByProblem(run);
   const evaluatedCount = evals.length;
+  const successfulCount = evals.filter(isSuccessfulMultiAgentEvaluation).length;
+  const remainingCount = Math.max(0, total - successfulCount);
+  const allSucceeded = total > 0 && successfulCount === total;
+  const evalCostEstimate = useMemo(() => {
+    const problemCount = confirmingOverride || allSucceeded
+      ? Math.max(1, total)
+      : Math.max(1, remainingCount);
+    const estimate = estimateExperimentCost({
+      runModel: resolveRunModel(run.config),
+      evaluationModel: evaluatorModel,
+      problemCount,
+      maxTurns: run.config.maxTurns,
+      evaluationEnabled: true,
+    });
+    return formatEstimatedUsd(estimate.evaluationUsd);
+  }, [
+    run,
+    evaluatorModel,
+    confirmingOverride,
+    allSucceeded,
+    total,
+    remainingCount,
+  ]);
   const currentProblem =
     isBatchRunning && evaluationUi?.problemId
       ? run.conversations.find((c) => c.problemId === evaluationUi.problemId)
@@ -1354,6 +1419,15 @@ function RunResultsMultiAgentEval({
     .map((e) => e.beliefDynamics?.normalized.metrics)
     .filter((m): m is NonNullable<typeof m> => Boolean(m));
   const sections = buildAggregatedMaeSections({ marbleEvals, beliefEvals });
+
+  function startBatch(overrideExisting?: boolean) {
+    void onRunAllEvaluations({
+      runId: run.id,
+      evaluatorModel,
+      evaluationReasoningEffort,
+      overrideExisting,
+    });
+  }
 
   return (
     <div className="results-mae">
@@ -1378,20 +1452,22 @@ function RunResultsMultiAgentEval({
                   hideLabel
                 />
               </div>
-              <button
-                type="button"
-                className="results-mae__run"
-                disabled={!canEvaluate}
-                onClick={() => {
-                  void onRunAllEvaluations({
-                    runId: run.id,
-                    evaluatorModel,
-                    evaluationReasoningEffort,
-                  });
-                }}
-              >
-                Run all
-              </button>
+              {confirmingOverride ? null : (
+                <button
+                  type="button"
+                  className="results-mae__run"
+                  disabled={!canEvaluate}
+                  onClick={() => {
+                    if (allSucceeded) {
+                      setConfirmingOverride(true);
+                      return;
+                    }
+                    startBatch();
+                  }}
+                >
+                  {allSucceeded ? "Re-run all" : "Run all"}
+                </button>
+              )}
             </>
           ) : (
             <span className="muted results-mae__status">
@@ -1409,6 +1485,30 @@ function RunResultsMultiAgentEval({
           ) : null}
         </div>
       </div>
+      {confirmingOverride ? (
+        <OverrideEvaluationConfirm
+          message={
+            total === 1
+              ? "This run already has a completed evaluation. Type yes to override it."
+              : `All ${total} problems already have completed evaluations. Type yes to override them.`
+          }
+          onConfirm={() => {
+            setConfirmingOverride(false);
+            startBatch(true);
+          }}
+          onCancel={() => setConfirmingOverride(false)}
+        />
+      ) : null}
+      {!isBatchRunning &&
+      !confirmingOverride &&
+      successfulCount > 0 &&
+      remainingCount > 0 ? (
+        <p className="muted results-mae__skip-note">
+          {successfulCount} already evaluated
+          {successfulCount === 1 ? " problem" : " problems"} will be skipped.
+          Re-run a problem individually to override it.
+        </p>
+      ) : null}
 
       {sections.length > 0 ? (
         <MetricTable sections={sections} />

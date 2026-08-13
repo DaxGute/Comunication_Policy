@@ -1,5 +1,10 @@
-import { buildAgentDefinition } from "../agents/buildAgentPrompt";
+import {
+  agentDefinitionFromPrompt,
+  buildAgentPromptPair,
+} from "../agents/buildAgentPrompt";
+import type { AgentPromptPair } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
+import { deriveConversationEfficiency } from "../experiment/conversationEfficiency";
 import type { ProblemConversation, RunConfig } from "../experiment/types";
 import { calculateModelCost } from "../models/cost";
 import { normalizeUsage, sumUsage } from "../models/usage";
@@ -15,13 +20,19 @@ export async function runProblem(args: {
   policy: CommunicationPolicy;
   config: RunConfig;
   client: ModelClient;
+  /**
+   * Snapshotted prompts for this run. When omitted, compiled from `policy`.
+   * Prefer passing the run snapshot so A/B prompts cannot drift from metadata.
+   */
+  agentPrompts?: AgentPromptPair;
   signal?: AbortSignal;
   callbacks?: InteractionLoopCallbacks;
 }): Promise<ProblemConversation> {
   const { problem, policy, config, client, signal, callbacks } = args;
 
-  const agentA = buildAgentDefinition("agent_a", policy);
-  const agentB = buildAgentDefinition("agent_b", policy);
+  const prompts = args.agentPrompts ?? buildAgentPromptPair(policy);
+  const agentA = agentDefinitionFromPrompt("agent_a", prompts.agentA);
+  const agentB = agentDefinitionFromPrompt("agent_b", prompts.agentB);
 
   const result = await runInteractionLoop({
     problem,
@@ -58,7 +69,7 @@ export async function runProblem(args: {
     conversationCostUsd = anyPriced ? sum : null;
   }
 
-  return {
+  const conversation: ProblemConversation = {
     problemId: problem.id,
     problemTitle: problem.title,
     problemText: problem.text,
@@ -69,4 +80,7 @@ export async function runProblem(args: {
     conversationUsage: hasUsage ? conversationUsage : undefined,
     conversationCostUsd,
   };
+  conversation.conversationEfficiency =
+    deriveConversationEfficiency(conversation);
+  return conversation;
 }

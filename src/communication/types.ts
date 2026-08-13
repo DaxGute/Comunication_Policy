@@ -27,6 +27,7 @@ export type CommunicationPolicy = {
    * Shared familiarity F ∈ [0, 1]. Symmetric: both agents receive
    * complementary wording of the same condition.
    * 0 = little shared conversational context; 1 = strong shared context / shorthand.
+   * Instructional only: it does not grant extra memory or extra transcript access.
    */
   familiarity: number;
 };

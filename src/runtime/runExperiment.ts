@@ -2,6 +2,7 @@ import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { CommunicationPolicy } from "../communication/types";
 import { evaluateRun } from "../evaluation/evaluateRun";
 import { syncRunCostFields } from "../experiment/runCost";
+import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../experiment/transcriptProtocol";
 import type {
   ExperimentRun,
   ProblemConversation,
@@ -95,6 +96,7 @@ export async function runExperiment(args: {
     authority: policy.authority,
     familiarity: policy.familiarity,
   };
+  const agentPrompts = buildAgentPromptPair(policySnapshot);
 
   const client = args.client ?? createModelClient();
   const problems = selectProblems(config.problemCategory, config.problemCount);
@@ -119,7 +121,8 @@ export async function runExperiment(args: {
     createdAt: now,
     startedAt: now,
     policy: policySnapshot,
-    agentPrompts: buildAgentPromptPair(policySnapshot),
+    agentPrompts,
+    transcriptProtocol: { ...FULL_HISTORY_TRANSCRIPT_PROTOCOL },
     config: { ...config },
     conversations: seededConversations.map((c) => ({ ...c })),
     conversationUsage: emptyUsage(),
@@ -190,6 +193,7 @@ export async function runExperiment(args: {
         const conversation = await runProblem({
           problem,
           policy: policySnapshot,
+          agentPrompts,
           config,
           client,
           signal,

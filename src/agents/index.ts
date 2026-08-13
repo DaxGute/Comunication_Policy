@@ -7,6 +7,7 @@ export {
   PROTOCOL_HEADER,
   buildAgentPrompt,
   buildAgentDefinition,
+  agentDefinitionFromPrompt,
   buildAgentPromptPair,
   splitAgentPromptLayers,
 } from "./buildAgentPrompt";

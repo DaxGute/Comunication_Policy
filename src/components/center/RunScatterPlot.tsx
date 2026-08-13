@@ -1,4 +1,10 @@
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import type { RunSummary } from "./centerAdapter";
 import { formatMetricValue } from "./centerAdapter";
 import { axisMetricDef, axisMetricLabel } from "./axisMetrics";
@@ -32,6 +38,15 @@ const W3 = 560;
 const H3 = 400;
 const DEFAULT_YAW = 0.72;
 const DEFAULT_PITCH = -0.42;
+const HIT_R = 14;
+const DRAG_SELECT_SLOP = 6;
+
+function runIdFromTarget(target: EventTarget | null): string | undefined {
+  if (!(target instanceof Element)) return undefined;
+  return (
+    target.closest("[data-run-id]")?.getAttribute("data-run-id") ?? undefined
+  );
+}
 
 function readSd(
   run: RunSummary,
@@ -67,36 +82,74 @@ function collectPoints(
     .filter((p): p is PlotPoint => p !== null);
 }
 
-function spanFor(id: string): number {
-  if (
-    id === "trustA" ||
-    id === "trustB" ||
-    id === "authority" ||
-    id === "familiarity"
-  ) {
-    return 0.1;
-  }
-  return 1;
-}
-
-function padDomain(min: number, max: number, id: string): [number, number] {
-  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
-  if (min === max) {
-    const span = spanFor(id);
-    min -= span;
-    max += span;
-  }
-  const pad = (max - min) * 0.08;
-  return [min - pad, max + pad];
-}
-
-function rangeWithSd(
+function dataExtent(
   pairs: Array<{ v: number; sd: number | null }>,
-  id: string,
 ): [number, number] {
   const lows = pairs.map((p) => p.v - (p.sd ?? 0));
   const highs = pairs.map((p) => p.v + (p.sd ?? 0));
-  return padDomain(Math.min(...lows), Math.max(...highs), id);
+  return [Math.min(...lows), Math.max(...highs)];
+}
+
+function niceStep(span: number, target: number): number {
+  if (!(span > 0) || !Number.isFinite(span)) return 1;
+  const raw = span / Math.max(1, target - 1);
+  const exp = Math.floor(Math.log10(raw));
+  const base = 10 ** exp;
+  const err = raw / base;
+  const mult = err <= 1.5 ? 1 : err <= 3 ? 2 : err <= 7 ? 5 : 10;
+  return mult * base;
+}
+
+function snap(value: number): number {
+  return Number(value.toPrecision(12));
+}
+
+function niceDomain(min: number, max: number): [number, number] {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [0, 1];
+  if (min === max) {
+    if (min === 0) return [0, 1];
+    const pad = Math.abs(min) * 0.1 || 1;
+    return niceDomain(min - pad, max + pad);
+  }
+  const step = niceStep(max - min, 5);
+  const niceMin = snap(Math.floor(min / step) * step);
+  const niceMax = snap(Math.ceil(max / step) * step);
+  return [niceMin, niceMax === niceMin ? snap(niceMin + step) : niceMax];
+}
+
+function axisDomain(
+  id: string,
+  pairs: Array<{ v: number; sd: number | null }>,
+): [number, number] {
+  const format = axisMetricDef(id)?.format;
+  if (format === "pct" || format === "score01" || format === "hhi") {
+    return [0, 1];
+  }
+  if (format === "score5") return [0, 5];
+  const [rawMin, rawMax] = dataExtent(pairs);
+  if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return [0, 1];
+  let min = rawMin;
+  let max = rawMax;
+  if ((format === "count" || format === "duration") && min >= 0) min = 0;
+  return niceDomain(min, max);
+}
+
+function axisTicks(id: string, min: number, max: number): number[] {
+  const format = axisMetricDef(id)?.format;
+  if (format === "pct" || format === "score01" || format === "hhi") {
+    return [0, 0.25, 0.5, 0.75, 1];
+  }
+  if (format === "score5") return [0, 1, 2, 3, 4, 5];
+  const span = max - min;
+  if (!(span > 0) || !Number.isFinite(span)) return [min];
+  let step = niceStep(span, 5);
+  if (format === "count" && step < 1) step = 1;
+  const ticks: number[] = [];
+  const start = snap(Math.ceil((min - step * 1e-9) / step) * step);
+  for (let v = start; v <= max + step * 1e-9; v = snap(v + step)) {
+    if (v >= min - step * 1e-9 && v <= max + step * 1e-9) ticks.push(v);
+  }
+  return ticks.length > 0 ? ticks : [min, max];
 }
 
 function cubeSd(sd: number | null, min: number, max: number): number {
@@ -396,18 +449,20 @@ function Scatter2D({
   selectedId?: string;
   onSelect: (runId: string) => void;
 }) {
-  const [minX, maxX] = rangeWithSd(
-    points.map((p) => ({ v: p.x, sd: p.xSd })),
+  const [minX, maxX] = axisDomain(
     xMetric,
+    points.map((p) => ({ v: p.x, sd: p.xSd })),
   );
-  const [minY, maxY] = rangeWithSd(
-    points.map((p) => ({ v: p.y, sd: p.ySd })),
+  const [minY, maxY] = axisDomain(
     yMetric,
+    points.map((p) => ({ v: p.y, sd: p.ySd })),
   );
+  const ticksX = axisTicks(xMetric, minX, maxX);
+  const ticksY = axisTicks(yMetric, minY, maxY);
 
   const w = 520;
   const h = 320;
-  const padL = 68;
+  const padL = 76;
   const padR = 24;
   const padT = 24;
   const padB = 52;
@@ -421,9 +476,29 @@ function Scatter2D({
       <svg
         className="center-scatter__svg"
         viewBox={`0 0 ${w} ${h}`}
-        role="img"
+        role="group"
         aria-label={`Scatterplot of runs: ${xLabel} vs ${yLabel}`}
       >
+        {ticksX.map((v) => (
+          <line
+            key={`gx-${v}`}
+            x1={sx(v)}
+            y1={padT}
+            x2={sx(v)}
+            y2={padT + plotH}
+            className="center-scatter__grid"
+          />
+        ))}
+        {ticksY.map((v) => (
+          <line
+            key={`gy-${v}`}
+            x1={padL}
+            y1={sy(v)}
+            x2={padL + plotW}
+            y2={sy(v)}
+            className="center-scatter__grid"
+          />
+        ))}
         <line
           x1={padL}
           y1={padT + plotH}
@@ -438,9 +513,47 @@ function Scatter2D({
           y2={padT + plotH}
           className="center-scatter__axis"
         />
+        {ticksX.map((v) => (
+          <g key={`tx-${v}`}>
+            <line
+              x1={sx(v)}
+              y1={padT + plotH}
+              x2={sx(v)}
+              y2={padT + plotH + 5}
+              className="center-scatter__tick-mark"
+            />
+            <text
+              x={sx(v)}
+              y={padT + plotH + 17}
+              textAnchor="middle"
+              className="center-scatter__tick"
+            >
+              {formatMetricValue(xMetric, v)}
+            </text>
+          </g>
+        ))}
+        {ticksY.map((v) => (
+          <g key={`ty-${v}`}>
+            <line
+              x1={padL}
+              y1={sy(v)}
+              x2={padL - 5}
+              y2={sy(v)}
+              className="center-scatter__tick-mark"
+            />
+            <text
+              x={padL - 8}
+              y={sy(v) + 3}
+              textAnchor="end"
+              className="center-scatter__tick"
+            >
+              {formatMetricValue(yMetric, v)}
+            </text>
+          </g>
+        ))}
         <text
           x={padL + plotW / 2}
-          y={h - 10}
+          y={h - 8}
           textAnchor="middle"
           className="center-scatter__axis-label"
         >
@@ -454,38 +567,6 @@ function Scatter2D({
           transform={`rotate(-90 14 ${padT + plotH / 2})`}
         >
           {yLabel}
-        </text>
-        <text
-          x={padL}
-          y={padT + plotH + 16}
-          textAnchor="start"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(xMetric, minX + (maxX - minX) * 0.08)}
-        </text>
-        <text
-          x={padL + plotW}
-          y={padT + plotH + 16}
-          textAnchor="end"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(xMetric, maxX - (maxX - minX) * 0.08)}
-        </text>
-        <text
-          x={padL - 6}
-          y={padT + 4}
-          textAnchor="end"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(yMetric, maxY - (maxY - minY) * 0.08)}
-        </text>
-        <text
-          x={padL - 6}
-          y={padT + plotH}
-          textAnchor="end"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(yMetric, minY + (maxY - minY) * 0.08)}
         </text>
 
         {points.map((p) => {
@@ -504,7 +585,15 @@ function Scatter2D({
             ? "center-scatter__ellipse center-scatter__ellipse--selected"
             : "center-scatter__ellipse";
           return (
-            <g key={p.run.runId}>
+            <g
+              key={p.run.runId}
+              data-run-id={p.run.runId}
+              className="center-scatter__mark"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(p.run.runId);
+              }}
+            >
               {useEllipse ? (
                 <ellipse
                   cx={cx}
@@ -565,10 +654,12 @@ function Scatter2D({
                     ? "center-scatter__point center-scatter__point--selected"
                     : "center-scatter__point"
                 }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelect(p.run.runId);
-                }}
+              />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={HIT_R}
+                className="center-scatter__hit"
               >
                 <title>
                   {p.run.title}
@@ -654,22 +745,30 @@ function Scatter3D({
     pitch: number;
   } | null>(null);
   const didDrag = useRef(false);
+  const pendingSelect = useRef<string | undefined>(undefined);
 
-  const [minX, maxX] = rangeWithSd(
-    points.map((p) => ({ v: p.x, sd: p.xSd })),
+  useEffect(() => {
+    return () => document.body.classList.remove("is-rotating-plot");
+  }, []);
+
+  const [minX, maxX] = axisDomain(
     xMetric,
+    points.map((p) => ({ v: p.x, sd: p.xSd })),
   );
-  const [minY, maxY] = rangeWithSd(
-    points.map((p) => ({ v: p.y, sd: p.ySd })),
+  const [minY, maxY] = axisDomain(
     yMetric,
+    points.map((p) => ({ v: p.y, sd: p.ySd })),
   );
   const zPairs = points
     .filter((p): p is PlotPoint & { z: number } => p.z !== null)
     .map((p) => ({ v: p.z, sd: p.zSd }));
-  const [minZ, maxZ] = rangeWithSd(
-    zPairs.length > 0 ? zPairs : [{ v: 0, sd: null }],
+  const [minZ, maxZ] = axisDomain(
     zMetric,
+    zPairs.length > 0 ? zPairs : [{ v: 0, sd: null }],
   );
+  const ticksX = axisTicks(xMetric, minX, maxX);
+  const ticksY = axisTicks(yMetric, minY, maxY);
+  const ticksZ = axisTicks(zMetric, minZ, maxZ);
 
   const proj = (p: Vec3) => project(p, yaw, pitch);
 
@@ -688,18 +787,81 @@ function Scatter3D({
   const grid = useMemo(() => {
     const s = CUBE;
     const lines: Array<{ a: Proj; b: Proj }> = [];
-    for (const t of [-s, 0, s]) {
+    for (const v of ticksX) {
+      const t = toCube(v, minX, maxX);
       lines.push({
         a: proj({ x: t, y: -s, z: -s }),
         b: proj({ x: t, y: -s, z: s }),
       });
+    }
+    for (const v of ticksZ) {
+      const t = toCube(v, minZ, maxZ);
       lines.push({
         a: proj({ x: -s, y: -s, z: t }),
         b: proj({ x: s, y: -s, z: t }),
       });
     }
     return lines;
-  }, [yaw, pitch]);
+  }, [yaw, pitch, ticksX, ticksZ, minX, maxX, minZ, maxZ]);
+
+  const axisMarkings = useMemo(() => {
+    const s = CUBE;
+    const tickLen = 0.05;
+    const marks: Array<{ a: Proj; b: Proj }> = [];
+    const labels: Array<{ p: { x: number; y: number }; text: string }> = [];
+    const labelBeyond = (a: Proj, b: Proj) => {
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      return { x: b.x + (dx / len) * 11, y: b.y + (dy / len) * 11 };
+    };
+    const add = (from: Vec3, to: Vec3, text: string) => {
+      const a = proj(from);
+      const b = proj(to);
+      marks.push({ a, b });
+      labels.push({ p: labelBeyond(a, b), text });
+    };
+    for (const v of ticksX) {
+      const t = toCube(v, minX, maxX);
+      add(
+        { x: t, y: -s, z: -s },
+        { x: t, y: -s, z: -s - tickLen },
+        formatMetricValue(xMetric, v),
+      );
+    }
+    for (const v of ticksY) {
+      const t = toCube(v, minY, maxY);
+      add(
+        { x: -s, y: t, z: -s },
+        { x: -s - tickLen, y: t, z: -s },
+        formatMetricValue(yMetric, v),
+      );
+    }
+    for (const v of ticksZ) {
+      const t = toCube(v, minZ, maxZ);
+      add(
+        { x: -s, y: -s, z: t },
+        { x: -s, y: -s - tickLen, z: t },
+        formatMetricValue(zMetric, v),
+      );
+    }
+    return { marks, labels };
+  }, [
+    yaw,
+    pitch,
+    ticksX,
+    ticksY,
+    ticksZ,
+    minX,
+    maxX,
+    minY,
+    maxY,
+    minZ,
+    maxZ,
+    xMetric,
+    yMetric,
+    zMetric,
+  ]);
 
   const frame = useMemo(
     () =>
@@ -749,6 +911,8 @@ function Scatter3D({
 
   function onPointerDown(e: PointerEvent<SVGSVGElement>) {
     if (e.button !== 0) return;
+    e.preventDefault();
+    pendingSelect.current = runIdFromTarget(e.target);
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { px: e.clientX, py: e.clientY, yaw, pitch };
     didDrag.current = false;
@@ -759,13 +923,27 @@ function Scatter3D({
     if (!start) return;
     const dx = e.clientX - start.px;
     const dy = e.clientY - start.py;
-    if (Math.hypot(dx, dy) > 3) didDrag.current = true;
+    if (Math.hypot(dx, dy) <= DRAG_SELECT_SLOP) return;
+    if (!didDrag.current) {
+      didDrag.current = true;
+      document.body.classList.add("is-rotating-plot");
+      window.getSelection()?.removeAllRanges();
+    }
     setYaw(start.yaw + dx * 0.008);
     setPitch(Math.max(-1.15, Math.min(0.18, start.pitch + dy * 0.008)));
   }
 
-  function onPointerUp() {
+  function endRotate() {
+    pendingSelect.current = undefined;
     drag.current = null;
+    document.body.classList.remove("is-rotating-plot");
+  }
+
+  function onPointerUp() {
+    const runId = pendingSelect.current;
+    const dragged = didDrag.current;
+    endRotate();
+    if (!dragged && runId) onSelect(runId);
   }
 
   function labelPos(tip: Proj, from: Proj): { x: number; y: number } {
@@ -780,16 +958,17 @@ function Scatter3D({
   const zTip = labelPos(axisTips.z.to, axisTips.z.from);
 
   return (
-    <div className="center-scatter">
+    <div className="center-scatter center-scatter--3d">
       <svg
         className="center-scatter__svg center-scatter__svg--3d"
         viewBox={`0 0 ${W3} ${H3}`}
-        role="img"
+        role="group"
         aria-label={`3D scatterplot of runs: ${xLabel}, ${yLabel}, ${zLabel}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={endRotate}
+        onSelectStart={(e) => e.preventDefault()}
       >
         <polygon
           points={floorPoly}
@@ -864,42 +1043,38 @@ function Scatter3D({
         >
           {zLabel}
         </text>
-        <text
-          x={axisTips.x.from.x - 4}
-          y={axisTips.x.from.y + 12}
-          textAnchor="end"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(xMetric, minX)}
-        </text>
-        <text
-          x={axisTips.x.to.x + 4}
-          y={axisTips.x.to.y + 12}
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(xMetric, maxX)}
-        </text>
-        <text
-          x={axisTips.y.to.x - 4}
-          y={axisTips.y.to.y}
-          textAnchor="end"
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(yMetric, maxY)}
-        </text>
-        <text
-          x={axisTips.z.to.x + 4}
-          y={axisTips.z.to.y + 12}
-          className="center-scatter__tick"
-        >
-          {formatMetricValue(zMetric, maxZ)}
-        </text>
+        {axisMarkings.marks.map((mark, i) => (
+          <line
+            key={`tm${i}`}
+            x1={mark.a.x}
+            y1={mark.a.y}
+            x2={mark.b.x}
+            y2={mark.b.y}
+            className="center-scatter__tick-mark"
+          />
+        ))}
+        {axisMarkings.labels.map((label, i) => (
+          <text
+            key={`tl${i}`}
+            x={label.p.x}
+            y={label.p.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            className="center-scatter__tick"
+          >
+            {label.text}
+          </text>
+        ))}
 
         {plotted.map((p) => {
           const selected = p.run.runId === selectedId;
           const r = (selected ? 6.4 : 5) * (0.82 + 0.28 * p.screen.scale);
           return (
-            <g key={p.run.runId}>
+            <g
+              key={p.run.runId}
+              data-run-id={p.run.runId}
+              className="center-scatter__mark"
+            >
               <line
                 x1={p.screen.x}
                 y1={p.screen.y}
@@ -961,11 +1136,12 @@ function Scatter3D({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (didDrag.current) return;
-                  onSelect(p.run.runId);
-                }}
+              />
+              <circle
+                cx={p.screen.x}
+                cy={p.screen.y}
+                r={Math.max(HIT_R, r + 6)}
+                className="center-scatter__hit"
               >
                 <title>
                   {p.run.title}

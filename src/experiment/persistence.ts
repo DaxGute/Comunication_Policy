@@ -9,11 +9,15 @@ import type { ProblemCategory } from "../problems/types";
 import { normalizeRunConfig } from "./configAccessors";
 import { AVAILABLE_MODEL_IDS, DEFAULT_RUN_CONFIG } from "./defaults";
 import { syncRunCostFields } from "./runCost";
+import { resolveTranscriptProtocol } from "./transcriptProtocol";
 import type {
   ConversationMessage,
   ExperimentRun,
   ProblemConversation,
   RunConfig,
+  TranscriptRequestTelemetry,
+  ConversationEfficiencyStats,
+  UsageSource,
 } from "./types";
 
 const RUN_CONFIG_KEY = "communication-policy:run-config";
@@ -191,16 +195,22 @@ function parseRunConfig(raw: unknown): RunConfig | undefined {
   );
 }
 
+function parseUsageSource(raw: unknown): UsageSource | undefined {
+  return raw === "provider" || raw === "estimated" ? raw : undefined;
+}
+
 function parseUsage(raw: unknown): ConversationMessage["usage"] | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const u = raw as Record<string, unknown>;
   const normalized = normalizeUsage(u);
+  const source = parseUsageSource(u.source);
   if (!normalized) {
     if (typeof u.totalTokens !== "number" || !Number.isFinite(u.totalTokens)) {
       return undefined;
     }
     return {
       totalTokens: Math.max(0, Math.round(u.totalTokens)),
+      ...(source ? { source } : {}),
     };
   }
   return {
@@ -210,6 +220,106 @@ function parseUsage(raw: unknown): ConversationMessage["usage"] | undefined {
     outputTokens: normalized.outputTokens,
     completionTokens: normalized.outputTokens,
     totalTokens: normalized.inputTokens + normalized.outputTokens,
+    ...(source ? { source } : {}),
+  };
+}
+
+function parseRequestTelemetry(
+  raw: unknown,
+): TranscriptRequestTelemetry | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const t = raw as Partial<TranscriptRequestTelemetry>;
+  if (t.speaker !== "agent_a" && t.speaker !== "agent_b") return undefined;
+  if (typeof t.turnNumber !== "number" || !Number.isFinite(t.turnNumber)) {
+    return undefined;
+  }
+  if (
+    typeof t.transcriptMessagesBeforeTurn !== "number" ||
+    !Number.isFinite(t.transcriptMessagesBeforeTurn)
+  ) {
+    return undefined;
+  }
+  return {
+    turnNumber: Math.max(0, Math.round(t.turnNumber)),
+    speaker: t.speaker,
+    transcriptCharactersBeforeTurn:
+      typeof t.transcriptCharactersBeforeTurn === "number" &&
+      Number.isFinite(t.transcriptCharactersBeforeTurn)
+        ? Math.max(0, Math.round(t.transcriptCharactersBeforeTurn))
+        : 0,
+    transcriptMessagesBeforeTurn: Math.max(
+      0,
+      Math.round(t.transcriptMessagesBeforeTurn),
+    ),
+    requestCharacters:
+      typeof t.requestCharacters === "number" &&
+      Number.isFinite(t.requestCharacters)
+        ? Math.max(0, Math.round(t.requestCharacters))
+        : 0,
+    systemPromptCharacters:
+      typeof t.systemPromptCharacters === "number" &&
+      Number.isFinite(t.systemPromptCharacters)
+        ? Math.max(0, Math.round(t.systemPromptCharacters))
+        : 0,
+    problemCharacters:
+      typeof t.problemCharacters === "number" &&
+      Number.isFinite(t.problemCharacters)
+        ? Math.max(0, Math.round(t.problemCharacters))
+        : 0,
+    historyCharacters:
+      typeof t.historyCharacters === "number" &&
+      Number.isFinite(t.historyCharacters)
+        ? Math.max(0, Math.round(t.historyCharacters))
+        : 0,
+  };
+}
+
+function parseConversationEfficiency(
+  raw: unknown,
+): ConversationEfficiencyStats | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const e = raw as Partial<ConversationEfficiencyStats>;
+  if (typeof e.turnCount !== "number" || !Number.isFinite(e.turnCount)) {
+    return undefined;
+  }
+  const usageSource =
+    e.usageSource === "provider" ||
+    e.usageSource === "estimated" ||
+    e.usageSource === "mixed"
+      ? e.usageSource
+      : undefined;
+  return {
+    turnCount: Math.max(0, Math.round(e.turnCount)),
+    finalTranscriptCharacters:
+      typeof e.finalTranscriptCharacters === "number"
+        ? Math.max(0, Math.round(e.finalTranscriptCharacters))
+        : 0,
+    finalTranscriptMessages:
+      typeof e.finalTranscriptMessages === "number"
+        ? Math.max(0, Math.round(e.finalTranscriptMessages))
+        : Math.max(0, Math.round(e.turnCount)),
+    totalInputTokens:
+      typeof e.totalInputTokens === "number"
+        ? Math.max(0, e.totalInputTokens)
+        : undefined,
+    totalOutputTokens:
+      typeof e.totalOutputTokens === "number"
+        ? Math.max(0, e.totalOutputTokens)
+        : undefined,
+    totalConversationTokens:
+      typeof e.totalConversationTokens === "number"
+        ? Math.max(0, e.totalConversationTokens)
+        : undefined,
+    averageInputTokensPerTurn:
+      typeof e.averageInputTokensPerTurn === "number"
+        ? e.averageInputTokensPerTurn
+        : undefined,
+    averageOutputTokensPerUtterance:
+      typeof e.averageOutputTokensPerUtterance === "number"
+        ? e.averageOutputTokensPerUtterance
+        : undefined,
+    conversationCostUsd: parseOptionalCost(e.conversationCostUsd),
+    usageSource,
   };
 }
 
@@ -261,6 +371,7 @@ function parseMessage(raw: unknown): ConversationMessage | undefined {
         : undefined,
     usage: parseUsage(m.usage),
     modelRequest: parseModelRequest(m.modelRequest),
+    requestTelemetry: parseRequestTelemetry(m.requestTelemetry),
   };
 }
 
@@ -299,6 +410,7 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
         : undefined,
     conversationUsage: parseModelUsage(c.conversationUsage),
     conversationCostUsd: parseOptionalCost(c.conversationCostUsd),
+    conversationEfficiency: parseConversationEfficiency(c.conversationEfficiency),
   };
 }
 
@@ -412,6 +524,7 @@ function parseRun(raw: unknown): ExperimentRun | undefined {
         : undefined,
     policy: createCommunicationPolicy(r.policy),
     agentPrompts: { agentA: prompts.agentA, agentB: prompts.agentB },
+    transcriptProtocol: resolveTranscriptProtocol(r.transcriptProtocol),
     config,
     conversations,
     evaluation: parseEvaluation(r.evaluation),

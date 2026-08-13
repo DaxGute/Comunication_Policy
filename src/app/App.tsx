@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ConversationInspector } from "../components/bottom/ConversationInspector";
 import { CenterPane } from "../components/center/CenterPane";
 import { CommunicationPolicyPanel } from "../components/left/CommunicationPolicyPanel";
@@ -7,6 +8,7 @@ import { WorkbenchLayout } from "./layout/WorkbenchLayout";
 
 export default function App() {
   const store = useExperimentStore();
+  const [inspectorFocus, setInspectorFocus] = useState(0);
 
   const activeRuns = Object.entries(store.state.runProgressById).map(
     ([id, progress]) => {
@@ -36,7 +38,10 @@ export default function App() {
         <CenterPane
           runs={store.state.runs}
           selectedRunId={store.state.selectedRunId}
-          onSelectRun={store.selectRun}
+          onSelectRun={(runId) => {
+            store.selectRun(runId);
+            setInspectorFocus((n) => n + 1);
+          }}
         />
       }
       right={
@@ -56,6 +61,7 @@ export default function App() {
           runs={store.state.runs}
           selectedRun={store.selectedRun}
           selectedProblemId={store.state.selectedProblemId}
+          inspectorFocus={inspectorFocus}
           onSelectRun={store.selectRun}
           onSelectProblem={store.selectProblem}
           onDeleteRun={store.deleteRun}

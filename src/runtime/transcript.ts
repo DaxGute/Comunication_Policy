@@ -38,5 +38,6 @@ export function utterancesFromMessages(
 }
 
 export function formatUtteranceForProvider(utterance: AgentUtterance): string {
+  // Provider-independent speaker identity. See experiment/transcriptProtocol.ts.
   return `[${agentLabel(utterance.sender)}]: ${utterance.content}`;
 }

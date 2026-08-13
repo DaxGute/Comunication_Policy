@@ -61,15 +61,22 @@ export function buildAgentPrompt(
   ].join("\n");
 }
 
-export function buildAgentDefinition(
+export function agentDefinitionFromPrompt(
   agentId: AgentId,
-  policy: CommunicationPolicy,
+  systemPrompt: string,
 ): AgentDefinition {
   return {
     id: agentId,
     label: agentLabel(agentId),
-    systemPrompt: buildAgentPrompt(agentId, policy),
+    systemPrompt,
   };
+}
+
+export function buildAgentDefinition(
+  agentId: AgentId,
+  policy: CommunicationPolicy,
+): AgentDefinition {
+  return agentDefinitionFromPrompt(agentId, buildAgentPrompt(agentId, policy));
 }
 
 export function buildAgentPromptPair(

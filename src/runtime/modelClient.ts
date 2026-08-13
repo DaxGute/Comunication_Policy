@@ -38,6 +38,8 @@ export type ModelUsage = {
   outputTokens?: number;
   completionTokens?: number;
   totalTokens: number;
+  /** `provider` = API-reported; `estimated` = heuristic. Omit if unknown. */
+  source?: "provider" | "estimated";
 };
 
 export type ModelResponse = {
@@ -97,7 +99,7 @@ export class MockModelClient implements ModelClient {
         content,
         provider: "mock",
         durationMs: Math.max(0, Date.now() - startedAt),
-        usage: { totalTokens: estimateTokenCount(content) },
+        usage: { totalTokens: estimateTokenCount(content), source: "estimated" },
       };
     }
 
@@ -213,6 +215,7 @@ export class MockModelClient implements ModelClient {
         outputTokens: completionTokens,
         completionTokens,
         totalTokens: promptTokens + completionTokens,
+        source: "estimated",
       },
     };
   }
@@ -399,6 +402,7 @@ export class ConfigurableModelClient implements ModelClient {
                 outputTokens,
                 completionTokens: outputTokens,
                 totalTokens: rawUsage.totalTokens,
+                source: "provider" as const,
               }
             : undefined;
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   BeliefDirectionalFraction,
   BeliefDynamicsEvaluation,
@@ -9,6 +9,7 @@ import type {
   MultiAgentEvaluation,
 } from "../../evaluation/types";
 import {
+  isSuccessfulMultiAgentEvaluation,
   latestEvaluationForProblem,
   resolveRunModel,
 } from "../../experiment/configAccessors";
@@ -31,6 +32,7 @@ import {
   TRUTH_SPLITS,
 } from "./aggregateMaeMetrics";
 import { ModelSelect } from "../ui/ModelSelect";
+import { OverrideEvaluationConfirm } from "./OverrideEvaluationConfirm";
 
 type Props = {
   run: ExperimentRun;
@@ -42,6 +44,7 @@ type Props = {
     evaluatorModel: string;
     evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
     retryFrom?: MultiAgentEvaluation;
+    overrideExisting?: boolean;
   }) => Promise<unknown>;
 };
 
@@ -541,6 +544,7 @@ export function MultiAgentEvaluationPanel({
   const [evaluationReasoningEffort, setEvaluationReasoningEffort] = useState(
     run.config.evaluationReasoningEffort,
   );
+  const [confirmingOverride, setConfirmingOverride] = useState(false);
   const evalCostEstimate = useMemo(() => {
     const estimate = estimateExperimentCost({
       runModel: resolveRunModel(run.config),
@@ -555,6 +559,11 @@ export function MultiAgentEvaluationPanel({
     () => latestEvaluationForProblem(run, conversation.problemId),
     [run, conversation.problemId],
   );
+  const alreadySucceeded = isSuccessfulMultiAgentEvaluation(latest);
+
+  useEffect(() => {
+    setConfirmingOverride(false);
+  }, [run.id, conversation.problemId]);
   const isThisRunning =
     evaluationUi?.status === "running" &&
     evaluationUi.runId === run.id &&
@@ -600,21 +609,27 @@ export function MultiAgentEvaluationPanel({
                   hideLabel
                 />
               </div>
-              <button
-                type="button"
-                className="mae-panel__run"
-                disabled={!canEvaluate}
-                onClick={() => {
-                  void onRunEvaluation({
-                    runId: run.id,
-                    problemId: conversation.problemId,
-                    evaluatorModel,
-                    evaluationReasoningEffort,
-                  });
-                }}
-              >
-                Run Evaluation
-              </button>
+              {confirmingOverride ? null : (
+                <button
+                  type="button"
+                  className="mae-panel__run"
+                  disabled={!canEvaluate}
+                  onClick={() => {
+                    if (alreadySucceeded) {
+                      setConfirmingOverride(true);
+                      return;
+                    }
+                    void onRunEvaluation({
+                      runId: run.id,
+                      problemId: conversation.problemId,
+                      evaluatorModel,
+                      evaluationReasoningEffort,
+                    });
+                  }}
+                >
+                  {alreadySucceeded ? "Re-run Evaluation" : "Run Evaluation"}
+                </button>
+              )}
               {latest?.componentStatus.marble === "failed" ? (
                 <button
                   type="button"
@@ -639,6 +654,21 @@ export function MultiAgentEvaluationPanel({
           <p className="muted">Running with {evaluationUi?.evaluatorModel}</p>
         ) : isBatchElsewhere ? (
           <p className="muted">Waiting for batch evaluation…</p>
+        ) : confirmingOverride ? (
+          <OverrideEvaluationConfirm
+            message="This problem already has a completed evaluation. Type yes to override it with a new run."
+            onConfirm={() => {
+              setConfirmingOverride(false);
+              void onRunEvaluation({
+                runId: run.id,
+                problemId: conversation.problemId,
+                evaluatorModel,
+                evaluationReasoningEffort,
+                overrideExisting: true,
+              });
+            }}
+            onCancel={() => setConfirmingOverride(false)}
+          />
         ) : null}
       </header>
 

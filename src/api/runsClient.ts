@@ -98,6 +98,7 @@ export async function startEvaluation(args: {
   evaluatorModel: string;
   evaluationReasoningEffort?: ReasoningEffort;
   retryFromId?: string;
+  overrideExisting?: boolean;
 }): Promise<{ evaluationId: string; run: ExperimentRun }> {
   const response = await fetch(
     `/api/runs/${encodeURIComponent(args.runId)}/evaluations`,
@@ -109,6 +110,7 @@ export async function startEvaluation(args: {
         evaluatorModel: args.evaluatorModel,
         evaluationReasoningEffort: args.evaluationReasoningEffort,
         retryFromId: args.retryFromId,
+        overrideExisting: args.overrideExisting === true,
       }),
     },
   );
@@ -119,6 +121,7 @@ export async function startBatchEvaluation(args: {
   runId: string;
   evaluatorModel: string;
   evaluationReasoningEffort?: ReasoningEffort;
+  overrideExisting?: boolean;
 }): Promise<{ batchId: string; run: ExperimentRun }> {
   const response = await fetch(
     `/api/runs/${encodeURIComponent(args.runId)}/evaluations/batch`,
@@ -128,6 +131,7 @@ export async function startBatchEvaluation(args: {
       body: JSON.stringify({
         evaluatorModel: args.evaluatorModel,
         evaluationReasoningEffort: args.evaluationReasoningEffort,
+        overrideExisting: args.overrideExisting === true,
       }),
     },
   );

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { RunSummary } from "./centerAdapter";
 import {
   defaultScatterAxes,
@@ -42,31 +42,57 @@ function AxisSelect({
   optional?: boolean;
 }) {
   const current = value ? axisMetricDef(value) : undefined;
+  const tooltipId = useId();
+  const description = current?.description;
   return (
-    <label className="center-axis-picker">
+    <div className="center-axis-picker">
       <span className="center-axis-picker__axis">{axis} axis</span>
       <span className="center-axis-picker__group">
         {optional && !value
           ? "Off"
           : (current?.groupLabel ?? "Metric")}
       </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={`${axis} axis metric`}
-      >
-        {optional ? <option value="">None</option> : null}
-        {groups.map((group) => (
-          <optgroup key={group.id} label={group.label}>
-            {group.metrics.map((metric) => (
-              <option key={metric.id} value={metric.id}>
-                {metric.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-    </label>
+      <div className="center-axis-picker__control">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={`${axis} axis metric`}
+        >
+          {optional ? <option value="">None</option> : null}
+          {groups.map((group) => (
+            <optgroup key={group.id} label={group.label}>
+              {group.metrics.map((metric) => (
+                <option key={metric.id} value={metric.id}>
+                  {metric.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {current && description ? (
+          <span className="center-axis-picker__help">
+            <button
+              type="button"
+              className="center-axis-picker__help-btn"
+              aria-label={`How ${current.label} is calculated`}
+              aria-describedby={tooltipId}
+            >
+              ?
+            </button>
+            <span
+              id={tooltipId}
+              className="center-axis-picker__tooltip"
+              role="tooltip"
+            >
+              <span className="center-axis-picker__tooltip-title">
+                {current.label}
+              </span>
+              {description}
+            </span>
+          </span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

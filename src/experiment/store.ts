@@ -84,11 +84,13 @@ export type ExperimentStore = {
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
     retryFrom?: MultiAgentEvaluation;
+    overrideExisting?: boolean;
   }) => Promise<MultiAgentEvaluation | undefined>;
   runAllConversationEvaluations: (options: {
     runId: string;
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
+    overrideExisting?: boolean;
   }) => Promise<void>;
 };
 
@@ -606,6 +608,7 @@ export function useExperimentStore(): ExperimentStore {
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
     retryFrom?: MultiAgentEvaluation;
+    overrideExisting?: boolean;
   }): Promise<MultiAgentEvaluation | undefined> {
     const evaluationReasoningEffort =
       options.evaluationReasoningEffort ??
@@ -629,6 +632,7 @@ export function useExperimentStore(): ExperimentStore {
         evaluatorModel: options.evaluatorModel,
         evaluationReasoningEffort,
         retryFromId: options.retryFrom?.id,
+        overrideExisting: options.overrideExisting,
       });
       mergeRun(result.run);
       setEvaluationUi(
@@ -659,6 +663,7 @@ export function useExperimentStore(): ExperimentStore {
     runId: string;
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
+    overrideExisting?: boolean;
   }): Promise<void> {
     const run = stateRef.current.runs.find((r) => r.id === options.runId);
     if (!run || run.conversations.length === 0) return;
@@ -682,6 +687,7 @@ export function useExperimentStore(): ExperimentStore {
         runId: options.runId,
         evaluatorModel: options.evaluatorModel,
         evaluationReasoningEffort,
+        overrideExisting: options.overrideExisting,
       });
       mergeRun(result.run);
     } catch (error) {

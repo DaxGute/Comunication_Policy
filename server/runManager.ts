@@ -3,6 +3,7 @@ import { createCommunicationPolicy } from "../src/communication/policy.ts";
 import type { CommunicationPolicy } from "../src/communication/types.ts";
 import { runMultiAgentEvaluation } from "../src/evaluation/orchestrator.ts";
 import type { MultiAgentEvaluation } from "../src/evaluation/types.ts";
+import { hasSuccessfulEvaluationForProblem } from "../src/experiment/configAccessors.ts";
 import { syncRunCostFields } from "../src/experiment/runCost.ts";
 import type {
   ConversationMessage,
@@ -13,6 +14,7 @@ import type {
 } from "../src/experiment/types.ts";
 import { createId } from "../src/lib/id.ts";
 import { emptyUsage } from "../src/models/usage.ts";
+import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../src/experiment/transcriptProtocol.ts";
 import type { ReasoningEffort } from "../src/models/modelRegistry.ts";
 import {
   createModelClient,
@@ -143,6 +145,7 @@ export class RunManager {
       status: "queued",
       policy,
       agentPrompts: buildAgentPromptPair(policy),
+      transcriptProtocol: { ...FULL_HISTORY_TRANSCRIPT_PROTOCOL },
       config,
       conversations: [],
       conversationUsage: emptyUsage(),
@@ -286,6 +289,7 @@ export class RunManager {
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
     retryFromId?: string;
+    overrideExisting?: boolean;
   }): { evaluationId: string; run: ExperimentRun } {
     const run = this.requireRun(args.runId);
     const conversation = run.conversations.find(
@@ -293,6 +297,17 @@ export class RunManager {
     );
     if (!conversation) {
       throw new RunsApiError(404, `Problem "${args.problemId}" not found.`);
+    }
+
+    if (
+      !args.retryFromId &&
+      !args.overrideExisting &&
+      hasSuccessfulEvaluationForProblem(run, args.problemId)
+    ) {
+      throw new RunsApiError(
+        409,
+        "This problem already has a completed evaluation. Pass overrideExisting to run it again.",
+      );
     }
 
     const retryFrom = args.retryFromId
@@ -346,10 +361,23 @@ export class RunManager {
     runId: string;
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
+    overrideExisting?: boolean;
   }): { batchId: string; run: ExperimentRun } {
     const run = this.requireRun(args.runId);
     if (run.conversations.length === 0) {
       throw new RunsApiError(400, "Run has no conversations to evaluate.");
+    }
+
+    const problemIds = args.overrideExisting
+      ? run.conversations.map((c) => c.problemId)
+      : run.conversations
+          .map((c) => c.problemId)
+          .filter((id) => !hasSuccessfulEvaluationForProblem(run, id));
+    if (problemIds.length === 0) {
+      throw new RunsApiError(
+        409,
+        "All problems already have completed evaluations. Pass overrideExisting to run them again.",
+      );
     }
 
     for (const [id, job] of this.activeEvals) {
@@ -365,6 +393,7 @@ export class RunManager {
       runId: args.runId,
       evaluatorModel: args.evaluatorModel,
       evaluationReasoningEffort: args.evaluationReasoningEffort,
+      problemIds,
       signal: abort.signal,
     });
     this.activeEvals.set(batchId, {
@@ -423,6 +452,7 @@ export class RunManager {
                   outputTokens: result.usage.outputTokens,
                   completionTokens: result.usage.completionTokens,
                   totalTokens: result.usage.totalTokens,
+                  source: "provider",
                 }
               : undefined,
           };
@@ -587,10 +617,10 @@ export class RunManager {
     runId: string;
     evaluatorModel: string;
     evaluationReasoningEffort?: ReasoningEffort;
+    problemIds: string[];
     signal: AbortSignal;
   }): Promise<void> {
-    const run = this.requireRun(args.runId);
-    const problemIds = run.conversations.map((c) => c.problemId);
+    const problemIds = args.problemIds;
     for (const problemId of problemIds) {
       if (args.signal.aborted) break;
       const latest = this.requireRun(args.runId);

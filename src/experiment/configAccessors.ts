@@ -11,6 +11,7 @@ import {
   providerForModel,
   type ReasoningEffort,
 } from "../models/modelRegistry";
+import type { MultiAgentEvaluation } from "../evaluation/types";
 import type { ExperimentRun, RunConfig } from "./types";
 
 /** Legacy persisted shape may include `model` instead of `runModel`. */
@@ -99,6 +100,27 @@ export function latestEvaluationForProblem(
     .filter((e) => e.problemId === problemId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return list[0];
+}
+
+/** Both MARBLE and belief finished without failure. */
+export function isSuccessfulMultiAgentEvaluation(
+  evaluation: MultiAgentEvaluation | undefined,
+): boolean {
+  if (!evaluation) return false;
+  return (
+    evaluation.status === "completed" &&
+    evaluation.componentStatus.marble === "completed" &&
+    evaluation.componentStatus.belief === "completed"
+  );
+}
+
+export function hasSuccessfulEvaluationForProblem(
+  run: ExperimentRun,
+  problemId: string,
+): boolean {
+  return isSuccessfulMultiAgentEvaluation(
+    latestEvaluationForProblem(run, problemId),
+  );
 }
 
 export function evaluationsForProblem(run: ExperimentRun, problemId: string) {

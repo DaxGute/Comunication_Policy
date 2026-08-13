@@ -225,6 +225,7 @@ export async function handleRunsApiRequest(
             : undefined,
         retryFromId:
           typeof body.retryFromId === "string" ? body.retryFromId : undefined,
+        overrideExisting: body.overrideExisting === true,
       });
       sendJson(res, 202, result);
       return;
@@ -243,6 +244,7 @@ export async function handleRunsApiRequest(
           typeof body.evaluationReasoningEffort === "string"
             ? (body.evaluationReasoningEffort as ReasoningEffort)
             : undefined,
+        overrideExisting: body.overrideExisting === true,
       });
       sendJson(res, 202, result);
       return;

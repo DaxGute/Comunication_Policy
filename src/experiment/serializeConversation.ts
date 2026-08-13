@@ -2,6 +2,11 @@ import { otherAgentId } from "../agents/identity";
 import type { AgentId } from "../agents/types";
 import type { ProblemEvaluation } from "../evaluation/types";
 import { resolveRunModel } from "./configAccessors";
+import { deriveConversationEfficiency } from "./conversationEfficiency";
+import {
+  resolveTranscriptProtocol,
+  type TranscriptProtocol,
+} from "./transcriptProtocol";
 import type { ExperimentRun, ProblemConversation } from "./types";
 
 export type ConversationExportMessage = {
@@ -17,11 +22,22 @@ export type ConversationExportMessage = {
     cached_input_tokens?: number;
     output_tokens?: number;
     total_tokens: number;
+    source?: "provider" | "estimated";
   };
   model_request?: Array<{
     role: "system" | "user" | "assistant";
     content: string;
   }>;
+  request_telemetry?: {
+    turn_number: number;
+    speaker: AgentId;
+    transcript_characters_before_turn: number;
+    transcript_messages_before_turn: number;
+    request_characters: number;
+    system_prompt_characters: number;
+    problem_characters: number;
+    history_characters: number;
+  };
 };
 
 export type ConversationExportAgent = {
@@ -29,8 +45,23 @@ export type ConversationExportAgent = {
   system_prompt: string;
 };
 
+export type ConversationExportProtocol = TranscriptProtocol;
+
+export type ConversationExportEfficiency = {
+  turn_count: number;
+  final_transcript_characters: number;
+  final_transcript_messages: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_conversation_tokens?: number;
+  average_input_tokens_per_turn?: number;
+  average_output_tokens_per_utterance?: number;
+  conversation_cost_usd?: number | null;
+  usage_source?: "provider" | "estimated" | "mixed";
+};
+
 export type ConversationExport = {
-  schema_version: "1.2";
+  schema_version: "1.3";
   run_id: string;
   conversation_id: string;
   problem: {
@@ -56,6 +87,7 @@ export type ConversationExport = {
       familiarity: number;
     };
   };
+  transcript_protocol: ConversationExportProtocol;
   agents: ConversationExportAgent[];
   messages: ConversationExportMessage[];
   result: {
@@ -70,6 +102,7 @@ export type ConversationExport = {
       cost_usd?: number | null;
     };
   };
+  efficiency: ConversationExportEfficiency;
   /** Per-problem evaluation when available; empty object if not yet evaluated. */
   evaluations: Record<string, unknown>;
 };
@@ -132,7 +165,7 @@ export function serializeConversation(
   const runModel = resolveRunModel(run.config);
 
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     run_id: run.id,
     conversation_id: conversation.problemId,
     problem: {
@@ -157,6 +190,7 @@ export function serializeConversation(
         familiarity: run.policy.familiarity,
       },
     },
+    transcript_protocol: resolveTranscriptProtocol(run.transcriptProtocol),
     agents: [
       {
         id: "agent_a",
@@ -187,10 +221,24 @@ export function serializeConversation(
           output_tokens:
             message.usage.outputTokens ?? message.usage.completionTokens,
           total_tokens: message.usage.totalTokens,
+          ...(message.usage.source ? { source: message.usage.source } : {}),
         };
       }
       if (message.modelRequest && message.modelRequest.length > 0) {
         exported.model_request = message.modelRequest;
+      }
+      if (message.requestTelemetry) {
+        const t = message.requestTelemetry;
+        exported.request_telemetry = {
+          turn_number: t.turnNumber,
+          speaker: t.speaker,
+          transcript_characters_before_turn: t.transcriptCharactersBeforeTurn,
+          transcript_messages_before_turn: t.transcriptMessagesBeforeTurn,
+          request_characters: t.requestCharacters,
+          system_prompt_characters: t.systemPromptCharacters,
+          problem_characters: t.problemCharacters,
+          history_characters: t.historyCharacters,
+        };
       }
       return exported;
     }),
@@ -213,6 +261,36 @@ export function serializeConversation(
           }
         : {}),
     },
+    efficiency: (() => {
+      const stats = deriveConversationEfficiency(conversation);
+      return {
+        turn_count: stats.turnCount,
+        final_transcript_characters: stats.finalTranscriptCharacters,
+        final_transcript_messages: stats.finalTranscriptMessages,
+        ...(stats.totalInputTokens !== undefined
+          ? { total_input_tokens: stats.totalInputTokens }
+          : {}),
+        ...(stats.totalOutputTokens !== undefined
+          ? { total_output_tokens: stats.totalOutputTokens }
+          : {}),
+        ...(stats.totalConversationTokens !== undefined
+          ? { total_conversation_tokens: stats.totalConversationTokens }
+          : {}),
+        ...(stats.averageInputTokensPerTurn !== undefined
+          ? { average_input_tokens_per_turn: stats.averageInputTokensPerTurn }
+          : {}),
+        ...(stats.averageOutputTokensPerUtterance !== undefined
+          ? {
+              average_output_tokens_per_utterance:
+                stats.averageOutputTokensPerUtterance,
+            }
+          : {}),
+        ...(stats.conversationCostUsd !== undefined
+          ? { conversation_cost_usd: stats.conversationCostUsd }
+          : {}),
+        ...(stats.usageSource ? { usage_source: stats.usageSource } : {}),
+      };
+    })(),
     evaluations: serializeEvaluations(
       evaluation,
       run,
@@ -222,13 +300,14 @@ export function serializeConversation(
 }
 
 export type RunExport = {
-  schema_version: "1.2";
+  schema_version: "1.3";
   run_id: string;
   title?: string;
   created_at: string;
   finished_at?: string;
   status: ExperimentRun["status"];
   error?: string;
+  transcript_protocol: ConversationExportProtocol;
   usage: {
     conversation?: {
       input_tokens: number;
@@ -254,13 +333,14 @@ export type RunExport = {
  */
 export function serializeRun(run: ExperimentRun): RunExport {
   return {
-    schema_version: "1.2",
+    schema_version: "1.3",
     run_id: run.id,
     ...(run.title ? { title: run.title } : {}),
     created_at: run.createdAt,
     ...(run.finishedAt ? { finished_at: run.finishedAt } : {}),
     status: run.status,
     ...(run.error ? { error: run.error } : {}),
+    transcript_protocol: resolveTranscriptProtocol(run.transcriptProtocol),
     usage: {
       ...(run.conversationUsage
         ? {
