@@ -1,6 +1,7 @@
 export type {
   AuthorityRelation,
   CommunicationPolicy,
+  CompiledAgentPolicy,
   CompiledCommunicationPolicy,
   PolicyBand,
 } from "./types";
@@ -15,6 +16,8 @@ export {
 } from "./policy";
 export { compileCommunicationPolicy } from "./compilePolicy";
 export {
+  BAND_HIGH_MIN,
+  BAND_LOW_MAX,
   authorityRelationFromValue,
   bandFromValue,
   describeAuthoritySlider,

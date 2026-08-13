@@ -1,10 +1,12 @@
 import type {
   BeliefClaim,
+  BeliefClaimKind,
   BeliefDynamicsEvaluation,
   BeliefEvent,
   BeliefEventAction,
   BeliefFinalStatus,
   BeliefClaimCorrectness,
+  BeliefReferenceStyle,
   AgentIdRef,
 } from "../types";
 import {
@@ -42,6 +44,21 @@ const EVENT_ACTIONS = new Set<BeliefEventAction>([
   "ignore",
   "clarify",
   "verify",
+  "misunderstand",
+  "repeat",
+  "reconsider",
+]);
+
+const CLAIM_KINDS = new Set<BeliefClaimKind>([
+  "proposal",
+  "reasoning",
+  "process",
+]);
+
+const REFERENCE_STYLES = new Set<BeliefReferenceStyle>([
+  "explicit",
+  "shorthand",
+  "none",
 ]);
 
 export type BeliefGraderRaw = {
@@ -243,6 +260,11 @@ function parseClaim(
     }
   }
 
+  const kind =
+    typeof c.kind === "string" && CLAIM_KINDS.has(c.kind as BeliefClaimKind)
+      ? (c.kind as BeliefClaimKind)
+      : undefined;
+
   return {
     id,
     text,
@@ -254,6 +276,19 @@ function parseClaim(
     evidence: typeof c.evidence === "string" ? c.evidence : undefined,
     events: [],
     finalStatus: finalStatus as BeliefFinalStatus,
+    kind,
+    introducedWithEvidence:
+      typeof c.introducedWithEvidence === "boolean"
+        ? c.introducedWithEvidence
+        : undefined,
+    survivedIntoFinalAnswer:
+      typeof c.survivedIntoFinalAnswer === "boolean"
+        ? c.survivedIntoFinalAnswer
+        : undefined,
+    isDistinctHypothesis:
+      typeof c.isDistinctHypothesis === "boolean"
+        ? c.isDistinctHypothesis
+        : undefined,
   };
 }
 
@@ -302,6 +337,15 @@ function parseEvent(
     return undefined;
   }
 
+  const referencesClaimIds = Array.isArray(e.referencesClaimIds)
+    ? e.referencesClaimIds.filter((id): id is string => typeof id === "string")
+    : undefined;
+  const referenceStyle =
+    typeof e.referenceStyle === "string" &&
+    REFERENCE_STYLES.has(e.referenceStyle as BeliefReferenceStyle)
+      ? (e.referenceStyle as BeliefReferenceStyle)
+      : undefined;
+
   return {
     turn,
     agent,
@@ -316,6 +360,36 @@ function parseEvent(
       typeof e.agreementKind === "string"
         ? (e.agreementKind as BeliefEvent["agreementKind"])
         : undefined,
+    hasEvidence:
+      typeof e.hasEvidence === "boolean" ? e.hasEvidence : undefined,
+    referencesClaimIds:
+      referencesClaimIds && referencesClaimIds.length > 0
+        ? referencesClaimIds
+        : undefined,
+    referenceStyle,
+    referenceResolved:
+      typeof e.referenceResolved === "boolean"
+        ? e.referenceResolved
+        : undefined,
+    expressedConfidence:
+      typeof e.expressedConfidence === "number"
+        ? e.expressedConfidence
+        : undefined,
+    isRepetition:
+      typeof e.isRepetition === "boolean" ? e.isRepetition : undefined,
+    isRedundantRederivation:
+      typeof e.isRedundantRederivation === "boolean"
+        ? e.isRedundantRederivation
+        : undefined,
+    reusesEstablishedInfo:
+      typeof e.reusesEstablishedInfo === "boolean"
+        ? e.reusesEstablishedInfo
+        : undefined,
+    isCoordination:
+      typeof e.isCoordination === "boolean" ? e.isCoordination : undefined,
+    usesShorthand:
+      typeof e.usesShorthand === "boolean" ? e.usesShorthand : undefined,
+    isNovel: typeof e.isNovel === "boolean" ? e.isNovel : undefined,
   };
 }
 

@@ -30,8 +30,9 @@ export function CommunicationPolicyPanel({
       <header className="panel-section__header">
         <h2>Communication Policy</h2>
         <p className="muted">
-          Independent variable. Changes rewrite instantiation prompts only —
-          not model, expertise, or task.
+          Independent variable. Changes rewrite only the compiled
+          communication-policy section — not identity, task, protocol, model,
+          or expertise.
         </p>
       </header>
 

@@ -1,23 +1,36 @@
-import type {
-  AuthorityRelation,
-  CommunicationPolicy,
-  PolicyBand,
-} from "./types";
-import { authorityWeightA, authorityWeightB } from "./policy";
+import type { AgentId } from "../agents/types";
+import type { AuthorityRelation, PolicyBand } from "./types";
 
+/** Slider values below this compile to the 0.0 behavioral template. */
+export const BAND_LOW_MAX = 1 / 3;
+/** Slider values at or above this compile to the 1.0 behavioral template. */
+export const BAND_HIGH_MIN = 2 / 3;
+
+/**
+ * Continuous [0, 1] → discrete behavioral anchor.
+ *
+ * | slider | template |
+ * | ------ | -------- |
+ * | [0, 1/3) | 0.0 (low) |
+ * | [1/3, 2/3) | 0.5 (moderate) |
+ * | [2/3, 1] | 1.0 (high) |
+ *
+ * Same mapping for Trust, Authority, and Familiarity.
+ */
 export function bandFromValue(value: number): PolicyBand {
-  if (value < 1 / 3) return "low";
-  if (value < 2 / 3) return "moderate";
+  if (value < BAND_LOW_MAX) return "low";
+  if (value < BAND_HIGH_MIN) return "moderate";
   return "high";
 }
 
 /**
- * Authority is directional:
- * 0.0 → A over B, 0.5 → symmetric, 1.0 → B over A
+ * Authority a ∈ [0, 1]: 0 = A primacy, 0.5 = equal standing, 1 = B primacy.
+ * Uses the same 1/3–2/3 banding as Trust and Familiarity.
  */
 export function authorityRelationFromValue(value: number): AuthorityRelation {
-  if (value < 0.4) return "a_over_b";
-  if (value > 0.6) return "b_over_a";
+  const band = bandFromValue(value);
+  if (band === "low") return "a_over_b";
+  if (band === "high") return "b_over_a";
   return "symmetric";
 }
 
@@ -25,104 +38,70 @@ export function describeAuthoritySlider(value: number): string {
   const relation = authorityRelationFromValue(value);
   switch (relation) {
     case "a_over_b":
-      return "Agent A has greater decision weight";
+      return "Agent A has decision primacy";
     case "b_over_a":
-      return "Agent B has greater decision weight";
+      return "Agent B has decision primacy";
     case "symmetric":
-      return "Symmetric / peer-to-peer";
+      return "Equal decision standing";
   }
 }
 
-export function trustInstructions(band: PolicyBand): string {
+/**
+ * Trust toward `otherLabel`. Operationalization:
+ * 0.0 — treat partner claims as unreliable until independently supported
+ * 0.5 — consider partner reasoning normally; recheck consequential uncertainty
+ * 1.0 — give substantial weight to partner claims; recheck when evidence conflicts
+ */
+export function trustInstructions(band: PolicyBand, otherLabel: string): string {
   switch (band) {
     case "low":
-      return [
-        "Treat claims from the other agent with healthy skepticism.",
-        "Prefer independent verification before adopting their conclusions.",
-        "Ask for explicit evidence or reasoning when claims are unsupported.",
-        "Do not dismiss useful ideas, but require justification before relying on them.",
-      ].join(" ");
+      return `Treat ${otherLabel}'s claims as unreliable until independently supported.`;
     case "moderate":
-      return [
-        "Give the other agent a fair hearing and weigh their reasoning carefully.",
-        "Accept well-supported claims without redundant re-derivation, but verify critical steps.",
-        "Balance collaborative synthesis with independent judgment.",
-      ].join(" ");
+      return `Consider ${otherLabel}'s reasoning in the ordinary way. Independently recheck a claim when it is consequentially uncertain.`;
     case "high":
-      return [
-        "Default to substantial credence in the other agent's reasoning.",
-        "Build on their contributions rather than restarting from scratch.",
-        "Avoid redundant verification of points that appear carefully reasoned.",
-        "Still retain independent judgment: high trust means collaborative synthesis, not blind agreement.",
-      ].join(" ");
+      return `Give substantial weight to ${otherLabel}'s claims. Independently recheck primarily when evidence conflicts.`;
   }
 }
 
-export function familiarityInstructions(band: PolicyBand): string {
+/**
+ * Familiarity with `otherLabel`. Symmetric variable: both agents receive
+ * complementary wording of the same F. Operationalization:
+ * 0.0 — little shared conversational context
+ * 0.5 — ordinary shared context
+ * 1.0 — strong shared context and established shorthand
+ */
+export function familiarityInstructions(
+  band: PolicyBand,
+  otherLabel: string,
+): string {
   switch (band) {
     case "low":
-      return [
-        "Communicate as collaborators who do not share much prior context.",
-        "Make assumptions explicit; explain terms, constraints, and intermediate steps clearly.",
-        "Prefer formal, self-contained explanations over shorthand.",
-        "Ask clarifying questions when shared understanding is uncertain.",
-      ].join(" ");
+      return `Assume little shared conversational context with ${otherLabel}. State assumptions and intermediate steps explicitly.`;
     case "moderate":
-      return [
-        "Communicate clearly while assuming a reasonable shared problem frame.",
-        "Explain non-obvious steps; omit only the most obvious shared background.",
-        "Use moderate compression: be concise without becoming telegraphic.",
-      ].join(" ");
+      return `Assume ordinary shared conversational context with ${otherLabel}.`;
     case "high":
-      return [
-        "Communicate as long-term collaborators with high coordination expectations.",
-        "Use compressed, efficient language and assume shared problem-solving conventions.",
-        "Avoid redundant restatement of context the other agent likely already holds.",
-        "Do not invent personal history or fake memories; familiarity here means communication style and coordination assumptions only.",
-      ].join(" ");
+      return `Assume strong shared conversational context and established shorthand with ${otherLabel}.`;
   }
 }
 
+/**
+ * Relational authority from this agent's perspective.
+ * 0.0 — A has decision primacy; 0.5 — equal standing; 1.0 — B has primacy.
+ */
 export function authorityInstructionsForAgent(
-  agentId: "agent_a" | "agent_b",
+  agentId: AgentId,
   relation: AuthorityRelation,
 ): string {
-  const isA = agentId === "agent_a";
+  const other = agentId === "agent_a" ? "Agent B" : "Agent A";
+  const thisAgentHasPrimacy =
+    (agentId === "agent_a" && relation === "a_over_b") ||
+    (agentId === "agent_b" && relation === "b_over_a");
 
   if (relation === "symmetric") {
-    return [
-      "Authority is peer-to-peer: neither agent has decision primacy.",
-      "Argue on the merits, negotiate disagreements, and converge through joint reasoning.",
-      "Surface important evidence, contradictions, and uncertainty freely.",
-    ].join(" ");
+    return `You and ${other} have equal decision standing.`;
   }
-
-  const aHasAuthority = relation === "a_over_b";
-  const thisAgentHasAuthority = isA ? aHasAuthority : !aHasAuthority;
-
-  if (thisAgentHasAuthority) {
-    return [
-      "Your judgment carries greater decision weight in this collaboration.",
-      "Lead toward a coherent final answer when the discussion must resolve.",
-      "Still solicit and seriously consider the other agent's evidence and objections.",
-      "Authority must not suppress useful disagreement; weigh dissent before deciding.",
-    ].join(" ");
+  if (thisAgentHasPrimacy) {
+    return `You have decision primacy relative to ${other}.`;
   }
-
-  return [
-    "The other agent's judgment carries greater decision weight in this collaboration.",
-    "Seriously consider their decisions and framing when resolving disputes.",
-    "You must still surface important evidence, contradictions, and uncertainty.",
-    "Defer on resolution when appropriate, but never withhold critical information or clear errors.",
-  ].join(" ");
-}
-
-export function sharedPolicyContext(policy: CommunicationPolicy): string {
-  const aAuth = authorityWeightA(policy.authority);
-  const bAuth = authorityWeightB(policy.authority);
-  return [
-    "You are one of exactly two general-purpose reasoning agents working on the same problem.",
-    "There are no specialized roles, job titles, or asymmetric expertise assignments beyond the interpersonal communication policy below.",
-    `Current policy parameters: trustA→B=${policy.trustA.toFixed(2)}, trustB→A=${policy.trustB.toFixed(2)}, authority=${policy.authority.toFixed(2)} (A-weight=${aAuth.toFixed(2)}, B-weight=${bAuth.toFixed(2)}; 0=A over B, 0.5=symmetric, 1=B over A), familiarity=${policy.familiarity.toFixed(2)}.`,
-  ].join(" ");
+  return `${other} has decision primacy relative to you.`;
 }

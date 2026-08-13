@@ -44,8 +44,8 @@ export function CrosswordBoard({
       <div
         className="crossword-board__grid"
         style={{
-          gridTemplateColumns: `repeat(${width}, 1.55rem)`,
-          gridTemplateRows: `repeat(${height}, 1.55rem)`,
+          gridTemplateColumns: `repeat(${width}, 25px)`,
+          gridTemplateRows: `repeat(${height}, 25px)`,
         }}
         role="img"
         aria-label={`${label}: ${width} by ${height} crossword`}

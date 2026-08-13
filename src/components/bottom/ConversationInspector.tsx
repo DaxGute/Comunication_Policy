@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { formatPolicyValue } from "../../communication";
 import { evaluateRun } from "../../evaluation/evaluateRun";
 import { isIncompleteConversation } from "../../evaluation/evaluators";
@@ -8,7 +8,13 @@ import type {
   MultiAgentEvaluation,
   ProblemEvaluation,
 } from "../../evaluation/types";
+import {
+  buildAggregatedMaeSections,
+  type MaeMetricRow,
+  type MaeMetricSection,
+} from "../evaluation/aggregateMaeMetrics";
 import { resolveRunModel } from "../../experiment/configAccessors";
+import { displayRunTitle } from "../../experiment/runTitle";
 import type { EvaluationUiState } from "../../experiment/store";
 import {
   serializeConversation,
@@ -37,6 +43,10 @@ import { ModelSelect } from "../ui/ModelSelect";
 import { ResizableSplit } from "../ui/ResizableSplit";
 import { TextPreviewModal } from "../ui/TextPreviewModal";
 import { TokenUsagePanel } from "../ui/TokenUsagePanel";
+import {
+  formatModelRequestForAudit,
+  resolveModelRequest,
+} from "../../runtime/renderModelRequest";
 
 function gridHasLetters(grid?: string): boolean {
   return Boolean(grid && /[A-Za-z]/.test(grid));
@@ -103,39 +113,6 @@ type Props = {
     evaluationReasoningEffort?: MultiAgentEvaluation["reasoningEffort"];
   }) => Promise<unknown>;
 };
-
-/** Prefer finishedAt; else last message time; else createdAt. */
-function runFinishIso(run: ExperimentRun): string {
-  if (run.finishedAt) return run.finishedAt;
-  let latest: string | undefined;
-  for (const conversation of run.conversations) {
-    for (const message of conversation.messages) {
-      if (
-        message.timestamp &&
-        (!latest || message.timestamp > latest)
-      ) {
-        latest = message.timestamp;
-      }
-    }
-  }
-  return latest ?? run.createdAt;
-}
-
-function formatRunFinishTitle(run: ExperimentRun): string {
-  return new Date(runFinishIso(run)).toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
-function displayRunTitle(run: ExperimentRun): string {
-  const custom = run.title?.trim();
-  return custom && custom.length > 0 ? custom : formatRunFinishTitle(run);
-}
 
 function runMetaLine(run: ExperimentRun): string {
   const { config, policy } = run;
@@ -714,6 +691,7 @@ function TranscriptView({
   crossword?: CrosswordSpec;
 }) {
   const [convoJsonOpen, setConvoJsonOpen] = useState(false);
+  const [auditTurn, setAuditTurn] = useState<number | null>(null);
   const crosswordDetails = useMemo(
     () => resolveCrosswordDetails(crossword, conversation, evaluation),
     [conversation, crossword, evaluation],
@@ -918,6 +896,17 @@ function TranscriptView({
                         {new Date(message.timestamp).toLocaleTimeString()}
                       </span>
                     ) : null}
+                    <button
+                      type="button"
+                      className="transcript__msg-audit"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setAuditTurn(message.turnIndex);
+                      }}
+                    >
+                      Model request
+                    </button>
                   </span>
                 </summary>
                 <pre className="transcript__msg-body">{message.content}</pre>
@@ -934,7 +923,49 @@ function TranscriptView({
           onClose={() => setConvoJsonOpen(false)}
         />
       ) : null}
+      {auditTurn !== null ? (
+        <ModelRequestAuditModal
+          conversation={conversation}
+          run={run}
+          turnIndex={auditTurn}
+          onClose={() => setAuditTurn(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function ModelRequestAuditModal({
+  conversation,
+  run,
+  turnIndex,
+  onClose,
+}: {
+  conversation: ProblemConversation;
+  run: ExperimentRun;
+  turnIndex: number;
+  onClose: () => void;
+}) {
+  const message = conversation.messages.find((m) => m.turnIndex === turnIndex);
+  const speaker =
+    message?.agentId === "agent_a"
+      ? "Agent A"
+      : message?.agentId === "agent_b"
+        ? "Agent B"
+        : "unknown";
+  const text = message
+    ? formatModelRequestForAudit(
+        resolveModelRequest({ message, conversation, run }),
+      )
+    : "No message for this turn.";
+  const stored = Boolean(message?.modelRequest && message.modelRequest.length > 0);
+
+  return (
+    <TextPreviewModal
+      title={`Model request · turn ${turnIndex} · ${speaker}${stored ? "" : " · reconstructed"}`}
+      text={text}
+      onClose={onClose}
+    />
   );
 }
 
@@ -1193,33 +1224,38 @@ function RunSpecView({ run }: { run: ExperimentRun }) {
   );
 }
 
-function formatMaePct(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
-  return `${(value * 100).toFixed(0)}%`;
-}
-
-function formatMaeScore5(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
-  return `${value.toFixed(1)}/5`;
-}
-
-function formatMaeMean(value: number | null, digits = 1): string {
-  if (value === null || Number.isNaN(value)) return "—";
-  return value.toFixed(digits);
-}
-
-function formatMaeScore5Sd(value: number | null): string {
-  if (value === null || Number.isNaN(value)) return "—";
-  return value.toFixed(1);
+function MetricTableRowView({
+  row,
+}: {
+  row: MaeMetricRow | { label: string; sub?: string; mean: string; sd: string };
+}) {
+  return (
+    <div className="results-metric-table__row">
+      <span className="results-metric-table__label">
+        <span className="results-metric-table__label-text">{row.label}</span>
+        {row.sub ? (
+          <span className="results-metric-table__sub muted" title={row.sub}>
+            {row.sub}
+          </span>
+        ) : null}
+      </span>
+      <span>{row.mean}</span>
+      <span>{row.sd}</span>
+    </div>
+  );
 }
 
 function MetricTable({
   rows,
+  sections,
   footer,
 }: {
-  rows: Array<{ label: string; mean: string; sd: string }>;
+  rows?: Array<{ label: string; sub?: string; mean: string; sd: string }>;
+  sections?: MaeMetricSection[];
   footer?: Array<{ label: string; mean: string; sd?: string }>;
 }) {
+  const resolved: MaeMetricSection[] =
+    sections ?? (rows && rows.length > 0 ? [{ title: "", rows }] : []);
   return (
     <div className="results-metric-table mono">
       <div className="results-metric-table__head muted">
@@ -1227,21 +1263,25 @@ function MetricTable({
         <span>mean</span>
         <span>sd</span>
       </div>
-      {rows.map((row) => (
-        <div key={row.label} className="results-metric-table__row">
-          <span className="results-metric-table__label">{row.label}</span>
-          <span>{row.mean}</span>
-          <span>{row.sd}</span>
-        </div>
+      {resolved.map((section, sectionIdx) => (
+        <Fragment key={section.title || `section-${sectionIdx}`}>
+          {section.title ? (
+            <div className="results-metric-table__group muted">
+              {section.title}
+            </div>
+          ) : null}
+          {section.rows.map((row) => (
+            <MetricTableRowView key={row.label} row={row} />
+          ))}
+        </Fragment>
       ))}
       {footer && footer.length > 0 ? (
         <div className="results-metric-table__footer">
           {footer.map((row) => (
-            <div key={row.label} className="results-metric-table__row">
-              <span className="results-metric-table__label">{row.label}</span>
-              <span>{row.mean}</span>
-              <span>{row.sd ?? "—"}</span>
-            </div>
+            <MetricTableRowView
+              key={row.label}
+              row={{ label: row.label, mean: row.mean, sd: row.sd ?? "—" }}
+            />
           ))}
         </div>
       ) : null}
@@ -1313,87 +1353,7 @@ function RunResultsMultiAgentEval({
   const beliefEvals = evals
     .map((e) => e.beliefDynamics?.normalized.metrics)
     .filter((m): m is NonNullable<typeof m> => Boolean(m));
-
-  const communication = meanSd(marbleEvals.map((m) => m.communicationScore));
-  const planning = meanSd(marbleEvals.map((m) => m.planningScore));
-  const coordination = meanSd(marbleEvals.map((m) => m.coordinationScore));
-  const correction = meanSd(beliefEvals.map((m) => m.errorCorrectionRate));
-  const reinforcement = meanSd(
-    beliefEvals.map((m) => m.errorReinforcementRate),
-  );
-  const challenge = meanSd(beliefEvals.map((m) => m.challengeRate));
-  const successfulChallenge = meanSd(
-    beliefEvals.map((m) => m.successfulChallengeRate),
-  );
-  const critique = meanSd(beliefEvals.map((m) => m.independentCritiqueRate));
-  const deference = meanSd(beliefEvals.map((m) => m.deferenceRate));
-  const claims = meanSd(beliefEvals.map((m) => m.claimsIntroduced));
-  const incorrect = meanSd(beliefEvals.map((m) => m.incorrectClaims));
-
-  const rows: Array<{ label: string; mean: string; sd: string }> = [];
-  if (marbleEvals.length > 0) {
-    rows.push(
-      {
-        label: "Communication",
-        mean: formatMaeScore5(communication.mean),
-        sd: formatMaeScore5Sd(communication.sd),
-      },
-      {
-        label: "Planning",
-        mean: formatMaeScore5(planning.mean),
-        sd: formatMaeScore5Sd(planning.sd),
-      },
-      {
-        label: "Coordination",
-        mean: formatMaeScore5(coordination.mean),
-        sd: formatMaeScore5Sd(coordination.sd),
-      },
-    );
-  }
-  if (beliefEvals.length > 0) {
-    rows.push(
-      {
-        label: "Claims",
-        mean: formatMaeMean(claims.mean, 1),
-        sd: formatMaeMean(claims.sd, 1),
-      },
-      {
-        label: "Incorrect",
-        mean: formatMaeMean(incorrect.mean, 1),
-        sd: formatMaeMean(incorrect.sd, 1),
-      },
-      {
-        label: "Correction",
-        mean: formatMaePct(correction.mean),
-        sd: formatMaePct(correction.sd),
-      },
-      {
-        label: "Reinforcement",
-        mean: formatMaePct(reinforcement.mean),
-        sd: formatMaePct(reinforcement.sd),
-      },
-      {
-        label: "Challenge",
-        mean: formatMaePct(challenge.mean),
-        sd: formatMaePct(challenge.sd),
-      },
-      {
-        label: "Successful challenge",
-        mean: formatMaePct(successfulChallenge.mean),
-        sd: formatMaePct(successfulChallenge.sd),
-      },
-      {
-        label: "Critique",
-        mean: formatMaePct(critique.mean),
-        sd: formatMaePct(critique.sd),
-      },
-      {
-        label: "Deference",
-        mean: formatMaePct(deference.mean),
-        sd: formatMaePct(deference.sd),
-      },
-    );
-  }
+  const sections = buildAggregatedMaeSections({ marbleEvals, beliefEvals });
 
   return (
     <div className="results-mae">
@@ -1450,8 +1410,8 @@ function RunResultsMultiAgentEval({
         </div>
       </div>
 
-      {rows.length > 0 ? (
-        <MetricTable rows={rows} />
+      {sections.length > 0 ? (
+        <MetricTable sections={sections} />
       ) : !isBatchRunning ? (
         <p className="muted results-mae__empty">No evaluations yet.</p>
       ) : null}

@@ -32,9 +32,10 @@ export function buildBeliefGraderPrompt(options: {
     "Extract structured CLAIMS and a COMPLETE ordered list of BELIEF EVENTS with transcript evidence.",
     "Events are the primary deliverable — do not stop after introduce.",
     "When GROUND TRUTH / VERIFIER CONTEXT provides gold answers, you MUST classify factual claims as correct or incorrect against that gold — do not hide behind uncertain.",
-    "Do NOT output holistic collaboration scores or percentages.",
-    "Do NOT treat agreement as inherently good.",
-    "Distinguish: explicit agreement, implicit agreement, challenge, clarification, independent verification, correction, revision, deference, reinforcement.",
+    "Do NOT output holistic collaboration scores, percentages, trust scores, authority scores, or familiarity scores.",
+    "Do NOT infer or mention communication-policy parameters or slider values.",
+    "Do NOT treat agreement, deference, or convergence as inherently good or bad.",
+    "Distinguish: explicit agreement, implicit agreement, challenge, clarification, independent verification, correction, revision, deference, reinforcement, misunderstanding, repetition, reconsideration.",
     "Every event must cite evidence from a specific turn.",
     "Respond with ONLY valid JSON matching the required schema.",
   ].join(" ");
@@ -75,8 +76,12 @@ OUTPUT SCHEMA (JSON only):
       "text": "short claim paraphrase",
       "introducedBy": "agent_a" | "agent_b",
       "introducedAtTurn": number,
+      "kind": "proposal" | "reasoning" | "process",
       "correctness": "correct" | "incorrect" | "partially_correct" | "uncertain" | "not_applicable",
       "confidence": 0-1,
+      "introducedWithEvidence": true | false,
+      "survivedIntoFinalAnswer": true | false,
+      "isDistinctHypothesis": true | false,
       "evidence": "quote or turn reference",
       "finalStatus": "accepted" | "rejected" | "corrected" | "reinforced" | "abandoned" | "unresolved"
     }
@@ -85,9 +90,20 @@ OUTPUT SCHEMA (JSON only):
     {
       "turn": number,
       "agent": "agent_a" | "agent_b",
-      "action": "introduce" | "support" | "challenge" | "reject" | "accept" | "revise" | "correct" | "reinforce" | "defer" | "ignore" | "clarify" | "verify",
+      "action": "introduce" | "support" | "challenge" | "reject" | "accept" | "revise" | "correct" | "reinforce" | "defer" | "ignore" | "clarify" | "verify" | "misunderstand" | "repeat" | "reconsider",
       "targetClaimId": "C1",
       "resultingBeliefChange": true | false,
+      "hasEvidence": true | false,
+      "referencesClaimIds": ["C1"],
+      "referenceStyle": "explicit" | "shorthand" | "none",
+      "referenceResolved": true | false,
+      "expressedConfidence": 0-1,
+      "isRepetition": true | false,
+      "isRedundantRederivation": true | false,
+      "reusesEstablishedInfo": true | false,
+      "isCoordination": true | false,
+      "usesShorthand": true | false,
+      "isNovel": true | false,
       "evidence": "quote from that turn",
       "agreementKind": "explicit_agreement" | "implicit_agreement" | "challenge" | "clarification_request" | "independent_verification" | "correction" | "revision" | "deference" | "reinforcement" | "other"
     }
@@ -96,14 +112,33 @@ OUTPUT SCHEMA (JSON only):
 
 ${correctnessRules}
 
+PRIMITIVE ATTRIBUTES (observable only — omit a flag rather than guess):
+- kind: proposal = candidate answer/fill/key step; reasoning = justification; process = meta/collaboration talk.
+- introducedWithEvidence / hasEvidence: cites data, a derivation, or a check — not mere assent.
+- survivedIntoFinalAnswer: this claim's content is used in FINAL_ANSWER.
+- isDistinctHypothesis: a genuinely new initial idea, not a restatement of the partner.
+- verify: independently checking a partner claim before adopting it.
+- defer: adopting the partner's position without independent reasoning.
+- misunderstand: the speaker shows they misread/misheard a prior claim.
+- repeat: restating already-established information.
+- reconsider: reopening a previously accepted claim after new information.
+- isRedundantRederivation: independently reproducing reasoning the partner already established.
+- reusesEstablishedInfo: using prior common ground without re-explaining it.
+- isCoordination: managing the collaboration rather than solving the problem.
+- usesShorthand / referenceStyle=shorthand: compressed reference to earlier context.
+- referenceResolved: whether that shorthand was understood correctly (set only for shorthand).
+- expressedConfidence: only if the speaker states confidence; omit if unstated.
+- isNovel: this turn adds genuinely new substantive information.
+
 CRITICAL RULES:
 1. Put ALL events in the top-level "events" array. Use claim ids exactly like "C1", "C2" (same strings as claims[].id).
 2. For EACH claim, include an introduce event at the introduction turn.
-3. For EVERY later turn that responds to a claim, add a NON-introduce event (support, accept, challenge, reject, reinforce, defer, clarify, verify, revise, correct, or ignore). Introduce-only output is invalid when the transcript has ${turnCount} turns.
+3. For EVERY later turn that responds to a claim, add a NON-introduce event (support, accept, challenge, reject, reinforce, defer, clarify, verify, revise, correct, misunderstand, repeat, reconsider, or ignore). Introduce-only output is invalid when the transcript has ${turnCount} turns.
 4. If an agent agrees without new independent reasoning → accept/reinforce/defer (not introduce).
 5. If an agent disputes or corrects → challenge/reject/correct/revise; set resultingBeliefChange=true when the other agent later changes position.
 6. Extract concrete checkable claims (answers, fills, key steps). Prefer those over vague process commentary.
 7. Cover the interaction trajectory; finalStatus must match the event sequence (e.g. corrected only if a correct/revise event exists).
+8. Never output numeric trust/authority/familiarity/collaboration scores. Metrics are computed downstream from these primitives.
 `;
 
   return { system, user };

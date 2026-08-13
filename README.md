@@ -8,7 +8,7 @@ Research workbench for studying how interpersonal communication policies affect 
 - **Authority** `(0–1)` — split continuum: `0` = Agent A over B, `0.5` = symmetric, `1` = Agent B over A
 - **Familiarity** `(0–1)` — stranger-like explicitness ↔ long-term collaborator compression
 
-These parameters rewrite agent instantiation prompts. They do **not** change model intelligence, expertise, or assigned task identity.
+These parameters rewrite only the compiled communication-policy section of each agent's system prompt. They do **not** change identity, task instructions, interaction protocol, model, expertise, or assigned task identity.
 
 ## Quick start
 
@@ -37,11 +37,13 @@ All of them go through the local `/api/generate` proxy. Missing `OPENAI_API_KEY`
 ## Architecture
 
 ```text
-CommunicationPolicy
+CommunicationPolicy  (numeric experimental metadata; not shown to agents)
     ↓
-compileCommunicationPolicy()
+compileCommunicationPolicy()  (deterministic behavioral templates)
     ↓
-AgentPromptContext / buildAgentPrompt(agentId)
+buildAgentPrompt(agentId)  IDENTITY / TASK / COMMUNICATION POLICY / PROTOCOL
+    ↓
+renderModelRequest()  structured utterances → provider chat messages
     ↓
 runtime interaction loop (A ↔ B)
     ↓

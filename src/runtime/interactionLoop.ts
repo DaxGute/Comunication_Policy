@@ -1,3 +1,4 @@
+import { otherAgentId } from "../agents/identity";
 import type { AgentDefinition, AgentId } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
 import { extractFinalAnswerFromText } from "../evaluation/graders/answerExtraction";
@@ -6,7 +7,9 @@ import { createId } from "../lib/id";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
 import { isAbortError, throwIfAborted } from "./abort";
-import type { ModelClient, ModelMessage } from "./modelClient";
+import type { ModelClient } from "./modelClient";
+import { renderModelRequest } from "./renderModelRequest";
+import { utteranceFromMessage } from "./transcript";
 
 export type InteractionLoopCallbacks = {
   onMessage?: (message: ConversationMessage) => void;
@@ -22,18 +25,8 @@ export type InteractionLoopResult = {
   error?: string;
 };
 
-function buildTranscriptMessages(
-  messages: ConversationMessage[],
-): ModelMessage[] {
-  return messages.map((m) => ({
-    role: "assistant" as const,
-    content: `[${m.agentId === "agent_a" ? "Agent A" : "Agent B"}]: ${m.content}`,
-    agentId: m.agentId,
-  }));
-}
-
 /**
- * Simple alternating two-agent protocol.
+ * Simple alternating two-agent protocol: A → B → A → B → …
  */
 export async function runInteractionLoop(args: {
   problem: Problem;
@@ -70,13 +63,6 @@ export async function runInteractionLoop(args: {
   const order: AgentId[] = ["agent_a", "agent_b"];
   const messages: ConversationMessage[] = [];
 
-  const problemPreamble = [
-    "Shared problem:",
-    problem.text,
-    "",
-    "Collaborate under your communication policy. Alternate turns.",
-  ].join("\n");
-
   for (let turn = 1; turn <= maxTurns; turn++) {
     try {
       throwIfAborted(signal);
@@ -96,15 +82,14 @@ export async function runInteractionLoop(args: {
     callbacks?.onSpeaking?.(agentId);
     callbacks?.onTurnProgress?.(turn, maxTurns);
 
-    const requestMessages: ModelMessage[] = [
-      { role: "system", content: agent.systemPrompt },
-      { role: "user", content: problemPreamble },
-      ...buildTranscriptMessages(messages),
-      {
-        role: "user",
-        content: `It is your turn (turn ${turn} of at most ${maxTurns}). Respond as ${agent.label}.`,
-      },
-    ];
+    const requestMessages = renderModelRequest({
+      speaker: agentId,
+      systemPrompt: agent.systemPrompt,
+      problemText: problem.text,
+      utterances: messages.map(utteranceFromMessage),
+      turn,
+      maxTurns,
+    });
 
     let response;
     try {
@@ -152,6 +137,8 @@ export async function runInteractionLoop(args: {
     const message: ConversationMessage = {
       id: createId("msg"),
       agentId,
+      sender: agentId,
+      recipient: otherAgentId(agentId),
       role: "assistant",
       content: response.content,
       timestamp: new Date().toISOString(),
@@ -167,6 +154,10 @@ export async function runInteractionLoop(args: {
             totalTokens: response.usage.totalTokens,
           }
         : undefined,
+      modelRequest: requestMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
     };
 
     messages.push(message);

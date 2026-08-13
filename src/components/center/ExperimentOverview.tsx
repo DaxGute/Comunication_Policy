@@ -1,37 +1,140 @@
 import { useMemo, useState } from "react";
-import type { RunMetricId, RunSummary } from "./centerAdapter";
+import type { RunSummary } from "./centerAdapter";
 import {
   defaultScatterAxes,
-  getAvailableRunMetrics,
-  RUN_METRIC_LABELS,
+  getAvailableAxisGroups,
+  isEvaluationMetric,
 } from "./centerAdapter";
-import { RunCard } from "./RunCard";
+import {
+  axisMetricDef,
+  axisMetricLabel,
+  type AxisMetricGroup,
+} from "./axisMetrics";
+import { ColumnMenu } from "./ColumnMenu";
 import { RunScatterPlot } from "./RunScatterPlot";
 import { RunTable } from "./RunTable";
 
 type Props = {
   runs: RunSummary[];
-  selectedIds: string[];
-  onSelectRun: (runId: string, additive: boolean) => void;
-  onOpenRun: (runId: string) => void;
-  onCompare: () => void;
+  selectedId?: string;
+  onSelectRun: (runId: string) => void;
 };
+
+const DEFAULT_METRIC_PREFS = [
+  "aggregateScore",
+  "accuracy",
+  "meanTurns",
+  "meanMessages",
+  "durationMs",
+];
+
+function AxisSelect({
+  axis,
+  value,
+  groups,
+  onChange,
+  optional = false,
+}: {
+  axis: "X" | "Y" | "Z";
+  value: string;
+  groups: AxisMetricGroup[];
+  onChange: (id: string) => void;
+  optional?: boolean;
+}) {
+  const current = value ? axisMetricDef(value) : undefined;
+  return (
+    <label className="center-axis-picker">
+      <span className="center-axis-picker__axis">{axis} axis</span>
+      <span className="center-axis-picker__group">
+        {optional && !value
+          ? "Off"
+          : (current?.groupLabel ?? "Metric")}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={`${axis} axis metric`}
+      >
+        {optional ? <option value="">None</option> : null}
+        {groups.map((group) => (
+          <optgroup key={group.id} label={group.label}>
+            {group.metrics.map((metric) => (
+              <option key={metric.id} value={metric.id}>
+                {metric.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function defaultMetricColumns(ids: string[]): string[] {
+  const picked = DEFAULT_METRIC_PREFS.filter((id) => ids.includes(id));
+  return picked.length > 0 ? picked : ids.slice(0, 4);
+}
+
+function keepAvailable(selected: string[], available: string[]): string[] {
+  const allow = new Set(available);
+  return selected.filter((id) => allow.has(id));
+}
 
 export function ExperimentOverview({
   runs,
-  selectedIds,
+  selectedId,
   onSelectRun,
-  onOpenRun,
-  onCompare,
 }: Props) {
-  const metrics = useMemo(() => getAvailableRunMetrics(runs), [runs]);
-  const defaults = useMemo(() => defaultScatterAxes(metrics), [metrics]);
-  const [xMetric, setXMetric] = useState<RunMetricId>(defaults.x);
-  const [yMetric, setYMetric] = useState<RunMetricId>(defaults.y);
+  const allGroups = useMemo(() => getAvailableAxisGroups(runs), [runs]);
+  const policyGroups = useMemo(
+    () => getAvailableAxisGroups(runs, ["policy"]),
+    [runs],
+  );
+  const metricGroups = useMemo(
+    () => getAvailableAxisGroups(runs, ["task", "evaluation"]),
+    [runs],
+  );
+  const allMetricIds = useMemo(
+    () => allGroups.flatMap((g) => g.metrics.map((m) => m.id)),
+    [allGroups],
+  );
+  const policyIds = useMemo(
+    () => policyGroups.flatMap((g) => g.metrics.map((m) => m.id)),
+    [policyGroups],
+  );
+  const metricIds = useMemo(
+    () => metricGroups.flatMap((g) => g.metrics.map((m) => m.id)),
+    [metricGroups],
+  );
+  const defaults = useMemo(
+    () => defaultScatterAxes(allMetricIds, allMetricIds),
+    [allMetricIds],
+  );
+  const [xMetric, setXMetric] = useState(defaults.x);
+  const [yMetric, setYMetric] = useState(defaults.y);
+  const [zMetric, setZMetric] = useState("");
   const [mode, setMode] = useState<"runs" | "table">("runs");
+  const [policyCols, setPolicyCols] = useState<string[]>(policyIds);
+  const [metricCols, setMetricCols] = useState<string[]>(() =>
+    defaultMetricColumns(metricIds),
+  );
 
-  const safeX = metrics.includes(xMetric) ? xMetric : defaults.x;
-  const safeY = metrics.includes(yMetric) ? yMetric : defaults.y;
+  const safeX = allMetricIds.includes(xMetric) ? xMetric : defaults.x;
+  const safeY = allMetricIds.includes(yMetric) ? yMetric : defaults.y;
+  const safeZ = allMetricIds.includes(zMetric) ? zMetric : "";
+  const safePolicyCols = keepAvailable(policyCols, policyIds);
+  const safeMetricCols = keepAvailable(metricCols, metricIds);
+  const evalAxes = [safeX, safeY, safeZ].filter(
+    (id): id is string => Boolean(id) && isEvaluationMetric(id),
+  );
+  const plottedRuns =
+    evalAxes.length > 0
+      ? runs.filter((run) =>
+          evalAxes.every((id) => typeof run.metrics[id] === "number"),
+        )
+      : runs;
+  const hiddenCount = evalAxes.length > 0 ? runs.length - plottedRuns.length : 0;
+  const evalFilterLabel = evalAxes.map(axisMetricLabel).join(" / ");
 
   return (
     <div className="center-experiment">
@@ -52,79 +155,76 @@ export function ExperimentOverview({
             Table
           </button>
         </div>
-
-        {mode === "runs" && metrics.length >= 2 ? (
-          <div className="center-toolbar__metrics">
-            <label>
-              X
-              <select
-                value={safeX}
-                onChange={(e) => setXMetric(e.target.value as RunMetricId)}
-              >
-                {metrics.map((id) => (
-                  <option key={id} value={id}>
-                    {RUN_METRIC_LABELS[id]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Y
-              <select
-                value={safeY}
-                onChange={(e) => setYMetric(e.target.value as RunMetricId)}
-              >
-                {metrics.map((id) => (
-                  <option key={id} value={id}>
-                    {RUN_METRIC_LABELS[id]}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {mode === "table" ? (
+          <div className="center-col-menus">
+            <ColumnMenu
+              label="Policy"
+              groups={policyGroups}
+              selected={safePolicyCols}
+              onChange={setPolicyCols}
+            />
+            <ColumnMenu
+              label="Metrics"
+              groups={metricGroups}
+              selected={safeMetricCols}
+              onChange={setMetricCols}
+              align="end"
+            />
           </div>
         ) : null}
-
-        {selectedIds.length === 2 ? (
-          <button type="button" className="center-btn" onClick={onCompare}>
-            Compare Runs
-          </button>
-        ) : (
-          <span className="muted center-toolbar__hint">
-            Select 2 runs to compare
-          </span>
-        )}
       </div>
 
       {mode === "runs" ? (
-        <>
-          <RunScatterPlot
-            runs={runs}
-            xMetric={safeX}
-            yMetric={safeY}
-            selectedIds={selectedIds}
-            onSelect={onSelectRun}
-            onOpen={onOpenRun}
-          />
-          <div className="center-run-cards">
-            {[...runs].reverse().map((run) => (
-              <RunCard
-                key={run.runId}
-                run={run}
-                selected={selectedIds.includes(run.runId)}
-                compareMarked={selectedIds.includes(run.runId)}
-                onSelect={(additive) => onSelectRun(run.runId, additive)}
-                onOpen={() => onOpenRun(run.runId)}
+        allMetricIds.length > 0 ? (
+          <div className="center-scatter-block">
+            <div className="center-axis-pickers">
+              <AxisSelect
+                axis="X"
+                value={safeX}
+                groups={allGroups}
+                onChange={setXMetric}
               />
-            ))}
+              <AxisSelect
+                axis="Y"
+                value={safeY}
+                groups={allGroups}
+                onChange={setYMetric}
+              />
+              <AxisSelect
+                axis="Z"
+                value={safeZ}
+                groups={allGroups}
+                onChange={setZMetric}
+                optional
+              />
+            </div>
+            <RunScatterPlot
+              runs={plottedRuns}
+              xMetric={safeX}
+              yMetric={safeY}
+              zMetric={safeZ || undefined}
+              selectedId={selectedId}
+              onSelect={onSelectRun}
+            />
+            {evalAxes.length > 0 ? (
+              <p className="center-scatter__filter muted">
+                {plottedRuns.length === 0
+                  ? `No runs have evaluations for ${evalFilterLabel}`
+                  : `Showing ${plottedRuns.length} of ${runs.length} run${runs.length === 1 ? "" : "s"} with evaluations`}
+                {hiddenCount > 0 && plottedRuns.length > 0
+                  ? ` · ${hiddenCount} hidden`
+                  : ""}
+              </p>
+            ) : null}
           </div>
-        </>
+        ) : null
       ) : (
         <RunTable
-          runs={[...runs].reverse()}
-          metrics={metrics}
-          selectedIds={selectedIds}
+          runs={runs}
+          policyColumns={safePolicyCols}
+          metricColumns={safeMetricCols}
+          selectedId={selectedId}
           onSelect={onSelectRun}
-          onOpen={onOpenRun}
         />
       )}
     </div>

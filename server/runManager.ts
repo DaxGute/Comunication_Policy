@@ -142,7 +142,7 @@ export class RunManager {
       createdAt,
       status: "queued",
       policy,
-      agentPrompts: buildAgentPromptPair(policy, config.problemCategory),
+      agentPrompts: buildAgentPromptPair(policy),
       config,
       conversations: [],
       conversationUsage: emptyUsage(),

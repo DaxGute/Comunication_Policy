@@ -55,7 +55,14 @@ export async function evaluateBeliefDynamics(options: {
       minTurns: options.conversation.messages.length,
     });
     // Fixture mock may be introduce-only for default path; allow metrics anyway.
-    const metrics = computeBeliefMetrics(validation.claims, validation.events);
+    const metrics = computeBeliefMetrics(
+      validation.claims,
+      validation.events,
+      {
+        messages: options.conversation.messages,
+        finalAnswer: options.conversation.finalAnswer,
+      },
+    );
     const normalized = toBeliefDynamicsEvaluation(
       { ...validation, ok: true, errors: [] },
       metrics,
@@ -140,7 +147,14 @@ export async function evaluateBeliefDynamics(options: {
       continue;
     }
 
-    const metrics = computeBeliefMetrics(validation.claims, validation.events);
+    const metrics = computeBeliefMetrics(
+      validation.claims,
+      validation.events,
+      {
+        messages: options.conversation.messages,
+        finalAnswer: options.conversation.finalAnswer,
+      },
+    );
     const normalized = toBeliefDynamicsEvaluation(validation, metrics);
     const usage = {
       inputTokens: totalPrompt,
@@ -176,6 +190,10 @@ export async function evaluateBeliefDynamics(options: {
   const metrics = computeBeliefMetrics(
     failedValidation.claims,
     failedValidation.events,
+    {
+      messages: options.conversation.messages,
+      finalAnswer: options.conversation.finalAnswer,
+    },
   );
   const normalized = toBeliefDynamicsEvaluation(failedValidation, metrics);
   const usage = {

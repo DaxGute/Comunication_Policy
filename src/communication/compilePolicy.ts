@@ -1,48 +1,48 @@
+import type { AgentId } from "../agents/types";
 import {
   authorityInstructionsForAgent,
   authorityRelationFromValue,
   bandFromValue,
   familiarityInstructions,
-  sharedPolicyContext,
   trustInstructions,
 } from "./descriptions";
 import { assertValidPolicy } from "./policy";
 import type {
-  CommunicationPolicy,
+  CompiledAgentPolicy,
   CompiledCommunicationPolicy,
+  CommunicationPolicy,
   PolicyBand,
 } from "./types";
 
-function buildAgentPolicyBlock(
-  agentId: "agent_a" | "agent_b",
+function buildAgentPolicy(
+  agentId: AgentId,
   trustBand: PolicyBand,
   familiarityBand: PolicyBand,
   authorityRelation: ReturnType<typeof authorityRelationFromValue>,
-): string {
-  const label = agentId === "agent_a" ? "Agent A" : "Agent B";
+): CompiledAgentPolicy {
   const other = agentId === "agent_a" ? "Agent B" : "Agent A";
-
-  return [
-    `## Interpersonal communication policy (${label})`,
+  const trust = trustInstructions(trustBand, other);
+  const authority = authorityInstructionsForAgent(agentId, authorityRelation);
+  const familiarity = familiarityInstructions(familiarityBand, other);
+  const block = [
+    "Trust",
+    trust,
     "",
-    `You are interacting with ${other} under the following interpersonal constraints.`,
-    "These constraints affect how you relate to the other agent — not your intelligence, expertise, or assigned task.",
+    "Authority",
+    authority,
     "",
-    "### Trust",
-    `This is your trust toward ${other} (independent of how much they trust you).`,
-    trustInstructions(trustBand),
-    "",
-    "### Authority",
-    authorityInstructionsForAgent(agentId, authorityRelation),
-    "",
-    "### Familiarity",
-    familiarityInstructions(familiarityBand),
+    "Familiarity",
+    familiarity,
   ].join("\n");
+
+  return { trust, authority, familiarity, block };
 }
 
 /**
- * Single source of truth: CommunicationPolicy → natural-language instructions.
- * Trust is asymmetric: each agent receives only its own trust band.
+ * Deterministic CommunicationPolicy → natural-language behavioral policy.
+ * Numeric slider values are not included in the compiled text.
+ * Trust is directional: Agent A compiles from trustA, Agent B from trustB.
+ * Familiarity is symmetric: both agents receive complementary wording of F.
  */
 export function compileCommunicationPolicy(
   policy: CommunicationPolicy,
@@ -60,14 +60,13 @@ export function compileCommunicationPolicy(
     trustBandB,
     familiarityBand,
     authorityRelation,
-    sharedContext: sharedPolicyContext(policy),
-    agentA: buildAgentPolicyBlock(
+    agentA: buildAgentPolicy(
       "agent_a",
       trustBandA,
       familiarityBand,
       authorityRelation,
     ),
-    agentB: buildAgentPolicyBlock(
+    agentB: buildAgentPolicy(
       "agent_b",
       trustBandB,
       familiarityBand,

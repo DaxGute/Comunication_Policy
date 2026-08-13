@@ -26,7 +26,14 @@ export type MessageUsage = {
 
 export type ConversationMessage = {
   id: string;
+  /** Canonical sender. */
   agentId: AgentId;
+  sender?: AgentId;
+  recipient?: AgentId;
+  /**
+   * Persisted provider role for this stored utterance. Not the canonical
+   * inter-agent representation — see AgentUtterance / renderModelRequest.
+   */
   role: "assistant";
   content: string;
   timestamp?: string;
@@ -34,6 +41,11 @@ export type ConversationMessage = {
   /** Wall-clock time for the model call that produced this message. */
   durationMs?: number;
   usage?: MessageUsage;
+  /** Exact chat-completions messages sent to produce this utterance. */
+  modelRequest?: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }>;
 };
 
 export type ProblemConversation = {

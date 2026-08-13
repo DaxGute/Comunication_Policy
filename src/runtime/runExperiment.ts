@@ -119,10 +119,7 @@ export async function runExperiment(args: {
     createdAt: now,
     startedAt: now,
     policy: policySnapshot,
-    agentPrompts: buildAgentPromptPair(
-      policySnapshot,
-      config.problemCategory,
-    ),
+    agentPrompts: buildAgentPromptPair(policySnapshot),
     config: { ...config },
     conversations: seededConversations.map((c) => ({ ...c })),
     conversationUsage: emptyUsage(),

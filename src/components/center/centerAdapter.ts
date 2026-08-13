@@ -9,10 +9,22 @@ import type {
   ProblemEvaluation,
 } from "../../evaluation/types";
 import { totalTokens, type ModelUsage } from "../../models/usage";
+import { displayRunTitle } from "../../experiment/runTitle";
 import type {
   ExperimentRun,
   ProblemConversation,
 } from "../../experiment/types";
+import {
+  AXIS_METRIC_CATALOG,
+  axisMetricDef,
+  collectEvalAxisMetrics,
+  groupAvailableAxisMetrics,
+  isEvaluationMetric,
+  isPolicyMetric,
+  latestEvalsForRun,
+  type AxisMetricGroup,
+  type AxisMetricKind,
+} from "./axisMetrics";
 
 export type ProblemStatus =
   | "running"
@@ -129,7 +141,9 @@ export type RunSummary = {
   meanTokens?: number;
   durationMs?: number;
   meanProblemDurationMs?: number;
-  metrics: Partial<Record<RunMetricId, number>>;
+  metrics: Partial<Record<string, number>>;
+  /** Sample SD (n−1) of per-problem values for the same keys as `metrics`. */
+  metricSds: Partial<Record<string, number>>;
   problems: ProblemSummary[];
   attention: AttentionItem[];
   /**
@@ -159,6 +173,15 @@ function stdDev(values: number[]): number | undefined {
   if (m === undefined) return undefined;
   const variance =
     values.reduce((sum, v) => sum + (v - m) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function sampleSd(values: number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const m = mean(values);
+  if (m === undefined) return undefined;
+  const variance =
+    values.reduce((sum, v) => sum + (v - m) ** 2, 0) / (values.length - 1);
   return Math.sqrt(variance);
 }
 
@@ -236,12 +259,6 @@ function correctnessFromEval(
     if (evaluation.score === 0) return false;
   }
   return undefined;
-}
-
-function displayRunTitle(run: ExperimentRun, displayIndex: number): string {
-  const custom = run.title?.trim();
-  if (custom) return custom;
-  return `Run ${displayIndex}`;
 }
 
 function runDurationMs(run: ExperimentRun): number | undefined {
@@ -540,7 +557,7 @@ export function getRunSummary(
     .filter((v): v is number => typeof v === "number");
   const meanProblemDurationMs = mean(problemDurs);
 
-  const metrics: Partial<Record<RunMetricId, number>> = {
+  const metrics: Partial<Record<string, number>> = {
     trustA: run.policy.trustA,
     trustB: run.policy.trustB,
     authority: run.policy.authority,
@@ -562,10 +579,36 @@ export function getRunSummary(
     metrics.meanProblemDurationMs = meanProblemDurationMs;
   }
 
+  const metricSds: Partial<Record<string, number>> = {};
+  const setSd = (id: string, values: number[]) => {
+    const sd = sampleSd(values);
+    if (sd !== undefined) metricSds[id] = sd;
+  };
+  setSd("meanTurns", turnVals);
+  setSd("meanMessages", statProblems.map((p) => p.messageCount));
+  setSd(
+    "aggregateScore",
+    scored.map((p) => p.score!),
+  );
+  setSd(
+    "accuracy",
+    withCorrectness.map((p) => (p.isCorrect ? 1 : 0)),
+  );
+  setSd("meanTokens", problemToks);
+  setSd("meanProblemDurationMs", problemDurs);
+
+  const latestEvals = latestEvalsForRun({
+    problemIds: run.conversations.map((c) => c.problemId),
+    evaluations: run.multiAgentEvaluations,
+  });
+  const evalAxis = collectEvalAxisMetrics(latestEvals);
+  Object.assign(metrics, evalAxis.means);
+  Object.assign(metricSds, evalAxis.sds);
+
   return {
     runId: run.id,
     displayIndex,
-    title: displayRunTitle(run, displayIndex),
+    title: displayRunTitle(run),
     status: run.status,
     createdAt: run.createdAt,
     finishedAt: run.finishedAt,
@@ -592,6 +635,7 @@ export function getRunSummary(
     durationMs,
     meanProblemDurationMs,
     metrics,
+    metricSds,
     problems,
     attention: buildAttention(problems),
     // Per-problem speakingAgentId is authoritative; always allow live viz.
@@ -631,31 +675,43 @@ export function getAvailableRunMetrics(runs: RunSummary[]): RunMetricId[] {
   );
 }
 
-export function defaultScatterAxes(metrics: RunMetricId[]): {
-  x: RunMetricId;
-  y: RunMetricId;
-} {
-  const pick = (...prefs: RunMetricId[]): RunMetricId => {
-    for (const p of prefs) {
-      if (metrics.includes(p)) return p;
+export function getAvailableAxisGroups(
+  runs: RunSummary[],
+  kinds?: AxisMetricKind[],
+): AxisMetricGroup[] {
+  const present = new Set<string>();
+  for (const def of AXIS_METRIC_CATALOG) {
+    if (kinds && !kinds.includes(def.kind)) continue;
+    if (runs.some((r) => typeof r.metrics[def.id] === "number")) {
+      present.add(def.id);
     }
-    return metrics[0] ?? "problemCount";
+  }
+  return groupAvailableAxisMetrics(present);
+}
+
+export function defaultScatterAxes(
+  xMetrics: string[],
+  yMetrics: string[],
+): {
+  x: string;
+  y: string;
+} {
+  const pick = (pool: string[], ...prefs: string[]): string => {
+    for (const p of prefs) {
+      if (pool.includes(p)) return p;
+    }
+    return pool[0] ?? "problemCount";
   };
-  const x = pick("meanTurns", "medianTurns", "meanMessages", "durationMs");
-  const y = pick(
-    "aggregateScore",
-    "accuracy",
-    "completedProblems",
-    "totalMessages",
-  );
-  const yAlt =
-    y === x
-      ? pick(
-          ...metrics.filter((m) => m !== x),
-          "problemCount",
-        )
-      : y;
-  return { x, y: yAlt };
+  return {
+    x: pick(xMetrics, "trustA", "authority", "familiarity", "trustB"),
+    y: pick(
+      yMetrics,
+      "aggregateScore",
+      "accuracy",
+      "meanTurns",
+      "meanMessages",
+    ),
+  };
 }
 
 export function formatScore(n: number): string {
@@ -672,7 +728,25 @@ export function formatDuration(ms: number): string {
   return `${m}m ${rem}s`;
 }
 
-export function formatMetricValue(id: RunMetricId, value: number): string {
+export function formatMetricValue(id: string, value: number): string {
+  const format = axisMetricDef(id)?.format;
+  switch (format) {
+    case "pct":
+      return `${(value * 100).toFixed(0)}%`;
+    case "score5":
+      return `${value.toFixed(1)}/5`;
+    case "hhi":
+      return value.toFixed(2);
+    case "score01":
+      return formatScore(value);
+    case "duration":
+      return formatDuration(value);
+    case "count":
+      if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString();
+      return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    default:
+      break;
+  }
   switch (id) {
     case "aggregateScore":
     case "accuracy":
@@ -695,6 +769,8 @@ export function formatMetricValue(id: RunMetricId, value: number): string {
       return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
 }
+
+export { isEvaluationMetric, isPolicyMetric };
 
 export function attentionKindLabel(kind: AttentionKind): string {
   switch (kind) {

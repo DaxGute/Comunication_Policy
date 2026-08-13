@@ -1,3 +1,4 @@
+import { otherAgentId } from "../agents/identity";
 import type { AgentId } from "../agents/types";
 import type { ProblemEvaluation } from "../evaluation/types";
 import { resolveRunModel } from "./configAccessors";
@@ -7,6 +8,7 @@ export type ConversationExportMessage = {
   index: number;
   sender: AgentId;
   recipient: AgentId;
+  turn: number;
   role: "assistant";
   content: string;
   timestamp?: string;
@@ -16,6 +18,10 @@ export type ConversationExportMessage = {
     output_tokens?: number;
     total_tokens: number;
   };
+  model_request?: Array<{
+    role: "system" | "user" | "assistant";
+    content: string;
+  }>;
 };
 
 export type ConversationExportAgent = {
@@ -24,7 +30,7 @@ export type ConversationExportAgent = {
 };
 
 export type ConversationExport = {
-  schema_version: "1.1";
+  schema_version: "1.2";
   run_id: string;
   conversation_id: string;
   problem: {
@@ -67,10 +73,6 @@ export type ConversationExport = {
   /** Per-problem evaluation when available; empty object if not yet evaluated. */
   evaluations: Record<string, unknown>;
 };
-
-function otherAgent(agentId: AgentId): AgentId {
-  return agentId === "agent_a" ? "agent_b" : "agent_a";
-}
 
 function serializeEvaluations(
   evaluation: ProblemEvaluation | undefined,
@@ -130,7 +132,7 @@ export function serializeConversation(
   const runModel = resolveRunModel(run.config);
 
   return {
-    schema_version: "1.1",
+    schema_version: "1.2",
     run_id: run.id,
     conversation_id: conversation.problemId,
     problem: {
@@ -166,10 +168,12 @@ export function serializeConversation(
       },
     ],
     messages: conversation.messages.map((message, index) => {
+      const sender = message.sender ?? message.agentId;
       const exported: ConversationExportMessage = {
         index,
-        sender: message.agentId,
-        recipient: otherAgent(message.agentId),
+        sender,
+        recipient: message.recipient ?? otherAgentId(sender),
+        turn: message.turnIndex,
         role: message.role,
         content: message.content,
       };
@@ -184,6 +188,9 @@ export function serializeConversation(
             message.usage.outputTokens ?? message.usage.completionTokens,
           total_tokens: message.usage.totalTokens,
         };
+      }
+      if (message.modelRequest && message.modelRequest.length > 0) {
+        exported.model_request = message.modelRequest;
       }
       return exported;
     }),
@@ -215,7 +222,7 @@ export function serializeConversation(
 }
 
 export type RunExport = {
-  schema_version: "1.1";
+  schema_version: "1.2";
   run_id: string;
   title?: string;
   created_at: string;
@@ -247,7 +254,7 @@ export type RunExport = {
  */
 export function serializeRun(run: ExperimentRun): RunExport {
   return {
-    schema_version: "1.1",
+    schema_version: "1.2",
     run_id: run.id,
     ...(run.title ? { title: run.title } : {}),
     created_at: run.createdAt,

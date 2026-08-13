@@ -388,12 +388,8 @@ export function useExperimentStore(): ExperimentStore {
   }, [hydrated, runsNeedPolling, evalNeedsPolling, evalFocus]);
 
   const agentPrompts = useMemo(
-    () =>
-      buildAgentPromptPair(
-        state.currentPolicy,
-        state.currentRunConfig.problemCategory,
-      ),
-    [state.currentPolicy, state.currentRunConfig.problemCategory],
+    () => buildAgentPromptPair(state.currentPolicy),
+    [state.currentPolicy],
   );
 
   const selectedRun = state.runs.find((r) => r.id === state.selectedRunId);

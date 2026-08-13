@@ -44,13 +44,16 @@ const formatted = formatMoralProblemText({
 assert(formatted.includes("Key tensions:"), "formatter missing tensions");
 assert(formatted.includes("FINAL_ANSWER:"), "formatter missing FINAL_ANSWER hint");
 
-const prompts = buildAgentPromptPair(
-  DEFAULT_COMMUNICATION_POLICY,
-  "moral_philosophical",
+const prompts = buildAgentPromptPair(DEFAULT_COMMUNICATION_POLICY);
+assert(
+  prompts.agentA.includes("IDENTITY") &&
+    prompts.agentA.includes("COMMUNICATION POLICY") &&
+    prompts.agentA.includes("PROTOCOL"),
+  "system prompt missing four-layer headers",
 );
 assert(
-  prompts.agentA.includes("no single objectively correct"),
-  "moral system prompt missing open-ended framing",
+  !prompts.agentA.includes("no single objectively correct"),
+  "moral framing leaked into the category-agnostic system prompt",
 );
 assert(
   !prompts.agentA.includes("crossings, clues"),

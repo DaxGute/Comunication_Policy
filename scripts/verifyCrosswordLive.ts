@@ -72,7 +72,10 @@ async function main(): Promise<void> {
   console.log("problem:", problem.title);
   console.log("clues:", problem.crossword.clues.length);
   console.log("prompt has ACROSS/DOWN:", /ACROSS/.test(problem.text) && /DOWN/.test(problem.text));
-  console.log("system prompts identical task framing: both mention tentative/revise/share");
+  console.log(
+    "system prompts four-layer:",
+    /IDENTITY/.test(prompts.agentA) && /PROTOCOL/.test(prompts.agentB),
+  );
 
   const client = createModelClient({ generateUrl });
   console.log("\nRunning live two-agent crossword (this spends API credits)...\n");

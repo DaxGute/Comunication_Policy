@@ -65,10 +65,7 @@ async function runCategory(category: ProblemCategory) {
 function verifyPromptLeak() {
   const puzzle = getCrosswordBenchPuzzles()[0];
   const text = formatCrosswordProblemText(puzzle);
-  const prompts = buildAgentPromptPair(
-    DEFAULT_COMMUNICATION_POLICY,
-    "crossword",
-  );
+  const prompts = buildAgentPromptPair(DEFAULT_COMMUNICATION_POLICY);
   for (const clue of puzzle.clues) {
     if (text.includes(clue.answer)) {
       throw new Error(`agent problem text leaked ${clue.answer}`);

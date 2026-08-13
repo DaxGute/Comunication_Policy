@@ -121,7 +121,14 @@ export type BeliefEventAction =
   | "defer"
   | "ignore"
   | "clarify"
-  | "verify";
+  | "verify"
+  | "misunderstand"
+  | "repeat"
+  | "reconsider";
+
+export type BeliefClaimKind = "proposal" | "reasoning" | "process";
+
+export type BeliefReferenceStyle = "explicit" | "shorthand" | "none";
 
 export type BeliefEvent = {
   turn: number;
@@ -141,6 +148,27 @@ export type BeliefEvent = {
     | "deference"
     | "reinforcement"
     | "other";
+  /** This action cites data, a derivation, or a check — not mere assent. */
+  hasEvidence?: boolean;
+  /** Additional prior claims referenced in this turn (beyond targetClaimId). */
+  referencesClaimIds?: string[];
+  referenceStyle?: BeliefReferenceStyle;
+  /** For shorthand/compressed references: whether the partner resolved it correctly. */
+  referenceResolved?: boolean;
+  /** Agent's expressed confidence on this action (0–1), omitted if unstated. */
+  expressedConfidence?: number;
+  /** Restating information already established. */
+  isRepetition?: boolean;
+  /** Independently re-deriving reasoning the partner already established. */
+  isRedundantRederivation?: boolean;
+  /** Using previously established info without re-explaining it. */
+  reusesEstablishedInfo?: boolean;
+  /** Managing collaboration rather than solving the problem. */
+  isCoordination?: boolean;
+  /** Compressed/shorthand reference to prior context. */
+  usesShorthand?: boolean;
+  /** Introduces genuinely new substantive information. */
+  isNovel?: boolean;
 };
 
 export type BeliefClaim = {
@@ -153,6 +181,156 @@ export type BeliefClaim = {
   evidence?: string;
   events: BeliefEvent[];
   finalStatus: BeliefFinalStatus;
+  /** Candidate solution vs justification vs meta/process talk. */
+  kind?: BeliefClaimKind;
+  /** Introduction included supporting evidence or derivation. */
+  introducedWithEvidence?: boolean;
+  /** Claim content is used in / survives into FINAL_ANSWER. */
+  survivedIntoFinalAnswer?: boolean;
+  /** Genuinely distinct initial hypothesis (not a restatement of the partner). */
+  isDistinctHypothesis?: boolean;
+};
+
+/**
+ * Numerator/denominator with a rate. `rate` is null when there were
+ * zero valid opportunities (do not treat as 0%).
+ */
+export type BeliefFraction = {
+  numerator: number;
+  denominator: number;
+  rate: number | null;
+};
+
+/**
+ * Directional interpersonal rates.
+ * `aToB` = A is the actor, B is the partner
+ * (A accepts B, A challenges B, A defers to B, A propagates B's error).
+ */
+export type BeliefDirectionalFraction = {
+  aToB: BeliefFraction;
+  bToA: BeliefFraction;
+  overall: BeliefFraction;
+};
+
+/** Same rate split by claim correctness when ground truth exists. */
+export type BeliefTruthSplit = {
+  correct: BeliefFraction;
+  incorrect: BeliefFraction;
+};
+
+export type BeliefContribution = {
+  claimsIntroduced: number;
+  usefulCorrections: number;
+  successfulChallenges: number;
+  solutionsProposed: number;
+};
+
+export type BeliefTrustMetrics = {
+  proposalAcceptance: BeliefDirectionalFraction;
+  unsupportedAcceptance: BeliefDirectionalFraction;
+  independentVerification: BeliefDirectionalFraction;
+  correctionRate: BeliefDirectionalFraction;
+  errorPropagation: BeliefDirectionalFraction;
+  challengeBeforeAcceptance: BeliefDirectionalFraction;
+  correctClaimUptake: BeliefDirectionalFraction;
+  incorrectClaimRejection: BeliefDirectionalFraction;
+  reconsiderationRate: BeliefDirectionalFraction;
+  confidenceTransfer: BeliefDirectionalFraction;
+  evidenceSensitivity: {
+    supported: BeliefDirectionalFraction;
+    unsupported: BeliefDirectionalFraction;
+  };
+  trustCalibration: {
+    acceptGivenCorrect: BeliefDirectionalFraction;
+    acceptGivenIncorrect: BeliefDirectionalFraction;
+  };
+};
+
+export type BeliefAgentVolume = {
+  tokens: number | null;
+  contentChars: number;
+  claimsIntroduced: number;
+  proposals: number;
+  reasoningEvents: number;
+};
+
+export type BeliefAuthorityMetrics = {
+  proposalSurvivalAfterDisagreement: BeliefDirectionalFraction;
+  directionalDeference: BeliefDirectionalFraction;
+  challengeRate: BeliefDirectionalFraction;
+  decisionConcentration: {
+    agent_aShare: BeliefFraction;
+    agent_bShare: BeliefFraction;
+    herfindahl: number | null;
+    dominantAgent: AgentIdRef | null;
+  };
+  incorrectHighInfluencePersistence: BeliefFraction;
+  disagreementWinRate: BeliefDirectionalFraction;
+  revisionAsymmetry: BeliefDirectionalFraction;
+  challengeSuccessAsymmetry: BeliefDirectionalFraction;
+  initiativeConcentration: {
+    agent_aShare: BeliefFraction;
+    agent_bShare: BeliefFraction;
+    herfindahl: number | null;
+  };
+  finalAnswerOwnership: {
+    agent_aShare: BeliefFraction;
+    agent_bShare: BeliefFraction;
+    herfindahl: number | null;
+  };
+  evidenceOverAuthority: BeliefFraction;
+  authorityInducedErrorAdoption: BeliefDirectionalFraction;
+  authorityInducedCorrection: BeliefDirectionalFraction;
+  persistenceUnderCounterevidence: BeliefDirectionalFraction;
+  speakingDominance: {
+    agent_a: BeliefAgentVolume;
+    agent_b: BeliefAgentVolume;
+    tokenShareA: number | null;
+    claimShareA: number | null;
+  };
+};
+
+export type BeliefFamiliarityMetrics = {
+  repeatedInformationRate: BeliefFraction;
+  explicitReferenceRate: BeliefFraction;
+  clarificationFrequency: BeliefFraction;
+  informationDensity: BeliefFraction;
+  misunderstandingFrequency: BeliefFraction;
+  misunderstandingCorrectionRate: BeliefFraction;
+  redundantRederivationRate: BeliefFraction;
+  commonGroundReuse: BeliefFraction;
+  referenceResolutionSuccess: BeliefFraction;
+  contextualShorthandRate: BeliefFraction;
+  coordinationOverhead: BeliefFraction;
+  repairCost: {
+    meanTurns: number | null;
+    meanTokens: number | null;
+    episodes: number;
+    resolved: number;
+  };
+  duplicateWorkRate: BeliefFraction;
+  novelInformationRate: BeliefFraction;
+  informationReuseEfficiency: BeliefFraction;
+  compressionFailureRate: BeliefFraction;
+  turnToProgressEfficiency: BeliefFraction;
+  tokenToProgressEfficiency: BeliefFraction;
+};
+
+export type BeliefCrossPolicyMetrics = {
+  epistemicDiversity: BeliefFraction;
+  prematureConvergence: BeliefFraction;
+  recoveryFromFalseConsensus: BeliefFraction;
+  usefulDisagreementRate: BeliefFraction;
+  wastedDisagreementRate: BeliefFraction;
+  novelContributionBalance: {
+    agent_aShare: BeliefFraction;
+    agent_bShare: BeliefFraction;
+  };
+  turnsToConvergence: number | null;
+  convergenceQuality: {
+    correctConsensus: BeliefFraction;
+    falseConsensus: BeliefFraction;
+  };
 };
 
 export type BeliefDynamicsMetrics = {
@@ -171,18 +349,24 @@ export type BeliefDynamicsMetrics = {
   deferenceRate: number | null;
   independentCritiqueRate: number | null;
   contributionBalance: {
-    agent_a: {
-      claimsIntroduced: number;
-      usefulCorrections: number;
-      successfulChallenges: number;
-      solutionsProposed: number;
-    };
-    agent_b: {
-      claimsIntroduced: number;
-      usefulCorrections: number;
-      successfulChallenges: number;
-      solutionsProposed: number;
-    };
+    agent_a: BeliefContribution;
+    agent_b: BeliefContribution;
+  };
+  /** True when at least one claim is labeled correct or incorrect. */
+  hasCheckableClaims: boolean;
+  trust?: BeliefTrustMetrics;
+  authority?: BeliefAuthorityMetrics;
+  familiarity?: BeliefFamiliarityMetrics;
+  crossPolicy?: BeliefCrossPolicyMetrics;
+  /** Behavioral rates split by claim correctness when gold exists. */
+  truthConditioned?: {
+    partnerAcceptance: BeliefTruthSplit;
+    partnerReinforcement: BeliefTruthSplit;
+    partnerDeference: BeliefTruthSplit;
+    proposalSurvival: BeliefTruthSplit;
+    challengesAgainst: BeliefTruthSplit;
+    abandonmentOfCorrect: BeliefFraction;
+    correctionOfIncorrect: BeliefFraction;
   };
 };
 

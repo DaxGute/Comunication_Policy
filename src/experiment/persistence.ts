@@ -213,15 +213,44 @@ function parseUsage(raw: unknown): ConversationMessage["usage"] | undefined {
   };
 }
 
+function parseModelRequest(
+  raw: unknown,
+): ConversationMessage["modelRequest"] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const messages: NonNullable<ConversationMessage["modelRequest"]> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") return undefined;
+    const row = item as { role?: unknown; content?: unknown };
+    if (
+      row.role !== "system" &&
+      row.role !== "user" &&
+      row.role !== "assistant"
+    ) {
+      return undefined;
+    }
+    if (typeof row.content !== "string") return undefined;
+    messages.push({ role: row.role, content: row.content });
+  }
+  return messages;
+}
+
 function parseMessage(raw: unknown): ConversationMessage | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const m = raw as Partial<ConversationMessage>;
   if (typeof m.id !== "string" || typeof m.content !== "string") return undefined;
   if (m.agentId !== "agent_a" && m.agentId !== "agent_b") return undefined;
   if (typeof m.turnIndex !== "number") return undefined;
+  const sender =
+    m.sender === "agent_a" || m.sender === "agent_b" ? m.sender : m.agentId;
+  const recipient =
+    m.recipient === "agent_a" || m.recipient === "agent_b"
+      ? m.recipient
+      : undefined;
   return {
     id: m.id,
     agentId: m.agentId,
+    sender,
+    recipient,
     role: "assistant",
     content: m.content,
     turnIndex: m.turnIndex,
@@ -231,6 +260,7 @@ function parseMessage(raw: unknown): ConversationMessage | undefined {
         ? Math.max(0, m.durationMs)
         : undefined,
     usage: parseUsage(m.usage),
+    modelRequest: parseModelRequest(m.modelRequest),
   };
 }
 

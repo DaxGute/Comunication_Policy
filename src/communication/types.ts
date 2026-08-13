@@ -1,35 +1,55 @@
 /**
  * Canonical communication-policy domain object.
  * All UI, runtime, and evaluation code consume this representation.
+ *
+ * Numeric values are experimental metadata. Agents never see them —
+ * only the compiled natural-language behavioral policy.
  */
 export type CommunicationPolicy = {
   /**
-   * How much Agent A trusts Agent B.
-   * 0 = low trust / independent verification; 1 = high trust / collaborative synthesis
+   * T_AB: how much Agent A trusts Agent B.
+   * 0 = treat partner claims as unreliable until independently supported;
+   * 1 = give substantial weight to partner claims.
    */
   trustA: number;
   /**
-   * How much Agent B trusts Agent A.
-   * 0 = low trust / independent verification; 1 = high trust / collaborative synthesis
+   * T_BA: how much Agent B trusts Agent A.
+   * Independent of trustA.
    */
   trustB: number;
   /**
-   * Directional authority (split continuum).
-   * 0.0 = Agent A has strong authority over Agent B
-   * 0.5 = symmetric / peer-to-peer
-   * 1.0 = Agent B has strong authority over Agent A
+   * Relational authority a ∈ [0, 1].
+   * Authority_A = 1 − a, Authority_B = a.
+   * 0.0 = A has decision primacy; 0.5 = equal standing; 1.0 = B has primacy.
    */
   authority: number;
-  /** 0 = strangers (explicit, formal); 1 = long-term collaborators (compressed) */
+  /**
+   * Shared familiarity F ∈ [0, 1]. Symmetric: both agents receive
+   * complementary wording of the same condition.
+   * 0 = little shared conversational context; 1 = strong shared context / shorthand.
+   */
   familiarity: number;
 };
 
+/**
+ * Discrete behavioral anchor compiled from a continuous [0, 1] slider.
+ * Mapping: [0, 1/3) → low (0.0), [1/3, 2/3) → moderate (0.5), [2/3, 1] → high (1.0).
+ */
 export type PolicyBand = "low" | "moderate" | "high";
 
 export type AuthorityRelation =
   | "a_over_b"
   | "symmetric"
   | "b_over_a";
+
+/** One agent's compiled Trust / Authority / Familiarity instructions. */
+export type CompiledAgentPolicy = {
+  trust: string;
+  authority: string;
+  familiarity: string;
+  /** Deterministic concatenation of the three sections. */
+  block: string;
+};
 
 /** Compiled natural-language instructions derived from a CommunicationPolicy. */
 export type CompiledCommunicationPolicy = {
@@ -38,9 +58,6 @@ export type CompiledCommunicationPolicy = {
   trustBandB: PolicyBand;
   familiarityBand: PolicyBand;
   authorityRelation: AuthorityRelation;
-  /** Shared framing both agents receive about the policy. */
-  sharedContext: string;
-  /** Agent-specific interpersonal instructions. */
-  agentA: string;
-  agentB: string;
+  agentA: CompiledAgentPolicy;
+  agentB: CompiledAgentPolicy;
 };
