@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+/**
+ * Center workbench pane: run scatter plot and metric table.
+ *
+ * Summaries come from runSummary.ts; this file only chooses empty vs populated UI.
+ */
+import { useMemo } from "react";
 import type { ExperimentRun } from "../../experiment/types";
-import { getRunsForCenterPane } from "./centerAdapter";
+import { getRunsForCenterPane } from "./runSummary";
 import { ExperimentOverview } from "./ExperimentOverview";
 
 type Props = {
@@ -31,7 +36,7 @@ export function CenterPane({
 
   return (
     <div className="center-pane">
-      <div className="center-pane__body">
+      <div className="center-pane__body overlay-scroll">
         <ExperimentOverview
           runs={runSummaries}
           selectedId={selectedRunId}

@@ -1,3 +1,9 @@
+/**
+ * Right-pane run configuration: category, models, problem count, and start/cancel.
+ *
+ * Post-hoc multi-agent evaluation lives in the conversation inspector, not here.
+ * CSS class `evaluation-panel` is historical; the visible heading stays "Evaluation".
+ */
 import { useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { formatPolicyValue } from "../../communication";
@@ -47,7 +53,7 @@ function categoryLabel(id: ProblemCategory): string {
   return PROBLEM_CATEGORIES.find((c) => c.id === id)?.label ?? id;
 }
 
-export function EvaluationPanel({
+export function RunSettingsPanel({
   config,
   onConfigChange,
   onRun,

@@ -1,3 +1,9 @@
+/**
+ * Server-authoritative run + evaluation manager.
+ *
+ * Owns live run handles, cancel/delete, and evaluation jobs. Browser reload
+ * has no effect; OpenAI scheduling is openaiScheduler.ts.
+ */
 import { buildAgentPromptPair } from "../src/agents/buildAgentPrompt.ts";
 import { createCommunicationPolicy } from "../src/communication/policy.ts";
 import type { CommunicationPolicy } from "../src/communication/types.ts";
@@ -14,6 +20,7 @@ import type {
 } from "../src/experiment/types.ts";
 import { createId } from "../src/lib/id.ts";
 import { emptyUsage } from "../src/models/usage.ts";
+import type { ReasoningGraph } from "../src/reasoning/types.ts";
 import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../src/experiment/transcriptProtocol.ts";
 import type { ReasoningEffort } from "../src/models/modelRegistry.ts";
 import {
@@ -29,6 +36,10 @@ import {
   GenerateApiHttpError,
 } from "./generateApi.ts";
 import { runPosthoc } from "./marbleEvaluateApi.ts";
+import {
+  getOpenAIScheduler,
+  withOpenAIScheduler,
+} from "./openaiScheduler.ts";
 import { RunPersistence } from "./runPersistence.ts";
 
 type ActiveRun = {
@@ -421,7 +432,7 @@ export class RunManager {
     }
   }
 
-  private createServerModelClient(): ModelClient {
+  private createServerModelClient(runId?: string): ModelClient {
     return createModelClient({
       directOpenAIGenerate: async (input: ModelRequest): Promise<ModelResponse> => {
         try {
@@ -436,6 +447,7 @@ export class RunManager {
               ...(input.reasoningEffort
                 ? { reasoningEffort: input.reasoningEffort }
                 : {}),
+              ...(runId ? { runId } : {}),
             },
             this.getApiKey(),
             input.signal,
@@ -469,20 +481,55 @@ export class RunManager {
   private invokeMarble = async (
     request: unknown,
     signal?: AbortSignal,
+    runId?: string,
   ): Promise<Record<string, unknown>> => {
     if (signal?.aborted) {
       throw new Error("Evaluation cancelled.");
     }
-    const result = await runPosthoc(request, this.getApiKey());
-    if (!result.ok) {
-      const message =
-        typeof result.body.error === "string"
-          ? result.body.error
-          : "MARBLE evaluation failed.";
-      throw new Error(message);
-    }
-    return result.body;
+    const raw =
+      request && typeof request === "object"
+        ? (request as Record<string, unknown>)
+        : {};
+    const model =
+      typeof raw.evaluatorModel === "string"
+        ? raw.evaluatorModel
+        : "gpt-5.6-terra";
+    const estimate = Math.max(
+      1_500,
+      Math.ceil(JSON.stringify(request).length / 4) + 2_000,
+    );
+    return withOpenAIScheduler(
+      { model, estimate, signal, runId },
+      async () => {
+        const result = await runPosthoc(request, this.getApiKey(), signal);
+        if (!result.ok) {
+          const message =
+            typeof result.body.error === "string"
+              ? result.body.error
+              : "MARBLE evaluation failed.";
+          throw new Error(message);
+        }
+        return result.body;
+      },
+      (body) => {
+        const cost =
+          body.cost && typeof body.cost === "object"
+            ? (body.cost as Record<string, unknown>)
+            : {};
+        return typeof cost.totalTokens === "number"
+          ? cost.totalTokens
+          : undefined;
+      },
+    );
   };
+
+  private attachSchedulerDiagnostics(run: ExperimentRun): void {
+    const openai = getOpenAIScheduler().snapshotForRun(run.id);
+    run.runtimeDiagnostics = { openai };
+    console.info(
+      `[openai-scheduler] run=${run.id} peak=${openai.peakConcurrency} completed=${openai.requestsCompleted} queuedPeak=${openai.queuedPeak} retries=${openai.retryCount} 429s=${openai.rateLimitCount} rpm~${openai.approxRecentRpm} tpm~${openai.approxRecentTpm} bottleneck=${openai.bottleneck ?? "none"}`,
+    );
+  }
 
   private async executeRun(
     runId: string,
@@ -490,7 +537,7 @@ export class RunManager {
     config: RunConfig,
     signal: AbortSignal,
   ): Promise<void> {
-    const client = this.createServerModelClient();
+    const client = this.createServerModelClient(runId);
     try {
       await runExperiment({
         policy,
@@ -514,9 +561,9 @@ export class RunManager {
               }
             });
           },
-          onConversationMessage: (_id, problemId, message) => {
+          onConversationMessage: (_id, problemId, message, reasoning) => {
             this.mutate(runId, (run) => {
-              this.appendMessage(run, problemId, message);
+              this.appendMessage(run, problemId, message, reasoning);
             });
           },
           onSpeaking: (agentId, problemId) => {
@@ -539,18 +586,21 @@ export class RunManager {
           onRunComplete: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
+            this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
             this.persistLive(runId);
           },
           onRunFailed: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
+            this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
             this.persistLive(runId);
           },
           onRunCancelled: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
+            this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
             this.persistLive(runId);
           },
@@ -568,6 +618,7 @@ export class RunManager {
             : String(error);
         run.finishedAt = new Date().toISOString();
         run.progress = undefined;
+        this.attachSchedulerDiagnostics(run);
         for (const c of run.conversations) {
           if (c.status === "running") {
             c.status = undefined;
@@ -596,7 +647,7 @@ export class RunManager {
     );
     if (!conversation) return;
 
-    const client = this.createServerModelClient();
+    const client = this.createServerModelClient(args.runId);
     const evaluation = await runMultiAgentEvaluation({
       run,
       conversation,
@@ -605,12 +656,16 @@ export class RunManager {
       retryFrom: args.retryFrom,
       signal: args.signal,
       client,
-      invokeMarble: this.invokeMarble,
+      invokeMarble: (request, signal) =>
+        this.invokeMarble(request, signal, args.runId),
       onProgress: (progress) => {
         this.upsertEvaluation(args.runId, progress.evaluation);
       },
     });
     this.upsertEvaluation(args.runId, evaluation);
+    this.mutate(args.runId, (run) => {
+      this.attachSchedulerDiagnostics(run);
+    });
   }
 
   private async executeBatchEvaluation(args: {
@@ -621,28 +676,34 @@ export class RunManager {
     signal: AbortSignal;
   }): Promise<void> {
     const problemIds = args.problemIds;
-    for (const problemId of problemIds) {
-      if (args.signal.aborted) break;
-      const latest = this.requireRun(args.runId);
-      const conversation = latest.conversations.find(
-        (c) => c.problemId === problemId,
-      );
-      if (!conversation) continue;
-      const client = this.createServerModelClient();
-      const evaluation = await runMultiAgentEvaluation({
-        run: latest,
-        conversation,
-        evaluatorModel: args.evaluatorModel,
-        reasoningEffort: args.evaluationReasoningEffort,
-        signal: args.signal,
-        client,
-        invokeMarble: this.invokeMarble,
-        onProgress: (progress) => {
-          this.upsertEvaluation(args.runId, progress.evaluation);
-        },
-      });
-      this.upsertEvaluation(args.runId, evaluation);
-    }
+    const client = this.createServerModelClient(args.runId);
+    await Promise.all(
+      problemIds.map(async (problemId) => {
+        if (args.signal.aborted) return;
+        const latest = this.requireRun(args.runId);
+        const conversation = latest.conversations.find(
+          (c) => c.problemId === problemId,
+        );
+        if (!conversation) return;
+        const evaluation = await runMultiAgentEvaluation({
+          run: latest,
+          conversation,
+          evaluatorModel: args.evaluatorModel,
+          reasoningEffort: args.evaluationReasoningEffort,
+          signal: args.signal,
+          client,
+          invokeMarble: (request, signal) =>
+            this.invokeMarble(request, signal, args.runId),
+          onProgress: (progress) => {
+            this.upsertEvaluation(args.runId, progress.evaluation);
+          },
+        });
+        this.upsertEvaluation(args.runId, evaluation);
+      }),
+    );
+    this.mutate(args.runId, (run) => {
+      this.attachSchedulerDiagnostics(run);
+    });
   }
 
   private upsertEvaluation(
@@ -661,6 +722,7 @@ export class RunManager {
     run: ExperimentRun,
     problemId: string,
     message: ConversationMessage,
+    reasoning?: ReasoningGraph,
   ): void {
     const existing = run.conversations.find((c) => c.problemId === problemId);
     if (!existing) {
@@ -669,15 +731,27 @@ export class RunManager {
         problemTitle: problemId,
         problemText: "",
         messages: [message],
+        reasoningNodes: reasoning?.nodes ?? [],
+        reasoningEvents: reasoning?.events ?? [],
         stoppedReason: "max_turns",
         status: "running",
       });
       return;
     }
     // Avoid duplicate appends if a persist race re-delivers.
-    if (existing.messages.some((m) => m.id === message.id)) return;
+    if (existing.messages.some((m) => m.id === message.id)) {
+      if (reasoning) {
+        existing.reasoningNodes = reasoning.nodes;
+        existing.reasoningEvents = reasoning.events;
+      }
+      return;
+    }
     existing.messages = [...existing.messages, message];
     existing.status = "running";
+    if (reasoning) {
+      existing.reasoningNodes = reasoning.nodes;
+      existing.reasoningEvents = reasoning.events;
+    }
   }
 
   private replaceConversation(
@@ -697,6 +771,13 @@ export class RunManager {
       // Prefer longer transcript if finalize races with live appends.
       if (prev.messages.length > completed.messages.length) {
         completed.messages = prev.messages;
+      }
+      if (
+        (prev.reasoningEvents?.length ?? 0) >
+        (completed.reasoningEvents?.length ?? 0)
+      ) {
+        completed.reasoningNodes = prev.reasoningNodes;
+        completed.reasoningEvents = prev.reasoningEvents;
       }
       if (
         prev.problemTitle &&

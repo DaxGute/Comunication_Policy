@@ -1,3 +1,9 @@
+/**
+ * Shared TypeScript shapes for task grades and post-hoc multi-agent evaluation.
+ *
+ * Belief metric *arithmetic* is evaluation/belief/; MARBLE adaptation is
+ * evaluation/marble/. This file is the persisted contract, not the evaluators.
+ */
 export type ProblemEvaluation = {
   problemId: string;
   problemTitle: string;

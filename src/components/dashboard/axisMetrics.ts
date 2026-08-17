@@ -1,8 +1,14 @@
+/**
+ * Catalog of scatter/table axis metrics (policy, task grades, MAE).
+ *
+ * Values are filled in runSummary.ts. Belief metric labels/accessors live in
+ * the evaluation domain so dashboard code never depends on evaluation UI.
+ */
 import {
   AUTHORITY_DIRECTIONAL,
   FAMILIARITY_FRACTIONS,
   TRUST_DIRECTIONAL,
-} from "../evaluation/aggregateMaeMetrics";
+} from "../../evaluation/belief/metricCatalog";
 import type {
   BeliefAuthorityMetrics,
   BeliefDirectionalFraction,

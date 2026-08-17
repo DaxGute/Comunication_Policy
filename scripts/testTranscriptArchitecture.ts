@@ -403,7 +403,7 @@ assert.match(belief.user, /SERIAL:/);
 assert.match(belief.user, /TURN 2/);
 
 const exported = serializeConversation(finalConv, finalRun);
-assert.equal(exported.schema_version, "1.3");
+assert.equal(exported.schema_version, "1.4");
 assert.equal(exported.result.status, "final_answer");
 assert.ok(exported.result.final_answer);
 assert.equal(exported.messages.length, 2);
@@ -455,7 +455,7 @@ assert.ok((efficiency.totalInputTokens ?? 0) > 0);
 assert.ok((efficiency.averageOutputTokensPerUtterance ?? 0) > 0);
 
 const runExport = serializeRun(finalRun);
-assert.equal(runExport.schema_version, "1.3");
+assert.equal(runExport.schema_version, "1.4");
 assert.deepEqual(runExport.transcript_protocol, FULL_HISTORY_TRANSCRIPT_PROTOCOL);
 assert.equal(runExport.conversations[0]?.efficiency.turn_count, 2);
 

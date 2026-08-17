@@ -19,8 +19,11 @@
     "test:belief-grader": "vite-node scripts/testBeliefGrader.ts",
     "test:marble-posthoc": "vite-node scripts/testMarblePosthoc.ts",
     "test:eval-isolation": "vite-node scripts/testEvalIsolation.ts",
+    "test:openai-scheduler": "vite-node scripts/testOpenAIScheduler.ts",
+    "stress:openai-scheduler": "vite-node scripts/stressOpenAIScheduler.ts",
     "test:policy-prompts": "vite-node scripts/testPolicyPromptArchitecture.ts",
     "test:transcript": "vite-node scripts/testTranscriptArchitecture.ts",
+    "test:reasoning": "vite-node scripts/testReasoningGraph.ts",
     "verify:crossword": "vite-node scripts/verifyCrosswordIntegration.ts",
     "verify:crossword-live": "vite-node scripts/verifyCrosswordLive.ts"
   },

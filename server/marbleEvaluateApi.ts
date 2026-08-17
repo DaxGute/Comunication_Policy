@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isOpenAIModel, supportedOpenAIModelList } from "../src/runtime/models.ts";
+import { withOpenAIScheduler } from "./openaiScheduler.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -80,12 +81,24 @@ function resolveMarblePython(marbleRoot: string | undefined): string {
 }
 
 /** Direct Python MARBLE bridge for server-side evaluation (no HTTP hop). */
-export function runPosthoc(payload: unknown, apiKey: string | undefined): Promise<{
+export function runPosthoc(
+  payload: unknown,
+  apiKey: string | undefined,
+  signal?: AbortSignal,
+): Promise<{
   ok: boolean;
   body: Record<string, unknown>;
   status: number;
 }> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve({
+        ok: false,
+        status: 499,
+        body: { ok: false, error: "Evaluation cancelled." },
+      });
+      return;
+    }
     const marbleRoot = resolveMarbleRoot();
     if (!marbleRoot) {
       resolve({
@@ -128,6 +141,18 @@ export function runPosthoc(payload: unknown, apiKey: string | undefined): Promis
       stdio: ["pipe", "pipe", "pipe"],
     });
 
+    const onAbort = () => {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // already exited
+      }
+    };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");
@@ -140,6 +165,7 @@ export function runPosthoc(payload: unknown, apiKey: string | undefined): Promis
     });
 
     child.on("error", (error) => {
+      signal?.removeEventListener("abort", onAbort);
       resolve({
         ok: false,
         status: 500,
@@ -151,6 +177,15 @@ export function runPosthoc(payload: unknown, apiKey: string | undefined): Promis
     });
 
     child.on("close", (code) => {
+      signal?.removeEventListener("abort", onAbort);
+      if (signal?.aborted) {
+        resolve({
+          ok: false,
+          status: 499,
+          body: { ok: false, error: "Evaluation cancelled." },
+        });
+        return;
+      }
       const text = stdout.trim() || stderr.trim();
       let parsed: Record<string, unknown> | undefined;
       try {
@@ -252,7 +287,25 @@ export async function handleMarbleEvaluateApiRequest(
     );
   }
 
-  const result = await runPosthoc(body, apiKey);
+  const result = await withOpenAIScheduler(
+    {
+      model: evaluatorModel,
+      estimate: Math.max(
+        1_500,
+        Math.ceil(JSON.stringify(body).length / 4) + 2_000,
+      ),
+    },
+    () => runPosthoc(body, apiKey),
+    (outcome) => {
+      const cost =
+        outcome.body.cost && typeof outcome.body.cost === "object"
+          ? (outcome.body.cost as Record<string, unknown>)
+          : {};
+      return typeof cost.totalTokens === "number"
+        ? cost.totalTokens
+        : undefined;
+    },
+  );
   res.statusCode = result.status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(result.body));

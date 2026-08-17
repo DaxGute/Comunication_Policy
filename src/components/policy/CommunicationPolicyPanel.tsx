@@ -1,3 +1,9 @@
+/**
+ * Left-pane independent-variable controls (trust / authority / familiarity).
+ *
+ * Compilation into agent prompts is in src/communication; this panel only edits
+ * the numeric CommunicationPolicy object.
+ */
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useState } from "react";
 import {

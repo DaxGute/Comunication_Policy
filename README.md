@@ -60,7 +60,12 @@ Domain logic lives outside React components:
 | `src/problems/` | Category registry (crossword, moral, proof) |
 | `src/evaluation/` | Task graders + post-hoc multi-agent evaluation (MARBLE + belief dynamics) |
 | `src/experiment/` | Current config vs immutable completed runs |
-| `src/components/` | Four-pane experiment browser UI |
+| `src/components/policy/` | Communication-policy controls and prompt inspection |
+| `src/components/dashboard/` | Run summaries, metric catalog, table, and 2D/3D scatter plots |
+| `src/components/runSettings/` | Run configuration and active-run controls |
+| `src/components/inspector/` | Run tree, transcript/graph views, and aggregate results |
+| `src/components/evaluation/` | Per-problem and run-level multi-agent evaluation UI |
+| `server/` | Server-authoritative run management, OpenAI scheduling, and API handlers |
 
 ## Post-hoc multi-agent evaluation
 

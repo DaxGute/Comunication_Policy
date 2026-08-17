@@ -1,3 +1,8 @@
+/**
+ * Canonical JSON export of a conversation or full run for copy/download.
+ *
+ * Parsing of stored runs is parsePersisted.ts; this module only serializes out.
+ */
 import { otherAgentId } from "../agents/identity";
 import type { AgentId } from "../agents/types";
 import type { ProblemEvaluation } from "../evaluation/types";
@@ -8,6 +13,8 @@ import {
   type TranscriptProtocol,
 } from "./transcriptProtocol";
 import type { ExperimentRun, ProblemConversation } from "./types";
+import type { ReasoningEvent, ReasoningIntent, ReasoningNode, ReasoningOperation } from "../reasoning/types";
+import { hydrateReasoningGraph } from "../reasoning";
 
 export type ConversationExportMessage = {
   index: number;
@@ -38,6 +45,9 @@ export type ConversationExportMessage = {
     problem_characters: number;
     history_characters: number;
   };
+  raw_content?: string;
+  reasoning_intents?: ReasoningIntent[];
+  reasoning_operations?: ReasoningOperation[];
 };
 
 export type ConversationExportAgent = {
@@ -61,7 +71,7 @@ export type ConversationExportEfficiency = {
 };
 
 export type ConversationExport = {
-  schema_version: "1.3";
+  schema_version: "1.4";
   run_id: string;
   conversation_id: string;
   problem: {
@@ -92,7 +102,13 @@ export type ConversationExport = {
   messages: ConversationExportMessage[];
   result: {
     final_answer?: string;
+    supporting_node_ids?: string[];
+    supporting_node_errors?: string[];
     status: ProblemConversation["stoppedReason"];
+  };
+  reasoning?: {
+    nodes: ReasoningNode[];
+    events: ReasoningEvent[];
   };
   usage: {
     conversation?: {
@@ -165,7 +181,7 @@ export function serializeConversation(
   const runModel = resolveRunModel(run.config);
 
   return {
-    schema_version: "1.3",
+    schema_version: "1.4",
     run_id: run.id,
     conversation_id: conversation.problemId,
     problem: {
@@ -240,14 +256,49 @@ export function serializeConversation(
           history_characters: t.historyCharacters,
         };
       }
+      if (message.rawContent) {
+        exported.raw_content = message.rawContent;
+      }
+      if (message.reasoningIntents && message.reasoningIntents.length > 0) {
+        exported.reasoning_intents = message.reasoningIntents;
+      }
+      if (message.reasoningOperations && message.reasoningOperations.length > 0) {
+        exported.reasoning_operations = message.reasoningOperations;
+      }
       return exported;
     }),
     result: {
       ...(conversation.finalAnswer !== undefined
         ? { final_answer: conversation.finalAnswer }
         : {}),
+      ...(conversation.finalAnswerSupport?.supportingNodeIds?.length
+        ? {
+            supporting_node_ids:
+              conversation.finalAnswerSupport.supportingNodeIds,
+          }
+        : {}),
+      ...(conversation.finalAnswerSupport?.errors?.length
+        ? {
+            supporting_node_errors: conversation.finalAnswerSupport.errors,
+          }
+        : {}),
       status: conversation.stoppedReason,
     },
+    ...(Array.isArray(conversation.reasoningNodes) ||
+    Array.isArray(conversation.reasoningEvents)
+      ? {
+          reasoning: (() => {
+            const graph = hydrateReasoningGraph({
+              reasoningNodes: conversation.reasoningNodes,
+              reasoningEvents: conversation.reasoningEvents,
+            });
+            return {
+              nodes: graph.nodes,
+              events: graph.events,
+            };
+          })(),
+        }
+      : {}),
     usage: {
       ...(conversation.conversationUsage
         ? {
@@ -300,7 +351,7 @@ export function serializeConversation(
 }
 
 export type RunExport = {
-  schema_version: "1.3";
+  schema_version: "1.4";
   run_id: string;
   title?: string;
   created_at: string;
@@ -333,7 +384,7 @@ export type RunExport = {
  */
 export function serializeRun(run: ExperimentRun): RunExport {
   return {
-    schema_version: "1.3",
+    schema_version: "1.4",
     run_id: run.id,
     ...(run.title ? { title: run.title } : {}),
     created_at: run.createdAt,

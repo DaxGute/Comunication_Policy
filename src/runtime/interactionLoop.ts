@@ -1,3 +1,9 @@
+/**
+ * Alternating A↔B turn loop for a single problem.
+ *
+ * Owns turn sequencing and transcript append. Model HTTP/scheduling is the
+ * ModelClient; problem selection and run-level parallelism are in runExperiment.
+ */
 import { otherAgentId } from "../agents/identity";
 import type { AgentDefinition, AgentId } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
@@ -6,27 +12,50 @@ import type { ConversationMessage } from "../experiment/types";
 import { createId } from "../lib/id";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
+import {
+  applyReasoningIntents,
+  emptyReasoningGraph,
+  parseAgentTurn,
+  type FinalAnswerSupport,
+  type ReasoningGraph,
+  type ReasoningIntent,
+  type ReasoningOperation,
+} from "../reasoning";
 import { isAbortError, throwIfAborted } from "./abort";
 import type { ModelClient } from "./modelClient";
 import { buildTurnRequestForAgent } from "./renderModelRequest";
 import { utteranceFromMessage } from "./transcript";
 
 export type InteractionLoopCallbacks = {
-  onMessage?: (message: ConversationMessage) => void;
+  onMessage?: (message: ConversationMessage, graph: ReasoningGraph) => void;
   onSpeaking?: (agentId: AgentId | undefined) => void;
   onTurnProgress?: (turnIndex: number, maxTurns: number) => void;
+  onReasoning?: (graph: ReasoningGraph) => void;
 };
 
 export type InteractionLoopResult = {
   messages: ConversationMessage[];
   finalAnswer?: string;
+  finalAnswerSupport?: FinalAnswerSupport;
+  reasoning: ReasoningGraph;
   stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
   /** Set when `stoppedReason` is `error`. */
   error?: string;
 };
 
+function intentsFromTurn(intents: ReasoningIntent[]): ReasoningIntent[] | undefined {
+  return intents.length > 0 ? intents : undefined;
+}
+
+function operationsFromEvents(
+  operations: ReasoningOperation[],
+): ConversationMessage["reasoningOperations"] {
+  return operations.length > 0 ? operations : undefined;
+}
+
 /**
  * Simple alternating two-agent protocol: A → B → A → B → …
+ * Natural-language transcript and reasoning graph are updated together.
  */
 export async function runInteractionLoop(args: {
   problem: Problem;
@@ -57,28 +86,37 @@ export async function runInteractionLoop(args: {
 
   const order: AgentId[] = ["agent_a", "agent_b"];
   const messages: ConversationMessage[] = [];
+  let graph = emptyReasoningGraph();
+  let finalAnswerSupport: FinalAnswerSupport | undefined;
+
+  const stop = (
+    reason: InteractionLoopResult["stoppedReason"],
+    error?: string,
+  ): InteractionLoopResult => {
+    callbacks?.onSpeaking?.(undefined);
+    return {
+      messages,
+      finalAnswer:
+        finalAnswerSupport?.text ??
+        extractFinalAnswerFromText(messages[messages.length - 1]?.content ?? ""),
+      finalAnswerSupport,
+      reasoning: graph,
+      stoppedReason: reason,
+      error,
+    };
+  };
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     try {
       throwIfAborted(signal);
     } catch {
-      callbacks?.onSpeaking?.(undefined);
-      return {
-        messages,
-        finalAnswer: extractFinalAnswerFromText(
-          messages[messages.length - 1]?.content ?? "",
-        ),
-        stoppedReason: "cancelled",
-      };
+      return stop("cancelled");
     }
 
     const agentId = order[(turn - 1) % 2];
     callbacks?.onSpeaking?.(agentId);
     callbacks?.onTurnProgress?.(turn, maxTurns);
 
-    // Transcript is local to this call (one run × one problem). Policy is
-    // already compiled into each agent's snapshotted system prompt and does
-    // not filter history.
     const { messages: requestMessages, telemetry } = buildTurnRequestForAgent({
       agentId,
       agentPrompts: {
@@ -89,6 +127,7 @@ export async function runInteractionLoop(args: {
       utterances: messages.map(utteranceFromMessage),
       turn,
       maxTurns,
+      reasoningGraph: graph,
     });
 
     let response;
@@ -107,26 +146,29 @@ export async function runInteractionLoop(args: {
         },
       });
     } catch (error) {
-      callbacks?.onSpeaking?.(undefined);
       if (isAbortError(error)) {
-        return {
-          messages,
-          finalAnswer: extractFinalAnswerFromText(
-            messages[messages.length - 1]?.content ?? "",
-          ),
-          stoppedReason: "cancelled",
-        };
+        return stop("cancelled");
       }
-      // Keep partial transcript so a rate-limit / API failure does not erase
-      // progress for this problem (or wipe the parent run via Promise.all).
-      return {
-        messages,
-        finalAnswer: extractFinalAnswerFromText(
-          messages[messages.length - 1]?.content ?? "",
-        ),
-        stoppedReason: "error",
-        error: error instanceof Error ? error.message : String(error),
-      };
+      return stop(
+        "error",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
+    const parsed = parseAgentTurn(response.content, agentId, turn);
+    const messageId = createId("msg");
+    const applied = applyReasoningIntents(graph, parsed.intents, {
+      actor: agentId,
+      turnIndex: turn,
+      messageId,
+      protocolFailure: parsed.protocolFailure,
+      finalAnswer: parsed.finalAnswerSupport,
+    });
+    graph = applied.graph;
+    callbacks?.onReasoning?.(graph);
+
+    if (applied.finalAnswerSupport) {
+      finalAnswerSupport = applied.finalAnswerSupport;
     }
 
     const inputTokens =
@@ -135,12 +177,18 @@ export async function runInteractionLoop(args: {
       response.usage?.outputTokens ?? response.usage?.completionTokens;
 
     const message: ConversationMessage = {
-      id: createId("msg"),
+      id: messageId,
       agentId,
       sender: agentId,
       recipient: otherAgentId(agentId),
       role: "assistant",
-      content: response.content,
+      content: parsed.message,
+      rawContent:
+        parsed.raw !== parsed.message ? parsed.raw : undefined,
+      reasoningIntents: intentsFromTurn(parsed.intents),
+      reasoningOperations: operationsFromEvents(
+        applied.events.map((event) => event.operation),
+      ),
       timestamp: new Date().toISOString(),
       turnIndex: turn,
       durationMs: response.durationMs,
@@ -163,25 +211,24 @@ export async function runInteractionLoop(args: {
     };
 
     messages.push(message);
-    callbacks?.onMessage?.(message);
+    callbacks?.onMessage?.(message, graph);
 
-    const finalAnswer = extractFinalAnswerFromText(response.content);
+    const finalAnswer =
+      parsed.finalAnswerSupport?.text ??
+      extractFinalAnswerFromText(parsed.message);
     if (finalAnswer) {
-      callbacks?.onSpeaking?.(undefined);
-      return {
-        messages,
-        finalAnswer,
-        stoppedReason: "final_answer",
-      };
+      if (!finalAnswerSupport) {
+        finalAnswerSupport = {
+          text: finalAnswer,
+          supportingNodeIds: [],
+          errors: [],
+        };
+      } else if (!finalAnswerSupport.text) {
+        finalAnswerSupport = { ...finalAnswerSupport, text: finalAnswer };
+      }
+      return stop("final_answer");
     }
   }
 
-  callbacks?.onSpeaking?.(undefined);
-  return {
-    messages,
-    finalAnswer: extractFinalAnswerFromText(
-      messages[messages.length - 1]?.content ?? "",
-    ),
-    stoppedReason: "max_turns",
-  };
+  return stop("max_turns");
 }

@@ -1,3 +1,8 @@
+/**
+ * Four-pane resizable chrome for the experiment workbench.
+ *
+ * Does not own experiment state — App.tsx supplies each pane's contents.
+ */
 import type { ReactNode } from "react";
 import { ResizableSplit } from "../../components/ui/ResizableSplit";
 
@@ -34,9 +39,9 @@ export function WorkbenchLayout({ left, main, right, bottom }: Props) {
           minSizesPx={[220, 240, 220]}
           storageKey="workbench:body"
         >
-          <aside className="workbench__left">{left}</aside>
+          <aside className="workbench__left overlay-scroll">{left}</aside>
           <main className="workbench__main">{main}</main>
-          <aside className="workbench__right">{right}</aside>
+          <aside className="workbench__right overlay-scroll">{right}</aside>
         </ResizableSplit>
 
         <section className="workbench__bottom">{bottom}</section>

@@ -14,6 +14,7 @@ import { createCommunicationPolicy } from "../src/communication/policy";
 import type { CommunicationPolicy } from "../src/communication/types";
 import { renderModelRequest } from "../src/runtime/renderModelRequest";
 import type { AgentUtterance } from "../src/runtime/transcript";
+import { emptyReasoningGraph } from "../src/reasoning";
 
 function policy(partial: Partial<CommunicationPolicy>): CommunicationPolicy {
   return createCommunicationPolicy({
@@ -62,6 +63,11 @@ assert.ok(layersA.task.includes("share the goal of solving the provided problem"
 assert.ok(layersA.protocol.includes("You alternate turns."));
 assert.ok(layersA.protocol.includes("FINAL_ANSWER terminates the interaction immediately"));
 assert.ok(layersA.protocol.includes("Do not ask for review in the same message as FINAL_ANSWER"));
+assert.match(layersA.reasoning, /reasoningIntents/);
+assert.equal(
+  splitAgentPromptLayers(buildAgentPrompt("agent_a", baseline)).reasoning,
+  layersA.reasoning,
+);
 
 assert.equal(
   splitAgentPromptLayers(buildAgentPrompt("agent_a", baseline)).identity,
@@ -94,6 +100,7 @@ const bHigh = buildAgentPrompt("agent_b", trustHighA);
 assert.equal(aLow.identity, aHigh.identity);
 assert.equal(aLow.task, aHigh.task);
 assert.equal(aLow.protocol, aHigh.protocol);
+assert.equal(aLow.reasoning, aHigh.reasoning);
 assert.equal(aLow.authority, aHigh.authority);
 assert.equal(aLow.familiarity, aHigh.familiarity);
 assert.notEqual(aLow.trust, aHigh.trust);
@@ -170,18 +177,19 @@ const turn1 = renderModelRequest({
   utterances: [],
   turn: 1,
   maxTurns: 8,
+  reasoningGraph: emptyReasoningGraph(),
 });
-assert.equal(turn1.length, 3);
+assert.equal(turn1.length, 4);
 assert.equal(turn1[0]?.role, "system");
 assert.equal(turn1[0]?.content, prompts.agentA);
 assert.equal(turn1[1]?.role, "user");
 assert.equal(turn1[1]?.content, "Shared problem:\nCROSSWORD\n1. clue");
 assert.doesNotMatch(turn1[1]?.content ?? "", /Collaborate under/);
 assert.equal(turn1[2]?.role, "user");
-assert.equal(
-  turn1[2]?.content,
-  "It is your turn (turn 1 of at most 8). Respond as Agent A.",
-);
+assert.match(turn1[2]?.content ?? "", /CURRENT REASONING STATE/);
+assert.equal(turn1[3]?.role, "user");
+assert.match(turn1[3]?.content ?? "", /Respond as Agent A/);
+assert.match(turn1[3]?.content ?? "", /reasoningIntents/);
 
 const turn2 = renderModelRequest({
   speaker: "agent_b",
@@ -190,15 +198,13 @@ const turn2 = renderModelRequest({
   utterances,
   turn: 2,
   maxTurns: 8,
+  reasoningGraph: emptyReasoningGraph(),
 });
-assert.equal(turn2.length, 4);
+assert.equal(turn2.length, 5);
 assert.equal(turn2[0]?.content, prompts.agentB);
 assert.equal(turn2[2]?.role, "assistant");
 assert.equal(turn2[2]?.content, "[Agent A]: Candidate for 1-across: ACE");
-assert.equal(
-  turn2[3]?.content,
-  "It is your turn (turn 2 of at most 8). Respond as Agent B.",
-);
+assert.match(turn2[4]?.content ?? "", /Respond as Agent B/);
 
 const turn2Again = renderModelRequest({
   speaker: "agent_b",
@@ -207,7 +213,8 @@ const turn2Again = renderModelRequest({
   utterances,
   turn: 2,
   maxTurns: 8,
+  reasoningGraph: emptyReasoningGraph(),
 });
 assert.deepEqual(turn2, turn2Again);
 
-console.log("ok — policy prompt architecture: four layers, directional trust isolation, no numeric leak, deterministic renderer");
+console.log("ok — policy prompt architecture: five layers, directional trust isolation, invariant reasoning protocol, no numeric leak, deterministic renderer");

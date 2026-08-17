@@ -1,3 +1,9 @@
+/**
+ * React store for the workbench: current policy/config, run list, and polling.
+ *
+ * Execution lives on the server (RunManager). Evaluation UI mapping is in
+ * evaluationUi.ts. Persistence of picker state is in persistence.ts.
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { AgentId } from "../agents/types";
@@ -16,12 +22,15 @@ import {
 import { createCommunicationPolicy } from "../communication/policy";
 import type { CommunicationPolicy } from "../communication/types";
 import type {
-  EvaluationStageState,
   MultiAgentEvaluation,
 } from "../evaluation/types";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import { modelSupportsReasoningEffort } from "../models/modelRegistry";
 import { createInitialExperimentState, providerForModel } from "./defaults";
+import {
+  evaluationUiFromRuns,
+  type EvaluationUiState,
+} from "./evaluationUi";
 import {
   loadLegacyRunsForMigration,
   loadRunConfig,
@@ -39,23 +48,7 @@ import type {
 
 const POLL_INTERVAL_MS = 750;
 
-export type EvaluationUiState = {
-  runId: string;
-  problemId: string;
-  evaluationId?: string;
-  evaluatorModel: string;
-  evaluationReasoningEffort?: ReasoningEffort;
-  status: "idle" | "running" | "completed" | "failed";
-  stages: EvaluationStageState[];
-  /** In-flight / latest partial evaluation for progressive UI. */
-  partial?: MultiAgentEvaluation;
-  error?: string;
-  /** Present while a run-wide batch evaluation is in progress. */
-  batch?: {
-    currentIndex: number;
-    total: number;
-  };
-};
+export type { EvaluationUiState } from "./evaluationUi";
 
 export type ExperimentStore = {
   state: ExperimentState;
@@ -124,112 +117,6 @@ function speakingFromSelection(
 
 function isRunningFromRuns(runs: ExperimentRun[]): boolean {
   return runs.some((r) => r.status === "queued" || r.status === "running");
-}
-
-function evaluationUiFromRuns(
-  runs: ExperimentRun[],
-  focus?: { runId: string; problemId?: string; batch?: boolean },
-): EvaluationUiState | undefined {
-  if (!focus) {
-    // Prefer any in-flight evaluation.
-    for (const run of runs) {
-      const running = [...(run.multiAgentEvaluations ?? [])]
-        .filter((e) => e.status === "running")
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      const latest = running[0];
-      if (!latest) continue;
-      return {
-        runId: run.id,
-        problemId: latest.problemId,
-        evaluationId: latest.id,
-        evaluatorModel: latest.evaluatorModel,
-        evaluationReasoningEffort: latest.reasoningEffort,
-        status: "running",
-        stages: latest.stages,
-        partial: latest,
-        error: latest.errors[0]?.message,
-      };
-    }
-    return undefined;
-  }
-
-  const run = runs.find((r) => r.id === focus.runId);
-  if (!run) return undefined;
-
-  if (focus.batch) {
-    const running = (run.multiAgentEvaluations ?? []).filter(
-      (e) => e.status === "running",
-    );
-    const latest =
-      running[0] ??
-      [...(run.multiAgentEvaluations ?? [])].sort((a, b) =>
-        b.createdAt.localeCompare(a.createdAt),
-      )[0];
-    if (!latest) {
-      return {
-        runId: focus.runId,
-        problemId: run.conversations[0]?.problemId ?? "",
-        evaluatorModel: run.config.evaluationModel,
-        status: "running",
-        stages: [],
-        batch: {
-          currentIndex: 0,
-          total: run.conversations.length,
-        },
-      };
-    }
-    const index = Math.max(
-      0,
-      run.conversations.findIndex((c) => c.problemId === latest.problemId),
-    );
-    return {
-      runId: focus.runId,
-      problemId: latest.problemId,
-      evaluationId: latest.id,
-      evaluatorModel: latest.evaluatorModel,
-      evaluationReasoningEffort: latest.reasoningEffort,
-      status: latest.status === "running" ? "running" : latest.status === "completed" ? "completed" : "failed",
-      stages: latest.stages,
-      partial: latest,
-      error: latest.errors[0]?.message,
-      batch: {
-        currentIndex: index,
-        total: run.conversations.length,
-      },
-    };
-  }
-
-  const problemId = focus.problemId;
-  if (!problemId) return undefined;
-  const forProblem = (run.multiAgentEvaluations ?? [])
-    .filter((e) => e.problemId === problemId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const latest = forProblem[0];
-  if (!latest) {
-    return {
-      runId: focus.runId,
-      problemId,
-      evaluatorModel: run.config.evaluationModel,
-      status: "running",
-      stages: [],
-    };
-  }
-  return {
-    runId: focus.runId,
-    problemId,
-    evaluationId: latest.id,
-    evaluatorModel: latest.evaluatorModel,
-    evaluationReasoningEffort: latest.reasoningEffort,
-    status:
-      latest.status === "running"
-        ? "running"
-        : latest.status === "completed"
-          ? "completed"
-          : "failed",
-    stages: latest.stages,
-    partial: latest,
-    error: latest.errors[0]?.message,
-  };
 }
 
 function applyRunsToState(

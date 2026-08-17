@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { RunSummary } from "./centerAdapter";
-import { formatMetricValue } from "./centerAdapter";
+import type { RunSummary } from "./runSummary";
+import { formatMetricValue } from "./runSummary";
 import { axisMetricLabel } from "./axisMetrics";
 
 type SortKey = "title" | "status" | string;

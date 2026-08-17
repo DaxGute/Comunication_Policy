@@ -1,17 +1,17 @@
 import { useId, useMemo, useState } from "react";
-import type { RunSummary } from "./centerAdapter";
+import type { RunSummary } from "./runSummary";
 import {
   defaultScatterAxes,
   getAvailableAxisGroups,
   isEvaluationMetric,
-} from "./centerAdapter";
+} from "./runSummary";
 import {
   axisMetricDef,
   axisMetricLabel,
   type AxisMetricGroup,
 } from "./axisMetrics";
 import { ColumnMenu } from "./ColumnMenu";
-import { RunScatterPlot } from "./RunScatterPlot";
+import { RunScatterPlot } from "./scatter/RunScatterPlot";
 import { RunTable } from "./RunTable";
 
 type Props = {
@@ -231,17 +231,16 @@ export function ExperimentOverview({
               zMetric={safeZ || undefined}
               selectedId={selectedId}
               onSelect={onSelectRun}
+              status={
+                evalAxes.length > 0
+                  ? plottedRuns.length === 0
+                    ? `No evaluations for ${evalFilterLabel}`
+                    : hiddenCount > 0
+                      ? `Showing ${plottedRuns.length} of ${runs.length} · ${hiddenCount} hidden`
+                      : `Showing ${plottedRuns.length} of ${runs.length}`
+                  : undefined
+              }
             />
-            {evalAxes.length > 0 ? (
-              <p className="center-scatter__filter muted">
-                {plottedRuns.length === 0
-                  ? `No runs have evaluations for ${evalFilterLabel}`
-                  : `Showing ${plottedRuns.length} of ${runs.length} run${runs.length === 1 ? "" : "s"} with evaluations`}
-                {hiddenCount > 0 && plottedRuns.length > 0
-                  ? ` · ${hiddenCount} hidden`
-                  : ""}
-              </p>
-            ) : null}
           </div>
         ) : null
       ) : (

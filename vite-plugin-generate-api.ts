@@ -28,7 +28,8 @@ function isMarbleEvaluateApiPath(url: string | undefined): boolean {
 }
 
 function isGenerateApiPath(url: string | undefined): boolean {
-  return pathnameOf(url) === "/api/generate";
+  const pathname = pathnameOf(url);
+  return pathname === "/api/generate" || pathname === "/api/openai-scheduler";
 }
 
 type RunsApiModule = {

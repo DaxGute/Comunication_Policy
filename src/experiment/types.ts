@@ -7,6 +7,13 @@ import type {
 import type { ModelUsage } from "../models/usage";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { ProblemCategory } from "../problems/types";
+import type {
+  FinalAnswerSupport,
+  ReasoningEvent,
+  ReasoningIntent,
+  ReasoningNode,
+  ReasoningOperation,
+} from "../reasoning/types";
 import type { TranscriptProtocol } from "./transcriptProtocol";
 
 export type { ModelUsage, ReasoningEffort, TranscriptProtocol };
@@ -74,6 +81,15 @@ export type ConversationMessage = {
   }>;
   /** Context-size telemetry for the request that produced this utterance. */
   requestTelemetry?: TranscriptRequestTelemetry;
+  /**
+   * Exact model output when it differs from `content` (JSON envelope).
+   * `content` is always the natural-language utterance.
+   */
+  rawContent?: string;
+  /** Model-emitted reasoning intents for this turn (pre-engine). */
+  reasoningIntents?: ReasoningIntent[];
+  /** Canonical applied operations produced from this turn's events. */
+  reasoningOperations?: ReasoningOperation[];
 };
 
 export type ProblemConversation = {
@@ -82,6 +98,18 @@ export type ProblemConversation = {
   problemText: string;
   messages: ConversationMessage[];
   finalAnswer?: string;
+  /**
+   * Lineage from the submitted answer into the reasoning graph.
+   * Absent on legacy runs and when the model did not cite supporting nodes.
+   */
+  finalAnswerSupport?: FinalAnswerSupport;
+  /**
+   * Structured reasoning snapshot for this problem. `undefined` on legacy
+   * runs that predate the proposal/claim protocol. New runs always persist
+   * arrays (possibly empty) so live graphs can render from the first turn.
+   */
+  reasoningNodes?: ReasoningNode[];
+  reasoningEvents?: ReasoningEvent[];
   stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
   /**
    * Set while this problem is mid-run (streaming into the inspector).
@@ -179,6 +207,37 @@ export type ExperimentRun = {
   error?: string;
   /** Live progress while the run is queued/running (server-authoritative). */
   progress?: RunProgress;
+  /**
+   * Server-side OpenAI scheduler snapshot (concurrency / rate-limit pressure).
+   * Absent on mock runs and historical records.
+   */
+  runtimeDiagnostics?: {
+    openai?: OpenAIRuntimeDiagnostics;
+  };
+};
+
+/** Lightweight OpenAI scheduler diagnostics persisted with a run. */
+export type OpenAIRuntimeDiagnostics = {
+  inFlight: number;
+  queued: number;
+  queuedPeak: number;
+  requestsCompleted: number;
+  retryCount: number;
+  rateLimitCount: number;
+  peakConcurrency: number;
+  approxRecentRpm: number;
+  approxRecentTpm: number;
+  bottleneck: "rpm" | "tpm" | "concurrency" | "cooldown" | null;
+  models?: Record<
+    string,
+    {
+      inFlight: number;
+      recentRpm: number;
+      recentTpm: number;
+      advertisedRpm: number;
+      advertisedTpm: number;
+    }
+  >;
 };
 
 /** Live run progress for the Run button progress bar (0–1). */

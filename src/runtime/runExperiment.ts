@@ -1,3 +1,9 @@
+/**
+ * Coordinates execution of a two-agent experiment run.
+ *
+ * Owns problem selection, parallel per-problem dispatch, and run lifecycle
+ * snapshots. Turn sequencing is interactionLoop; OpenAI scheduling is server-side.
+ */
 import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { CommunicationPolicy } from "../communication/types";
 import { evaluateRun } from "../evaluation/evaluateRun";
@@ -14,6 +20,7 @@ import { emptyUsage } from "../models/usage";
 import { selectProblems } from "../problems/registry";
 import type { AgentId } from "../agents/types";
 import type { ConversationMessage } from "../experiment/types";
+import type { ReasoningGraph } from "../reasoning";
 import { isAbortError, throwIfAborted } from "./abort";
 import { createModelClient, type ModelClient } from "./modelClient";
 import { runProblem } from "./runProblem";
@@ -24,6 +31,7 @@ export type RunExperimentCallbacks = {
     runId: string,
     problemId: string,
     message: ConversationMessage,
+    reasoning?: ReasoningGraph,
   ) => void;
   /** Per-problem speaking updates (safe under parallel execution). */
   onSpeaking?: (agentId: AgentId | undefined, problemId: string) => void;
@@ -75,6 +83,7 @@ function isEmptyCancelled(conversation: ProblemConversation): boolean {
 
 /**
  * Snapshots policy + prompts + config, then executes every problem in parallel.
+ * OpenAI calls share one process-wide rate-aware scheduler (RPM + TPM).
  * Callable from the browser or the server; inject `client` on the server to
  * call OpenAI directly (no HTTP hop through /api/generate).
  */
@@ -110,6 +119,8 @@ export async function runExperiment(args: {
       problemTitle: problem.title,
       problemText: problem.text,
       messages: [],
+      reasoningNodes: [],
+      reasoningEvents: [],
       stoppedReason: "max_turns" as const,
       status: "running" as const,
     }),
@@ -161,6 +172,8 @@ export async function runExperiment(args: {
         status: "running" as const,
         messages: live?.messages?.length ? live.messages : seeded.messages,
         speakingAgentId: live?.speakingAgentId,
+        reasoningNodes: live?.reasoningNodes ?? seeded.reasoningNodes,
+        reasoningEvents: live?.reasoningEvents ?? seeded.reasoningEvents,
         problemTitle: live?.problemTitle ?? seeded.problemTitle,
       };
     });
@@ -201,8 +214,13 @@ export async function runExperiment(args: {
             onSpeaking: (agentId) => {
               callbacks?.onSpeaking?.(agentId, problem.id);
             },
-            onMessage: (message) => {
-              callbacks?.onConversationMessage?.(run.id, problem.id, message);
+            onMessage: (message, reasoning) => {
+              callbacks?.onConversationMessage?.(
+                run.id,
+                problem.id,
+                message,
+                reasoning,
+              );
             },
             onTurnProgress: (turnIndex, maxTurns) => {
               const turnFraction =

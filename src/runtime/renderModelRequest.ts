@@ -6,6 +6,12 @@ import type {
   ProblemConversation,
   TranscriptRequestTelemetry,
 } from "../experiment/types";
+import {
+  emptyReasoningGraph,
+  snapshotBeforeTurn,
+  type ReasoningGraph,
+} from "../reasoning";
+import { reasoningStateUserMessage } from "../reasoning/renderState";
 import type { ModelMessage } from "./modelClient";
 import {
   formatUtteranceForProvider,
@@ -20,6 +26,11 @@ export type RenderModelRequestArgs = {
   utterances: AgentUtterance[];
   turn: number;
   maxTurns: number;
+  /**
+   * Current reasoning graph for this problem. Always supplied by the live
+   * loop. Omit only when reconstructing a legacy request that never had one.
+   */
+  reasoningGraph?: ReasoningGraph;
 };
 
 export type AgentTurnRequest = {
@@ -36,7 +47,10 @@ export function turnCueUserMessage(
   turn: number,
   maxTurns: number,
 ): string {
-  return `It is your turn (turn ${turn} of at most ${maxTurns}). Respond as ${agentLabel(speaker)}.`;
+  return [
+    `It is your turn (turn ${turn} of at most ${maxTurns}). Respond as ${agentLabel(speaker)}.`,
+    'Return a JSON object with keys "message" and "reasoningIntents" as specified in REASONING PROTOCOL.',
+  ].join(" ");
 }
 
 /**
@@ -107,6 +121,8 @@ export function renderModelRequest(
     args;
 
   const prior = priorUtterancesForTurn(utterances, turn);
+  const includeReasoning = args.reasoningGraph !== undefined;
+  const reasoningGraph = args.reasoningGraph ?? emptyReasoningGraph();
 
   return [
     { role: "system", content: systemPrompt },
@@ -115,6 +131,14 @@ export function renderModelRequest(
       role: "assistant" as const,
       content: formatUtteranceForProvider(u),
     })),
+    ...(includeReasoning
+      ? [
+          {
+            role: "user" as const,
+            content: reasoningStateUserMessage(reasoningGraph),
+          },
+        ]
+      : []),
     {
       role: "user",
       content: turnCueUserMessage(speaker, turn, maxTurns),
@@ -152,6 +176,7 @@ export function buildTurnRequestForAgent(args: {
   utterances: AgentUtterance[];
   turn: number;
   maxTurns: number;
+  reasoningGraph?: ReasoningGraph;
 }): AgentTurnRequest {
   const systemPrompt =
     args.agentId === "agent_a"
@@ -164,6 +189,7 @@ export function buildTurnRequestForAgent(args: {
     utterances: args.utterances,
     turn: args.turn,
     maxTurns: args.maxTurns,
+    reasoningGraph: args.reasoningGraph,
   });
 }
 
@@ -197,6 +223,19 @@ export function resolveModelRequest(args: {
     .filter((m) => m.turnIndex < args.message.turnIndex)
     .map(utteranceFromMessage);
 
+  const hasReasoning =
+    Array.isArray(args.conversation.reasoningNodes) ||
+    Array.isArray(args.conversation.reasoningEvents);
+  const reasoningGraph = hasReasoning
+    ? snapshotBeforeTurn(
+        {
+          nodes: [],
+          events: args.conversation.reasoningEvents ?? [],
+        },
+        args.message.turnIndex,
+      )
+    : undefined;
+
   return buildTurnRequestForAgent({
     agentId: speaker,
     agentPrompts: args.run.agentPrompts,
@@ -204,5 +243,6 @@ export function resolveModelRequest(args: {
     utterances: prior,
     turn: args.message.turnIndex,
     maxTurns: args.run.config.maxTurns,
+    reasoningGraph,
   }).messages;
 }

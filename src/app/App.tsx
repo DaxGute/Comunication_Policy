@@ -1,8 +1,13 @@
+/**
+ * Workbench shell: wires the experiment store into the four-pane layout.
+ *
+ * Pane implementations live under src/components/{policy,dashboard,runSettings,inspector}.
+ */
 import { useState } from "react";
-import { ConversationInspector } from "../components/bottom/ConversationInspector";
-import { CenterPane } from "../components/center/CenterPane";
-import { CommunicationPolicyPanel } from "../components/left/CommunicationPolicyPanel";
-import { EvaluationPanel } from "../components/right/EvaluationPanel";
+import { ConversationInspector } from "../components/inspector/ConversationInspector";
+import { CenterPane } from "../components/dashboard/CenterPane";
+import { CommunicationPolicyPanel } from "../components/policy/CommunicationPolicyPanel";
+import { RunSettingsPanel } from "../components/runSettings/RunSettingsPanel";
 import { useExperimentStore } from "../experiment/store";
 import { WorkbenchLayout } from "./layout/WorkbenchLayout";
 
@@ -24,6 +29,11 @@ export default function App() {
     },
   );
 
+  const selectRun = (runId: string | undefined) => {
+    store.selectRun(runId);
+    setInspectorFocus((n) => n + 1);
+  };
+
   return (
     <WorkbenchLayout
       left={
@@ -39,20 +49,19 @@ export default function App() {
           runs={store.state.runs}
           selectedRunId={store.state.selectedRunId}
           onSelectRun={(runId) => {
-            store.selectRun(runId);
-            setInspectorFocus((n) => n + 1);
+            selectRun(runId);
           }}
         />
       }
       right={
-        <EvaluationPanel
+        <RunSettingsPanel
           config={store.state.currentRunConfig}
           onConfigChange={store.setRunConfig}
           onRun={() => {
             void store.startRun();
           }}
           onCancelRun={store.cancelRun}
-          onSelectRun={store.selectRun}
+          onSelectRun={selectRun}
           activeRuns={activeRuns}
         />
       }
@@ -62,8 +71,12 @@ export default function App() {
           selectedRun={store.selectedRun}
           selectedProblemId={store.state.selectedProblemId}
           inspectorFocus={inspectorFocus}
-          onSelectRun={store.selectRun}
-          onSelectProblem={store.selectProblem}
+          speakingAgentId={store.state.speakingAgentId}
+          onSelectRun={selectRun}
+          onSelectProblem={(problemId, runId) => {
+            store.selectProblem(problemId, runId);
+            setInspectorFocus((n) => n + 1);
+          }}
           onDeleteRun={store.deleteRun}
           onRenameRun={store.renameRun}
           onRenameProblem={store.renameProblem}

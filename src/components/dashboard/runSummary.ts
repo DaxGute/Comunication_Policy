@@ -1,6 +1,7 @@
 /**
- * Read-only adapter between experiment store data and the center-pane UI.
- * Visualization components should consume these shapes only — never execution internals.
+ * Read-only adapter from ExperimentRun snapshots to dashboard plot/table rows.
+ *
+ * Axis catalogs live in axisMetrics.ts. This module does not execute runs.
  */
 
 import type { AgentId } from "../../agents/types";

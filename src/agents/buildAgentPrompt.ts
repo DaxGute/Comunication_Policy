@@ -7,6 +7,7 @@ export const IDENTITY_HEADER = "IDENTITY";
 export const TASK_HEADER = "TASK";
 export const POLICY_HEADER = "COMMUNICATION POLICY";
 export const PROTOCOL_HEADER = "PROTOCOL";
+export const REASONING_HEADER = "REASONING PROTOCOL";
 
 function identityLayer(agentId: AgentId): string {
   return [
@@ -37,6 +38,29 @@ function protocolLayer(): string {
 }
 
 /**
+ * Invariant across communication-policy conditions. Trust / authority /
+ * familiarity must never appear here — they only affect interpersonal style.
+ */
+function reasoningLayer(): string {
+  return [
+    REASONING_HEADER,
+    "",
+    "You and the other agent jointly maintain a structured proposal/claim graph in parallel with the conversation. The graph is the machine-readable record of what you are reasoning about; the message is the natural-language record of what you said.",
+    "Each turn, return a single JSON object and nothing else:",
+    '{"message":"<your natural-language utterance>","reasoningIntents":[]}',
+    "Write `message` as ordinary collaborative dialogue. Put FINAL_ANSWER: inside `message` when you are terminating.",
+    "Use `reasoningIntents` to record substantive claims, evidence, objections, revisions, and explicit agreement or disagreement. Do not add intents for filler such as \"Good point.\" unless that move changes an existing idea (for example, agreeing with P4).",
+    "Actions: create, support, challenge, accept, reject, revise, pass.",
+    'create: {"action":"create","nodeType":"issue|proposal|claim|evidence|challenge","text":"...","parents":[],"dependencies":[],"localId":"optional"}',
+    'support / challenge / accept / reject / pass: {"action":"accept","targetId":"P4","reason":"..."}',
+    'revise: {"action":"revise","targetId":"P4","text":"...","reason":"..."}',
+    "Cite existing ids from CURRENT REASONING STATE when responding to an idea rather than restating it. To attach a later intent to a node created earlier in this same turn, set `localId` on the create and reuse that token in `targetId`, `parents`, or `dependencies`.",
+    'When terminating, include "finalAnswer": {"text":"...","supportingNodeIds":["P4"]}.',
+    "The application assigns ids and enforces graph consistency and legal state transitions.",
+  ].join("\n");
+}
+
+/**
  * Four-layer system prompt: identity, task, compiled policy, protocol.
  * Category- and puzzle-agnostic. Problem text is supplied at runtime as a user message.
  */
@@ -58,6 +82,8 @@ export function buildAgentPrompt(
     policyBlock,
     "",
     protocolLayer(),
+    "",
+    reasoningLayer(),
   ].join("\n");
 }
 
@@ -93,6 +119,7 @@ export type AgentPromptLayers = {
   task: string;
   policy: string;
   protocol: string;
+  reasoning: string;
   trust: string;
   authority: string;
   familiarity: string;
@@ -106,12 +133,14 @@ export function splitAgentPromptLayers(prompt: string): AgentPromptLayers {
   const identity = extractSection(prompt, IDENTITY_HEADER, TASK_HEADER);
   const task = extractSection(prompt, TASK_HEADER, POLICY_HEADER);
   const policy = extractSection(prompt, POLICY_HEADER, PROTOCOL_HEADER);
-  const protocol = extractSection(prompt, PROTOCOL_HEADER, null);
+  const protocol = extractSection(prompt, PROTOCOL_HEADER, REASONING_HEADER);
+  const reasoning = extractSection(prompt, REASONING_HEADER, null);
   return {
     identity,
     task,
     policy,
     protocol,
+    reasoning,
     trust: extractLabeled(policy, "Trust", "Authority"),
     authority: extractLabeled(policy, "Authority", "Familiarity"),
     familiarity: extractLabeled(policy, "Familiarity", null),

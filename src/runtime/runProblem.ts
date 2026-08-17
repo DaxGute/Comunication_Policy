@@ -1,3 +1,8 @@
+/**
+ * Runs one problem: builds agent prompts, then delegates to the interaction loop.
+ *
+ * Does not own model scheduling or post-hoc multi-agent evaluation.
+ */
 import {
   agentDefinitionFromPrompt,
   buildAgentPromptPair,
@@ -75,6 +80,9 @@ export async function runProblem(args: {
     problemText: problem.text,
     messages: result.messages,
     finalAnswer: result.finalAnswer,
+    finalAnswerSupport: result.finalAnswerSupport,
+    reasoningNodes: result.reasoning.nodes,
+    reasoningEvents: result.reasoning.events,
     stoppedReason: result.stoppedReason,
     error: result.error,
     conversationUsage: hasUsage ? conversationUsage : undefined,

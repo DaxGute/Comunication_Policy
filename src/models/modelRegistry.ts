@@ -15,6 +15,19 @@ export const REASONING_EFFORTS: readonly ReasoningEffort[] = [
 
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 
+export type ModelRateLimit = {
+  rpm: number;
+  tpm: number;
+};
+
+/** Advertised OpenAI account limits; the scheduler targets a fraction of these. */
+export const RATE_LIMIT_SAFETY_MARGIN = 0.87;
+
+export const DEFAULT_MODEL_RATE_LIMIT: ModelRateLimit = {
+  rpm: 5_000,
+  tpm: 1_000_000,
+};
+
 export interface ModelDefinition {
   id: string;
   displayName: string;
@@ -32,6 +45,10 @@ export interface ModelDefinition {
   defaultForEvaluation?: boolean;
   enabledForRun: boolean;
   enabledForEvaluation: boolean;
+  /** Advertised requests-per-minute (Tier 2). */
+  rpm: number;
+  /** Advertised tokens-per-minute (Tier 2). */
+  tpm: number;
 }
 
 export const MODEL_REGISTRY: readonly ModelDefinition[] = [
@@ -49,6 +66,8 @@ export const MODEL_REGISTRY: readonly ModelDefinition[] = [
     supportsReasoningEffort: true,
     enabledForRun: true,
     enabledForEvaluation: true,
+    rpm: 5_000,
+    tpm: 2_000_000,
   },
   {
     id: "gpt-5.6-terra",
@@ -66,6 +85,8 @@ export const MODEL_REGISTRY: readonly ModelDefinition[] = [
     defaultForEvaluation: true,
     enabledForRun: true,
     enabledForEvaluation: true,
+    rpm: 5_000,
+    tpm: 1_000_000,
   },
   {
     id: "gpt-5.6-sol",
@@ -81,6 +102,8 @@ export const MODEL_REGISTRY: readonly ModelDefinition[] = [
     supportsReasoningEffort: true,
     enabledForRun: true,
     enabledForEvaluation: true,
+    rpm: 5_000,
+    tpm: 1_000_000,
   },
   {
     id: "gpt-5.4-nano",
@@ -94,6 +117,8 @@ export const MODEL_REGISTRY: readonly ModelDefinition[] = [
     supportsReasoningEffort: true,
     enabledForRun: true,
     enabledForEvaluation: true,
+    rpm: 5_000,
+    tpm: 2_000_000,
   },
   {
     id: "gpt-5-mini",
@@ -107,10 +132,38 @@ export const MODEL_REGISTRY: readonly ModelDefinition[] = [
     supportsReasoningEffort: true,
     enabledForRun: true,
     enabledForEvaluation: true,
+    rpm: 5_000,
+    tpm: 2_000_000,
   },
 ] as const;
 
 const BY_ID = new Map(MODEL_REGISTRY.map((m) => [m.id, m]));
+
+/**
+ * Limits for IDs that may appear in evaluator / historical traffic but are
+ * not selectable run models. Prefer registry fields for registered IDs.
+ */
+const EXTRA_MODEL_RATE_LIMITS: Record<string, ModelRateLimit> = {
+  "gpt-4o-mini": { rpm: 5_000, tpm: 2_000_000 },
+  "gpt-5-nano": { rpm: 5_000, tpm: 2_000_000 },
+  "gpt-5": { rpm: 5_000, tpm: 1_000_000 },
+};
+
+export function getModelRateLimit(modelId: string): ModelRateLimit {
+  const registered = BY_ID.get(modelId);
+  if (registered) {
+    return { rpm: registered.rpm, tpm: registered.tpm };
+  }
+  return EXTRA_MODEL_RATE_LIMITS[modelId] ?? DEFAULT_MODEL_RATE_LIMIT;
+}
+
+/** Central lookup of advertised RPM/TPM. Scheduler applies RATE_LIMIT_SAFETY_MARGIN. */
+export const MODEL_RATE_LIMITS: Record<string, ModelRateLimit> = {
+  ...Object.fromEntries(
+    MODEL_REGISTRY.map((m) => [m.id, { rpm: m.rpm, tpm: m.tpm }]),
+  ),
+  ...EXTRA_MODEL_RATE_LIMITS,
+};
 
 export const MOCK_MODEL_ID = "mock-deterministic" as const;
 

@@ -5,6 +5,7 @@ export {
   TASK_HEADER,
   POLICY_HEADER,
   PROTOCOL_HEADER,
+  REASONING_HEADER,
   buildAgentPrompt,
   buildAgentDefinition,
   agentDefinitionFromPrompt,

@@ -1,3 +1,9 @@
+/**
+ * Coordinates post-hoc multi-agent evaluation (MARBLE + belief dynamics).
+ *
+ * Owns stage sequencing and the persisted MultiAgentEvaluation record. Task
+ * graders (crossword/moral/proof) are evaluateRun, not this module.
+ */
 import { resolveRunModel } from "../experiment/configAccessors";
 import type { ExperimentRun, ProblemConversation } from "../experiment/types";
 import { calculateModelCost } from "../models/cost";
@@ -223,59 +229,14 @@ export async function runMultiAgentEvaluation(
     stages = setStage(stages, "preparing", "completed");
     emit();
 
-    // MARBLE
+    // MARBLE and belief are independent of each other; run them together so
+    // post-hoc evaluation is not serialized on a single conversation.
     if (skipMarble) {
       stages = setStage(stages, "marble", "skipped", "Reused prior result");
       record.componentStatus.marble = "completed";
     } else {
       stages = setStage(stages, "marble", "running");
-      emit();
-      try {
-        const result = await evaluateMarblePosthoc({
-          run,
-          conversation,
-          evaluatorModel,
-          signal: options.signal,
-          invoke: options.invokeMarble,
-        });
-        if (
-          result.cost.estimatedCostUsd == null &&
-          (typeof result.cost.inputTokens === "number" ||
-            typeof result.cost.outputTokens === "number")
-        ) {
-          result.cost.estimatedCostUsd = calculateModelCost(
-            result.cost.model,
-            normalizeUsage({
-              inputTokens: result.cost.inputTokens,
-              cachedInputTokens: result.cost.cachedInputTokens,
-              outputTokens: result.cost.outputTokens,
-              totalTokens: result.cost.totalTokens,
-            }) ?? emptyUsage(),
-          );
-        }
-        record.marble = result.artifact;
-        record.costs.push(result.cost);
-        record.componentStatus.marble = "completed";
-        stages = setStage(stages, "marble", "completed");
-      } catch (error) {
-        record.componentStatus.marble = "failed";
-        record.errors.push({
-          component: "marble",
-          message: error instanceof Error ? error.message : String(error),
-          at: new Date().toISOString(),
-          retryable: true,
-        });
-        stages = setStage(
-          stages,
-          "marble",
-          "failed",
-          record.errors.at(-1)?.message,
-        );
-      }
     }
-    emit();
-
-    // Belief extraction + deterministic metrics
     if (skipBelief) {
       stages = setStage(
         stages,
@@ -292,59 +253,113 @@ export async function runMultiAgentEvaluation(
       record.componentStatus.belief = "completed";
     } else {
       stages = setStage(stages, "belief_extraction", "running");
-      emit();
-      try {
-        const result = await evaluateBeliefDynamics({
-          run,
-          conversation,
-          problem,
-          priorTaskLabel: priorTask?.label,
-          priorTaskNotes: priorTask?.notes,
-          evaluatorModel,
-          reasoningEffort,
-          client: options.client,
-          signal: options.signal,
-        });
-        stages = setStage(stages, "belief_extraction", "completed");
-        stages = setStage(stages, "metric_computation", "running");
-        emit();
-        record.beliefDynamics = result.artifact;
-        record.costs.push(result.cost);
-        record.componentStatus.belief =
-          result.artifact.normalized.validationErrors &&
-          result.artifact.normalized.validationErrors.length > 0 &&
-          result.artifact.normalized.claims.length === 0
-            ? "failed"
-            : "completed";
-        stages = setStage(stages, "metric_computation", "completed");
-        if (record.componentStatus.belief === "failed") {
-          record.errors.push({
-            component: "belief",
-            message:
-              result.artifact.normalized.validationErrors?.join("; ") ??
-              "Belief schema validation failed",
-            at: new Date().toISOString(),
-            retryable: true,
-          });
-          stages = setStage(stages, "belief_extraction", "failed");
-        }
-      } catch (error) {
-        record.componentStatus.belief = "failed";
-        record.errors.push({
-          component: "belief",
-          message: error instanceof Error ? error.message : String(error),
-          at: new Date().toISOString(),
-          retryable: true,
-        });
-        stages = setStage(
-          stages,
-          "belief_extraction",
-          "failed",
-          record.errors.at(-1)?.message,
-        );
-        stages = setStage(stages, "metric_computation", "failed");
-      }
     }
+    emit();
+
+    const marbleTask = skipMarble
+      ? Promise.resolve()
+      : (async () => {
+          try {
+            const result = await evaluateMarblePosthoc({
+              run,
+              conversation,
+              evaluatorModel,
+              signal: options.signal,
+              invoke: options.invokeMarble,
+            });
+            if (
+              result.cost.estimatedCostUsd == null &&
+              (typeof result.cost.inputTokens === "number" ||
+                typeof result.cost.outputTokens === "number")
+            ) {
+              result.cost.estimatedCostUsd = calculateModelCost(
+                result.cost.model,
+                normalizeUsage({
+                  inputTokens: result.cost.inputTokens,
+                  cachedInputTokens: result.cost.cachedInputTokens,
+                  outputTokens: result.cost.outputTokens,
+                  totalTokens: result.cost.totalTokens,
+                }) ?? emptyUsage(),
+              );
+            }
+            record.marble = result.artifact;
+            record.costs.push(result.cost);
+            record.componentStatus.marble = "completed";
+            stages = setStage(stages, "marble", "completed");
+          } catch (error) {
+            record.componentStatus.marble = "failed";
+            record.errors.push({
+              component: "marble",
+              message: error instanceof Error ? error.message : String(error),
+              at: new Date().toISOString(),
+              retryable: true,
+            });
+            stages = setStage(
+              stages,
+              "marble",
+              "failed",
+              record.errors.at(-1)?.message,
+            );
+          }
+        })();
+
+    const beliefTask = skipBelief
+      ? Promise.resolve()
+      : (async () => {
+          try {
+            const result = await evaluateBeliefDynamics({
+              run,
+              conversation,
+              problem,
+              priorTaskLabel: priorTask?.label,
+              priorTaskNotes: priorTask?.notes,
+              evaluatorModel,
+              reasoningEffort,
+              client: options.client,
+              signal: options.signal,
+            });
+            stages = setStage(stages, "belief_extraction", "completed");
+            stages = setStage(stages, "metric_computation", "running");
+            emit();
+            record.beliefDynamics = result.artifact;
+            record.costs.push(result.cost);
+            record.componentStatus.belief =
+              result.artifact.normalized.validationErrors &&
+              result.artifact.normalized.validationErrors.length > 0 &&
+              result.artifact.normalized.claims.length === 0
+                ? "failed"
+                : "completed";
+            stages = setStage(stages, "metric_computation", "completed");
+            if (record.componentStatus.belief === "failed") {
+              record.errors.push({
+                component: "belief",
+                message:
+                  result.artifact.normalized.validationErrors?.join("; ") ??
+                  "Belief schema validation failed",
+                at: new Date().toISOString(),
+                retryable: true,
+              });
+              stages = setStage(stages, "belief_extraction", "failed");
+            }
+          } catch (error) {
+            record.componentStatus.belief = "failed";
+            record.errors.push({
+              component: "belief",
+              message: error instanceof Error ? error.message : String(error),
+              at: new Date().toISOString(),
+              retryable: true,
+            });
+            stages = setStage(
+              stages,
+              "belief_extraction",
+              "failed",
+              record.errors.at(-1)?.message,
+            );
+            stages = setStage(stages, "metric_computation", "failed");
+          }
+        })();
+
+    await Promise.all([marbleTask, beliefTask]);
     emit();
 
     stages = setStage(stages, "saving", "running");
