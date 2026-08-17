@@ -18,6 +18,7 @@ import type {
 import { createId } from "../lib/id";
 import { emptyUsage } from "../models/usage";
 import { selectProblems } from "../problems/registry";
+import { reasoningSubjectsForProblem } from "../problems/reasoningSubjects";
 import type { AgentId } from "../agents/types";
 import type { ConversationMessage } from "../experiment/types";
 import type { ReasoningGraph } from "../reasoning";
@@ -119,6 +120,7 @@ export async function runExperiment(args: {
       problemTitle: problem.title,
       problemText: problem.text,
       messages: [],
+      reasoningSubjects: reasoningSubjectsForProblem(problem),
       reasoningNodes: [],
       reasoningEvents: [],
       stoppedReason: "max_turns" as const,
@@ -174,6 +176,8 @@ export async function runExperiment(args: {
         speakingAgentId: live?.speakingAgentId,
         reasoningNodes: live?.reasoningNodes ?? seeded.reasoningNodes,
         reasoningEvents: live?.reasoningEvents ?? seeded.reasoningEvents,
+        reasoningSubjects:
+          live?.reasoningSubjects ?? seeded.reasoningSubjects,
         problemTitle: live?.problemTitle ?? seeded.problemTitle,
       };
     });

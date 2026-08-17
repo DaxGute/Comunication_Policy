@@ -731,6 +731,7 @@ export class RunManager {
         problemTitle: problemId,
         problemText: "",
         messages: [message],
+        reasoningSubjects: reasoning?.subjects ?? [],
         reasoningNodes: reasoning?.nodes ?? [],
         reasoningEvents: reasoning?.events ?? [],
         stoppedReason: "max_turns",
@@ -741,6 +742,7 @@ export class RunManager {
     // Avoid duplicate appends if a persist race re-delivers.
     if (existing.messages.some((m) => m.id === message.id)) {
       if (reasoning) {
+        existing.reasoningSubjects = reasoning.subjects;
         existing.reasoningNodes = reasoning.nodes;
         existing.reasoningEvents = reasoning.events;
       }
@@ -749,6 +751,7 @@ export class RunManager {
     existing.messages = [...existing.messages, message];
     existing.status = "running";
     if (reasoning) {
+      existing.reasoningSubjects = reasoning.subjects;
       existing.reasoningNodes = reasoning.nodes;
       existing.reasoningEvents = reasoning.events;
     }
@@ -776,6 +779,7 @@ export class RunManager {
         (prev.reasoningEvents?.length ?? 0) >
         (completed.reasoningEvents?.length ?? 0)
       ) {
+        completed.reasoningSubjects = prev.reasoningSubjects;
         completed.reasoningNodes = prev.reasoningNodes;
         completed.reasoningEvents = prev.reasoningEvents;
       }

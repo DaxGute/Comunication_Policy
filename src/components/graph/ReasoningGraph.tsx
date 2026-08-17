@@ -1,9 +1,9 @@
 /**
- * SVG proposal-graph view for a single conversation.
+ * SVG reasoning-graph view for a single conversation.
  *
  * Graph mutation is src/reasoning/graph.ts; this file only lays out and highlights nodes.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentId } from "../../agents/types";
 import { agentLabel } from "../../agents/identity";
 import type { ProblemConversation } from "../../experiment/types";
@@ -40,6 +40,7 @@ function graphFromConversation(
   conversation: ProblemConversation,
 ): ReasoningGraph {
   return hydrateReasoningGraph({
+    reasoningSubjects: conversation.reasoningSubjects,
     reasoningNodes: conversation.reasoningNodes,
     reasoningEvents: conversation.reasoningEvents,
   });
@@ -116,11 +117,12 @@ export function ReasoningGraphView({
     () => (conversation ? graphFromConversation(conversation) : { nodes: [], events: [] }),
     [conversation],
   );
+  const latestTurn = conversation?.messages.at(-1)?.turnIndex;
 
   const layout = useMemo(
     () =>
       layoutReasoningGraph(graph, {
-        throughTurn: conversation?.messages.at(-1)?.turnIndex,
+        throughTurn: latestTurn,
         finalAnswer: conversation?.finalAnswer
           ? {
               text: conversation.finalAnswer,
@@ -129,7 +131,7 @@ export function ReasoningGraphView({
             }
           : undefined,
       }),
-    [graph, conversation?.finalAnswer, conversation?.finalAnswerSupport],
+    [graph, latestTurn, conversation?.finalAnswer, conversation?.finalAnswerSupport],
   );
 
   const enteringIds = useMemo(() => {
@@ -254,7 +256,7 @@ export function ReasoningGraphView({
           <p>No structured reasoning data for this problem.</p>
           <p className="muted">
             Legacy transcripts still load in Conversation. New runs record a
-            proposal/claim graph alongside the dialogue.
+            Reasoning Graph alongside the dialogue.
           </p>
         </div>
       </div>
@@ -336,17 +338,11 @@ export function ReasoningGraphView({
           className={[
             "reasoning-graph__canvas",
             isPanning ? "is-panning" : "",
+            zoom > 1 ? "is-zoomed" : "",
           ]
             .filter(Boolean)
             .join(" ")}
-          aria-label="Proposal and claim graph"
-          onWheel={(event) => {
-            event.preventDefault();
-            changeZoom(
-              zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP),
-              { x: event.clientX, y: event.clientY },
-            );
-          }}
+          aria-label="Reasoning Graph"
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             panRef.current = {
@@ -357,8 +353,6 @@ export function ReasoningGraphView({
               scrollTop: event.currentTarget.scrollTop,
               moved: false,
             };
-            event.currentTarget.setPointerCapture(event.pointerId);
-            setIsPanning(true);
           }}
           onPointerMove={(event) => {
             const pan = panRef.current;
@@ -366,9 +360,14 @@ export function ReasoningGraphView({
             const dx = event.clientX - pan.startX;
             const dy = event.clientY - pan.startY;
             if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+              if (!pan.moved) {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setIsPanning(true);
+              }
               pan.moved = true;
               suppressNodeClickRef.current = true;
             }
+            if (!pan.moved) return;
             event.currentTarget.scrollLeft = pan.scrollLeft - dx;
             event.currentTarget.scrollTop = pan.scrollTop - dy;
             followLiveRef.current = false;
@@ -376,7 +375,9 @@ export function ReasoningGraphView({
           onPointerUp={(event) => {
             const pan = panRef.current;
             if (!pan || pan.pointerId !== event.pointerId) return;
-            event.currentTarget.releasePointerCapture(event.pointerId);
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
             panRef.current = undefined;
             setIsPanning(false);
             if (pan.moved) {
@@ -402,8 +403,8 @@ export function ReasoningGraphView({
           {layout.nodes.length === 0 ? (
             <div className="reasoning-graph__placeholder muted">
               {live
-                ? "Waiting for the first substantive proposal…"
-                : "No proposals or claims were recorded."}
+                ? "Waiting for the first substantive reasoning node…"
+                : "No structured reasoning nodes were recorded."}
             </div>
           ) : (
             <svg
@@ -411,8 +412,7 @@ export function ReasoningGraphView({
               width={layout.width}
               height={layout.height}
               style={{
-                width: `${layout.width * zoom}px`,
-                height: `${layout.height * zoom}px`,
+                width: `${zoom * 100}%`,
               }}
               viewBox={`0 0 ${layout.width} ${layout.height}`}
               preserveAspectRatio="xMidYMin meet"
@@ -462,19 +462,31 @@ export function ReasoningGraphView({
                   selectedNodeId === edge.from ||
                   selectedNodeId === edge.to ||
                   relatedToMessage(from, to, selectedMessageId);
+                const label = edgeLabel(edge.kind);
                 return (
-                  <path
-                    key={`${edge.kind}:${edge.from}->${edge.to}`}
-                    d={edgePath(from, to)}
-                    className={[
-                      "reasoning-edge",
-                      `reasoning-edge--${edge.kind}`,
-                      highlighted ? "reasoning-edge--hot" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    markerEnd="url(#rg-arrow)"
-                  />
+                  <Fragment key={`${edge.kind}:${edge.from}->${edge.to}`}>
+                    <path
+                      d={edgePath(from, to)}
+                      className={[
+                        "reasoning-edge",
+                        `reasoning-edge--${edge.kind}`,
+                        highlighted ? "reasoning-edge--hot" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      markerEnd="url(#rg-arrow)"
+                    />
+                    {label ? (
+                      <text
+                        className="reasoning-edge__label"
+                        x={(from.x + from.width / 2 + to.x + to.width / 2) / 2}
+                        y={(from.y + from.height / 2 + to.y + to.height / 2) / 2 - 5}
+                        textAnchor="middle"
+                      >
+                        {label}
+                      </text>
+                    ) : null}
+                  </Fragment>
                 );
               })}
               {layout.nodes.map((item) => (
@@ -522,6 +534,15 @@ export function ReasoningGraphView({
       </div>
     </div>
   );
+}
+
+function edgeLabel(kind: string): string | undefined {
+  if (kind === "answers") return "answers";
+  if (kind === "supports" || kind === "final") return "supports";
+  if (kind === "challenges") return "challenges";
+  if (kind === "depends_on" || kind === "dependency") return "depends on";
+  if (kind === "revises" || kind === "supersedes") return "revises";
+  return undefined;
 }
 
 function relatedToMessage(
@@ -594,9 +615,14 @@ function ReasoningNodeGlyph({
   onSelect: () => void;
 }) {
   const { node, x, y, width, height } = item;
+  const taskSubject = node.metadata?.taskDefined === true;
   const owner = node.createdBy === "agent_a" ? "A" : "B";
-  const title = isFinal ? "FINAL ANSWER" : node.id;
-  const kind = isFinal ? "answer" : node.type;
+  const title = isFinal
+    ? "FINAL ANSWER"
+    : taskSubject
+      ? String(node.metadata?.subjectLabel ?? node.id)
+      : node.id;
+  const kind = isFinal ? "answer" : taskSubject ? "issue anchor" : node.type;
   const conf =
     !isFinal && typeof node.confidence === "number"
       ? node.confidence.toFixed(2)
@@ -610,6 +636,7 @@ function ReasoningNodeGlyph({
     entering ? "is-entering" : "",
     speaking ? "is-speaking" : "",
     isFinal ? "reasoning-node--final" : "",
+    taskSubject ? "reasoning-node--subject-anchor" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -621,10 +648,11 @@ function ReasoningNodeGlyph({
     >
       <g
         className={classes}
-        role="button"
-        tabIndex={0}
-        onClick={onSelect}
+        role={taskSubject ? "img" : "button"}
+        tabIndex={taskSubject ? undefined : 0}
+        onClick={taskSubject ? undefined : onSelect}
         onKeyDown={(event) => {
+          if (taskSubject) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             onSelect();
@@ -633,12 +661,12 @@ function ReasoningNodeGlyph({
       >
         <rect width={width} height={height} rx={10} />
         <text className="reasoning-node__id" x={12} y={20}>
-          {title} [{isFinal ? "·" : owner}]
+          {title} [{isFinal || taskSubject ? "·" : owner}]
         </text>
         <text className="reasoning-node__meta" x={12} y={36}>
           {kind}
           {conf ? ` · ${conf}` : ""}
-          {isFinal ? "" : ` · ${node.status}`}
+          {isFinal || taskSubject ? "" : ` · ${node.status}`}
         </text>
         <text className="reasoning-node__text" x={12} y={54}>
           {truncate(node.text, isFinal ? 32 : 26)}
@@ -672,7 +700,9 @@ function ReasoningDetail({
             Supported by{" "}
             {conversation.finalAnswerSupport.supportingNodeIds.join(", ")}
           </p>
-        ) : null}
+        ) : (
+          <p className="muted">No supporting reasoning nodes cited.</p>
+        )}
         {conversation.finalAnswerSupport?.errors?.length ? (
           <p className="reasoning-detail__error">
             Supporting-node linkage invalid:{" "}
@@ -706,6 +736,13 @@ function ReasoningDetail({
   const stances = stancesForNode(graph, node.id);
   const source = conversation.messages.find((m) => m.id === node.sourceMessageId);
   const revisedInto = graph.nodes.find((n) => n.supersedes === node.id);
+  const subjectId =
+    node.type === "final_answer" ? undefined : node.subjectId;
+  const subjectLabel =
+    graph.subjects?.find((subject) => subject.id === subjectId)?.label ??
+    graph.nodes.find(
+      (candidate) => candidate.id === subjectId && candidate.type === "issue",
+    )?.text;
 
   return (
     <aside className="reasoning-detail">
@@ -729,6 +766,15 @@ function ReasoningDetail({
           <div>
             <dt>Confidence</dt>
             <dd>{node.confidence.toFixed(2)}</dd>
+          </div>
+        ) : null}
+        {subjectId ? (
+          <div>
+            <dt>Answers issue</dt>
+            <dd>
+              {subjectLabel ? `${subjectLabel} · ` : ""}
+              {subjectId}
+            </dd>
           </div>
         ) : null}
         {node.parents.length > 0 ? (

@@ -1,5 +1,5 @@
 /**
- * Applies structured reasoning intents to the proposal graph.
+ * Applies structured reasoning intents to the reasoning graph.
  *
  * Owns create/revise/stance/final-answer legality and event materialization.
  * Turn parsing is in parseTurn.ts; SVG layout is in layout.ts.
@@ -8,18 +8,23 @@ import type { AgentId } from "../agents/types";
 import { nextReasoningId } from "./ids";
 import {
   REASONING_NODE_TYPES,
+  type AtomicReasoningNode,
+  type AtomicReasoningNodeType,
   type FinalAnswerSupport,
+  type FinalAnswerNode,
+  type ReasoningEdge,
   type ReasoningEvent,
   type ReasoningGraph,
   type ReasoningIntent,
   type ReasoningNode,
   type ReasoningNodeStatus,
-  type ReasoningNodeType,
   type ReasoningOperation,
+  type ReasoningSubject,
 } from "./types";
 
-const MAX_OPS_PER_TURN = 24;
+const MAX_OPS_PER_TURN = 64;
 const MAX_TEXT_CHARS = 2000;
+const FINAL_ANSWER_NODE_ID = "__final_answer__";
 const LOCAL_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,23}$/;
 
 export type ApplyIntentsContext = {
@@ -45,6 +50,7 @@ export type ApplyOperationsContext = ApplyIntentsContext;
 export type ApplyOperationsResult = ApplyIntentsResult;
 
 type MutableGraph = {
+  subjects: ReasoningSubject[];
   nodes: Map<string, ReasoningNode>;
   events: ReasoningEvent[];
 };
@@ -57,12 +63,29 @@ type LocalScope = {
 
 export function cloneReasoningGraph(graph: ReasoningGraph): ReasoningGraph {
   return {
+    subjects: graph.subjects?.map((subject) => ({
+      ...subject,
+      metadata: subject.metadata ? { ...subject.metadata } : undefined,
+    })),
     nodes: graph.nodes.map(cloneNode),
     events: graph.events.map(cloneEvent),
+    edges: graph.edges?.map((edge) => ({ ...edge })) ?? [],
   };
 }
 
+function cloneNode(node: AtomicReasoningNode): AtomicReasoningNode;
+function cloneNode(node: FinalAnswerNode): FinalAnswerNode;
+function cloneNode(node: ReasoningNode): ReasoningNode;
 function cloneNode(node: ReasoningNode): ReasoningNode {
+  if (node.type === "final_answer") {
+    return {
+      ...node,
+      parents: [...node.parents],
+      dependencies: [],
+      supportingNodeIds: [...node.supportingNodeIds],
+      supportErrors: [...node.supportErrors],
+    };
+  }
   return {
     ...node,
     parents: [...node.parents],
@@ -112,6 +135,10 @@ function cloneEvent(event: ReasoningEvent): ReasoningEvent {
 
 function toGraph(mutable: MutableGraph): ReasoningGraph {
   return {
+    subjects: mutable.subjects.map((subject) => ({
+      ...subject,
+      metadata: subject.metadata ? { ...subject.metadata } : undefined,
+    })),
     nodes: [...mutable.nodes.values()],
     events: mutable.events,
   };
@@ -144,7 +171,7 @@ function uniqueIds(ids: string[]): string[] {
   return out;
 }
 
-function isNodeType(value: unknown): value is ReasoningNodeType {
+function isNodeType(value: unknown): value is AtomicReasoningNodeType {
   return (
     typeof value === "string" &&
     (REASONING_NODE_TYPES as readonly string[]).includes(value)
@@ -185,8 +212,9 @@ function graphHasCycle(
 
 function findDuplicateId(
   nodes: Iterable<ReasoningNode>,
-  type: ReasoningNodeType,
+  type: AtomicReasoningNodeType,
   text: string,
+  subjectId?: string,
   ignoreId?: string,
 ): string | undefined {
   const needle = normalizeNodeText(text);
@@ -195,7 +223,10 @@ function findDuplicateId(
     if (ignoreId && node.id === ignoreId) continue;
     if (node.status === "superseded") continue;
     if (node.type !== type) continue;
-    if (normalizeNodeText(node.text) === needle) return node.id;
+    if (node.subjectId !== subjectId) continue;
+    if (normalizeNodeText(node.text) === needle) {
+      return node.id;
+    }
   }
   return undefined;
 }
@@ -208,7 +239,9 @@ function liveRevisionId(
   let current = id;
   const seen = new Set<string>();
   while (true) {
-    const child = list.find((node) => node.supersedes === current);
+    const child = list.find(
+      (node) => node.type !== "final_answer" && node.supersedes === current,
+    );
     if (!child || seen.has(child.id)) break;
     seen.add(child.id);
     current = child.id;
@@ -265,6 +298,7 @@ function resolutionStatus(
   node: ReasoningNode,
   events: ReasoningEvent[],
 ): ReasoningNodeStatus | undefined {
+  if (node.type === "final_answer") return "accepted";
   if (
     events.some(
       (event) =>
@@ -347,20 +381,245 @@ function applyAcceptedOperation(
   }
 }
 
+function edgeFromEvent(
+  event: ReasoningEvent,
+  type: ReasoningEdge["type"],
+  sourceNodeId: string,
+  targetNodeId: string,
+  reason?: string,
+  legacy = false,
+): ReasoningEdge {
+  return {
+    id: `redge-${event.seq}-${type}-${sourceNodeId}-${targetNodeId}`,
+    type,
+    sourceNodeId,
+    targetNodeId,
+    createdBy: event.actor,
+    createdAtTurn: event.turnIndex,
+    sourceMessageId: event.messageId,
+    sourceEventId: event.id,
+    reason,
+    legacy,
+  };
+}
+
+function materializeEdges(events: ReasoningEvent[]): ReasoningEdge[] {
+  const edges: ReasoningEdge[] = [];
+  const seen = new Set<string>();
+  const add = (edge: ReasoningEdge) => {
+    const key = `${edge.type}:${edge.sourceNodeId}->${edge.targetNodeId}:${edge.sourceEventId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push(edge);
+  };
+  for (const event of events) {
+    const op = event.operation;
+    if (op.type === "final_answer") {
+      for (const sourceId of op.supportingNodeIds) {
+        add(
+          edgeFromEvent(
+            event,
+            "supports",
+            sourceId,
+            FINAL_ANSWER_NODE_ID,
+            undefined,
+          ),
+        );
+      }
+      continue;
+    }
+    if (!event.accepted) continue;
+    if (op.type === "create") {
+      if (op.node.subjectId) {
+        add(
+          edgeFromEvent(
+            event,
+            "answers",
+            op.node.id,
+            op.node.subjectId,
+          ),
+        );
+      }
+      for (const parentId of op.node.parents) {
+        add(edgeFromEvent(event, "supports", parentId, op.node.id, undefined, true));
+      }
+      for (const dependencyId of op.node.dependencies) {
+        add(
+          edgeFromEvent(
+            event,
+            "depends_on",
+            op.node.id,
+            dependencyId,
+            undefined,
+            true,
+          ),
+        );
+      }
+    } else if (op.type === "revise") {
+      add(edgeFromEvent(event, "revises", op.replacement.id, op.targetId, op.reason));
+      if (op.replacement.subjectId) {
+        add(
+          edgeFromEvent(
+            event,
+            "answers",
+            op.replacement.id,
+            op.replacement.subjectId,
+          ),
+        );
+      }
+      for (const dependencyId of op.replacement.dependencies) {
+        add(
+          edgeFromEvent(
+            event,
+            "depends_on",
+            op.replacement.id,
+            dependencyId,
+            undefined,
+            true,
+          ),
+        );
+      }
+    } else if (
+      (op.type === "support" || op.type === "challenge") &&
+      op.sourceNodeId
+    ) {
+      add(
+        edgeFromEvent(
+          event,
+          op.type === "support" ? "supports" : "challenges",
+          op.sourceNodeId,
+          op.targetNodeId,
+          op.reason,
+        ),
+      );
+    }
+  }
+  return edges;
+}
+
+function edgesFromLegacyNodes(nodes: ReasoningNode[]): ReasoningEdge[] {
+  const edges: ReasoningEdge[] = [];
+  for (const node of nodes) {
+    if (node.type !== "final_answer" && node.subjectId) {
+      edges.push({
+        id: `legacy-answers-${node.id}-${node.subjectId}`,
+        type: "answers",
+        sourceNodeId: node.id,
+        targetNodeId: node.subjectId,
+        createdBy: node.createdBy,
+        createdAtTurn: node.createdAtTurn,
+        sourceMessageId: node.sourceMessageId ?? `legacy-turn-${node.createdAtTurn}`,
+        sourceEventId: `legacy-${node.id}`,
+        legacy: true,
+      });
+    }
+    for (const parentId of node.parents) {
+      edges.push({
+        id: `legacy-supports-${parentId}-${node.id}`,
+        type: "supports",
+        sourceNodeId: parentId,
+        targetNodeId: node.id,
+        createdBy: node.createdBy,
+        createdAtTurn: node.createdAtTurn,
+        sourceMessageId: node.sourceMessageId ?? `legacy-turn-${node.createdAtTurn}`,
+        sourceEventId:
+          node.type === "final_answer" ? node.sourceEventId : `legacy-${node.id}`,
+        legacy: true,
+      });
+    }
+    if (node.type === "final_answer") continue;
+    for (const dependencyId of node.dependencies) {
+      edges.push({
+        id: `legacy-depends-${node.id}-${dependencyId}`,
+        type: "depends_on",
+        sourceNodeId: node.id,
+        targetNodeId: dependencyId,
+        createdBy: node.createdBy,
+        createdAtTurn: node.createdAtTurn,
+        sourceMessageId: node.sourceMessageId ?? `legacy-turn-${node.createdAtTurn}`,
+        sourceEventId: `legacy-${node.id}`,
+        legacy: true,
+      });
+    }
+    if (node.supersedes) {
+      edges.push({
+        id: `legacy-revises-${node.id}-${node.supersedes}`,
+        type: "revises",
+        sourceNodeId: node.id,
+        targetNodeId: node.supersedes,
+        createdBy: node.createdBy,
+        createdAtTurn: node.createdAtTurn,
+        sourceMessageId: node.sourceMessageId ?? `legacy-turn-${node.createdAtTurn}`,
+        sourceEventId: `legacy-${node.id}`,
+        legacy: true,
+      });
+    }
+  }
+  return edges;
+}
+
+function finalAnswerNode(event: ReasoningEvent): FinalAnswerNode | undefined {
+  if (event.operation.type !== "final_answer") return undefined;
+  return {
+    id: FINAL_ANSWER_NODE_ID,
+    type: "final_answer",
+    text: event.operation.text ?? "",
+    createdBy: event.actor,
+    createdAtTurn: event.turnIndex,
+    sourceMessageId: event.messageId,
+    sourceEventId: event.id,
+    status: event.errors.length > 0 ? "unresolved" : "accepted",
+    parents: [...event.operation.supportingNodeIds],
+    dependencies: [],
+    supportingNodeIds: [...event.operation.supportingNodeIds],
+    supportErrors: [...event.errors],
+  };
+}
+
 /**
  * Rebuild derived node state from the canonical event log.
  * Rejected events are kept on the graph but do not mutate nodes.
  */
-export function materializeGraph(events: ReasoningEvent[]): ReasoningGraph {
+export function materializeGraph(
+  events: ReasoningEvent[],
+  subjects: ReasoningSubject[] = [],
+): ReasoningGraph {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
   const nodes = new Map<string, ReasoningNode>();
   for (const event of sorted) {
-    if (!event.accepted) continue;
-    applyAcceptedOperation(nodes, event.operation);
+    const final = finalAnswerNode(event);
+    if (final) {
+      nodes.set(FINAL_ANSWER_NODE_ID, final);
+      continue;
+    }
+    if (event.accepted) applyAcceptedOperation(nodes, event.operation);
   }
-  const mutable: MutableGraph = { nodes, events: sorted.map(cloneEvent) };
+  const mutable: MutableGraph = {
+    subjects: subjects.map((subject) => ({
+      ...subject,
+      metadata: subject.metadata ? { ...subject.metadata } : undefined,
+    })),
+    nodes,
+    events: sorted.map(cloneEvent),
+  };
   refreshStatuses(mutable);
-  return toGraph(mutable);
+  const materialized = toGraph(mutable);
+  const liveIds = new Set(
+    materialized.nodes
+      .filter(
+        (node) =>
+          node.type !== "final_answer" &&
+          node.status !== "rejected" &&
+          node.status !== "superseded",
+      )
+      .map((node) => node.id),
+  );
+  const edges = materializeEdges(sorted).filter(
+    (edge) =>
+      edge.targetNodeId !== FINAL_ANSWER_NODE_ID ||
+      liveIds.has(edge.sourceNodeId),
+  );
+  return { ...materialized, edges };
 }
 
 /**
@@ -369,17 +628,24 @@ export function materializeGraph(events: ReasoningEvent[]): ReasoningGraph {
  * stored nodes are returned as-is.
  */
 export function hydrateReasoningGraph(raw: {
+  reasoningSubjects?: ReasoningSubject[];
   reasoningNodes?: ReasoningNode[];
   reasoningEvents?: ReasoningEvent[];
 }): ReasoningGraph {
+  const subjects = raw.reasoningSubjects ?? [];
   const events = raw.reasoningEvents ?? [];
   const nodes = raw.reasoningNodes ?? [];
   if (events.length > 0) {
-    return materializeGraph(events);
+    return materializeGraph(events, subjects);
   }
   return {
+    subjects: subjects.map((subject) => ({
+      ...subject,
+      metadata: subject.metadata ? { ...subject.metadata } : undefined,
+    })),
     nodes: nodes.map(cloneNode),
     events: [],
+    edges: edgesFromLegacyNodes(nodes),
   };
 }
 
@@ -429,6 +695,27 @@ function resolveIdList(
     if (resolved.id) ids.push(resolved.id);
   }
   return { ids: uniqueIds(ids), errors };
+}
+
+function resolveSubjectRef(
+  ref: string | undefined,
+  mutable: MutableGraph,
+  scope: LocalScope,
+): { id?: string; error?: string } {
+  if (ref === undefined) return {};
+  const trimmed = ref.trim();
+  if (!trimmed) return { error: "subjectId is empty" };
+  const taskSubject = mutable.subjects.find((subject) => subject.id === trimmed);
+  if (taskSubject) return { id: taskSubject.id };
+  const resolved = resolveRef(trimmed, mutable, scope);
+  if (resolved.error || !resolved.id) {
+    return { error: `subjectId references unknown issue ${trimmed}` };
+  }
+  const node = mutable.nodes.get(resolved.id);
+  if (node?.type !== "issue") {
+    return { error: `subjectId ${resolved.id} is not an issue` };
+  }
+  return { id: resolved.id };
 }
 
 function registerLocal(
@@ -504,22 +791,24 @@ function targetLegality(
 
 function prepareNewNode(
   args: {
-    type: ReasoningNodeType;
+    type: AtomicReasoningNodeType;
     text: string;
     parents: string[];
     dependencies: string[];
+      subjectId?: string;
     confidence?: number;
     supersedes?: string;
   },
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   ignoreDuplicateId?: string,
-): { node?: ReasoningNode; errors: string[] } {
+): { node?: AtomicReasoningNode; errors: string[] } {
   const errors: string[] = [];
   const duplicateOf = findDuplicateId(
     mutable.nodes.values(),
     args.type,
     args.text,
+    args.subjectId,
     ignoreDuplicateId,
   );
   if (duplicateOf) {
@@ -563,7 +852,7 @@ function prepareNewNode(
     }
   }
 
-  const preview: ReasoningNode = {
+  const preview: AtomicReasoningNode = {
     id,
     type: args.type,
     text: args.text,
@@ -574,6 +863,7 @@ function prepareNewNode(
     status: "open",
     parents,
     dependencies,
+    subjectId: args.subjectId,
     supersedes: args.supersedes,
   };
 
@@ -617,16 +907,21 @@ function applyCreate(
     };
   }
 
-  const parents = resolveIdList(intent.parents, mutable, scope, "parents");
   const deps = resolveIdList(intent.dependencies, mutable, scope, "dependencies");
-  errors.push(...parents.errors, ...deps.errors);
+  const subject = resolveSubjectRef(intent.subjectId, mutable, scope);
+  errors.push(...deps.errors);
+  if (subject.error) errors.push(subject.error);
+  if (intent.subjectId && type !== "claim" && type !== "proposal") {
+    errors.push("subjectId is only valid on claim or proposal nodes");
+  }
 
   const prepared = prepareNewNode(
     {
       type,
       text,
-      parents: parents.ids,
+      parents: [],
       dependencies: deps.ids,
+      subjectId: subject.id,
       confidence: intent.confidence,
     },
     ctx,
@@ -682,6 +977,13 @@ function applyRevise(
   }
 
   const target = mutable.nodes.get(resolved.id)!;
+  if (target.type === "final_answer") {
+    return {
+      accepted: false,
+      errors: ["the engine-derived final answer cannot be revised"],
+      stored: invalidOperation(ctx, resolved.id),
+    };
+  }
   const type = isNodeType(intent.nodeType) ? intent.nodeType : target.type;
   const text = sanitizeText(intent.text);
   if (!text) {
@@ -692,13 +994,21 @@ function applyRevise(
     };
   }
 
-  const parents = resolveIdList(intent.parents, mutable, scope, "parents");
   const deps = resolveIdList(intent.dependencies, mutable, scope, "dependencies");
-  const errors = [...parents.errors, ...deps.errors];
-  const parentIds =
-    (intent.parents?.length ?? 0) > 0
-      ? uniqueIds([resolved.id, ...parents.ids])
-      : uniqueIds([resolved.id, ...target.parents]);
+  const subject = resolveSubjectRef(
+    intent.subjectId ?? target.subjectId,
+    mutable,
+    scope,
+  );
+  const errors = [...deps.errors];
+  if (subject.error) errors.push(subject.error);
+  if (
+    (intent.subjectId ?? target.subjectId) &&
+    type !== "claim" &&
+    type !== "proposal"
+  ) {
+    errors.push("subjectId is only valid on claim or proposal nodes");
+  }
   const depIds =
     intent.dependencies !== undefined ? deps.ids : [...target.dependencies];
 
@@ -706,8 +1016,9 @@ function applyRevise(
     {
       type,
       text,
-      parents: parentIds,
+      parents: [],
       dependencies: depIds,
+      subjectId: subject.id,
       confidence: intent.confidence ?? target.confidence,
       supersedes: target.id,
     },
@@ -733,14 +1044,10 @@ function applyRevise(
     };
   }
 
-  const replacement: ReasoningNode = {
+  const replacement: AtomicReasoningNode = {
     ...prepared.node,
     supersedes: target.id,
-    parents: uniqueIds(
-      prepared.node.parents.includes(target.id)
-        ? prepared.node.parents
-        : [target.id, ...prepared.node.parents],
-    ),
+    parents: [],
   };
   mutable.nodes.set(replacement.id, replacement);
   mutable.nodes.set(target.id, { ...target, status: "superseded" });
@@ -766,11 +1073,19 @@ function applyStance(
   mutable: MutableGraph,
   scope: LocalScope,
 ): { accepted: boolean; errors: string[]; stored: ReasoningOperation } {
-  const targetRaw = intent.targetId?.trim();
+  const targetRaw =
+    ("targetNodeId" in intent ? intent.targetNodeId?.trim() : undefined) ??
+    intent.targetId?.trim();
   if (!targetRaw) {
     return {
       accepted: false,
-      errors: [`${intent.action} is missing targetId`],
+      errors: [
+        `${intent.action} is missing ${
+          intent.action === "support" || intent.action === "challenge"
+            ? "targetId (or targetNodeId)"
+            : "targetId"
+        }`,
+      ],
       stored: invalidOperation(ctx),
     };
   }
@@ -800,10 +1115,44 @@ function applyStance(
     };
   }
 
+  let sourceNodeId: string | undefined;
+  if (
+    (intent.action === "support" || intent.action === "challenge") &&
+    intent.sourceNodeId?.trim()
+  ) {
+    const source = resolveRef(intent.sourceNodeId.trim(), mutable, scope);
+    if (source.error || !source.id) {
+      return {
+        accepted: false,
+        errors: [`source: ${source.error ?? `unknown target ${intent.sourceNodeId}`}`],
+        stored: invalidOperation(ctx, resolved.id),
+      };
+    }
+    const sourceLegality = targetLegality(mutable, source.id, intent.action);
+    if (sourceLegality.length > 0) {
+      return {
+        accepted: false,
+        errors: sourceLegality.map((error) => `source ${error}`),
+        stored: invalidOperation(ctx, resolved.id),
+      };
+    }
+    if (source.id === resolved.id) {
+      return {
+        accepted: false,
+        errors: [`${intent.action} source and target must be different nodes`],
+        stored: invalidOperation(ctx, resolved.id),
+      };
+    }
+    sourceNodeId = source.id;
+  }
+
   const stored = {
     type: intent.action,
     actor: ctx.actor,
     targetId: resolved.id,
+    ...((intent.action === "support" || intent.action === "challenge")
+      ? { sourceNodeId, targetNodeId: resolved.id }
+      : {}),
     reason: reason || undefined,
   } as ReasoningOperation;
   return { accepted: true, errors: [], stored };
@@ -914,9 +1263,17 @@ export function applyReasoningIntents(
   intents: ReasoningIntent[],
   ctx: ApplyIntentsContext,
 ): ApplyIntentsResult {
+  const subjects = graph.subjects ?? [];
   const mutable: MutableGraph = {
+    subjects: subjects.map((subject) => ({
+      ...subject,
+      metadata: subject.metadata ? { ...subject.metadata } : undefined,
+    })),
     nodes: new Map(
-      materializeGraph(graph.events).nodes.map((node) => [node.id, cloneNode(node)]),
+      materializeGraph(graph.events, subjects).nodes.map((node) => [
+        node.id,
+        cloneNode(node),
+      ]),
     ),
     events: graph.events.map(cloneEvent),
   };
@@ -981,7 +1338,7 @@ export function applyReasoningIntents(
     if (last?.operation.type === "final_answer") applied.push(last);
   }
 
-  const next = materializeGraph(mutable.events);
+  const next = materializeGraph(mutable.events, mutable.subjects);
   return { graph: next, events: applied, finalAnswerSupport };
 }
 
@@ -998,8 +1355,8 @@ export function applyReasoningOperations(
         nodeType: op.node.type,
         text: op.node.text,
         confidence: op.node.confidence,
-        parents: op.node.parents,
         dependencies: op.node.dependencies,
+        subjectId: op.node.subjectId,
       };
     }
     if (op.type === "revise") {
@@ -1009,8 +1366,8 @@ export function applyReasoningOperations(
         nodeType: op.replacement.type,
         text: op.replacement.text,
         confidence: op.replacement.confidence,
-        parents: op.replacement.parents,
         dependencies: op.replacement.dependencies,
+        subjectId: op.replacement.subjectId,
         reason: op.reason,
       };
     }
@@ -1026,6 +1383,15 @@ export function applyReasoningOperations(
     }
     if (op.type === "invalid") {
       return { action: "invalid" as const };
+    }
+    if (op.type === "support" || op.type === "challenge") {
+      return {
+        action: op.type,
+        sourceNodeId: op.sourceNodeId,
+        targetNodeId: op.targetNodeId,
+        targetId: op.targetId,
+        reason: op.reason,
+      };
     }
     return {
       action: op.type,

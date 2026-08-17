@@ -29,8 +29,10 @@ import {
   parseReasoningIntent,
   parseReasoningNode,
   parseReasoningOperation,
+  parseReasoningSubject,
 } from "../reasoning";
 import type { FinalAnswerSupport } from "../reasoning/types";
+import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
 
 export const VALID_CATEGORIES = new Set<ProblemCategory>([
   "crossword",
@@ -220,6 +222,37 @@ function parseConversationEfficiency(
   };
 }
 
+function parseReasoningDiagnostics(
+  raw: unknown,
+): ReasoningGraphDiagnostics | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const value = raw as Partial<ReasoningGraphDiagnostics>;
+  const requiredNumbers: Array<keyof ReasoningGraphDiagnostics> = [
+    "nodeCount",
+    "nodesPerTurn",
+    "proposalCount",
+    "claimCount",
+    "evidenceCount",
+    "issueCount",
+    "atomicityWarningCount",
+    "unlinkedNodeCount",
+    "relationshipCount",
+    "relationshipCoverage",
+    "evidenceUsage",
+    "finalSupportingNodeCount",
+    "invalidFinalSupportCount",
+  ];
+  if (
+    requiredNumbers.some(
+      (key) => typeof value[key] !== "number" || !Number.isFinite(value[key]),
+    ) ||
+    !Array.isArray(value.atomicityWarnings)
+  ) {
+    return undefined;
+  }
+  return value as ReasoningGraphDiagnostics;
+}
+
 function parseModelRequest(
   raw: unknown,
 ): ConversationMessage["modelRequest"] | undefined {
@@ -324,7 +357,16 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     .map(parseMessage)
     .filter((m): m is ConversationMessage => Boolean(m));
   const hasReasoning =
-    Array.isArray(c.reasoningNodes) || Array.isArray(c.reasoningEvents);
+    Array.isArray(c.reasoningSubjects) ||
+    Array.isArray(c.reasoningNodes) ||
+    Array.isArray(c.reasoningEvents);
+  const parsedSubjects = hasReasoning
+    ? (c.reasoningSubjects ?? [])
+        .map(parseReasoningSubject)
+        .filter((subject): subject is NonNullable<typeof subject> =>
+          Boolean(subject),
+        )
+    : undefined;
   const parsedNodes = hasReasoning
     ? (c.reasoningNodes ?? [])
         .map(parseReasoningNode)
@@ -337,6 +379,7 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     : undefined;
   const hydrated = hasReasoning
     ? hydrateReasoningGraph({
+        reasoningSubjects: parsedSubjects,
         reasoningNodes: parsedNodes,
         reasoningEvents: parsedEvents,
       })
@@ -348,8 +391,10 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     messages,
     finalAnswer: typeof c.finalAnswer === "string" ? c.finalAnswer : undefined,
     finalAnswerSupport: parseFinalAnswerSupport(c.finalAnswerSupport),
+    reasoningSubjects: hydrated?.subjects ?? parsedSubjects,
     reasoningNodes: hydrated?.nodes,
     reasoningEvents: hydrated?.events ?? parsedEvents,
+    reasoningDiagnostics: parseReasoningDiagnostics(c.reasoningDiagnostics),
     stoppedReason: c.stoppedReason as ProblemConversation["stoppedReason"],
     error: typeof c.error === "string" ? c.error : undefined,
     status: c.status === "running" ? "running" : undefined,

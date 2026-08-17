@@ -12,6 +12,7 @@ import type { ConversationMessage } from "../experiment/types";
 import { createId } from "../lib/id";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { Problem } from "../problems/types";
+import { reasoningSubjectsForProblem } from "../problems/reasoningSubjects";
 import {
   applyReasoningIntents,
   emptyReasoningGraph,
@@ -86,7 +87,7 @@ export async function runInteractionLoop(args: {
 
   const order: AgentId[] = ["agent_a", "agent_b"];
   const messages: ConversationMessage[] = [];
-  let graph = emptyReasoningGraph();
+  let graph = emptyReasoningGraph(reasoningSubjectsForProblem(problem));
   let finalAnswerSupport: FinalAnswerSupport | undefined;
 
   const stop = (

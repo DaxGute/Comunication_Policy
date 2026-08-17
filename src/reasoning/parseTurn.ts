@@ -59,6 +59,14 @@ function isIntentAction(value: unknown): value is ReasoningIntentAction {
   );
 }
 
+const CREATE_ACTION_ALIASES: Record<string, string> = {
+  propose: "proposal",
+  proposal: "proposal",
+  claim: "claim",
+  issue: "issue",
+  evidence: "evidence",
+};
+
 function liftLegacyCreate(raw: Record<string, unknown>): ReasoningIntent | undefined {
   if (!isRecord(raw.node)) return undefined;
   const node = raw.node;
@@ -69,6 +77,7 @@ function liftLegacyCreate(raw: Record<string, unknown>): ReasoningIntent | undef
     confidence: asNumber(node.confidence),
     parents: asStringArray(node.parents),
     dependencies: asStringArray(node.dependencies),
+    subjectId: asString(node.subjectId ?? node.subject_id),
     localId: asString(node.localId) ?? asString(raw.localId),
   };
 }
@@ -87,6 +96,12 @@ function liftLegacyRevise(raw: Record<string, unknown>): ReasoningIntent | undef
       : asNumber(raw.confidence),
     parents: asStringArray(replacement?.parents ?? raw.parents),
     dependencies: asStringArray(replacement?.dependencies ?? raw.dependencies),
+    subjectId: asString(
+      replacement?.subjectId ??
+        replacement?.subject_id ??
+        raw.subjectId ??
+        raw.subject_id,
+    ),
     reason: asString(raw.reason),
     localId: asString(raw.localId),
   };
@@ -101,7 +116,11 @@ export function parseReasoningIntent(raw: unknown): ReasoningIntent {
     return { action: "invalid", raw };
   }
 
-  const actionRaw = asString(raw.action) ?? asString(raw.type);
+  const suppliedAction = asString(raw.action) ?? asString(raw.type);
+  const aliasNodeType = suppliedAction
+    ? CREATE_ACTION_ALIASES[suppliedAction.toLowerCase()]
+    : undefined;
+  const actionRaw = aliasNodeType ? "create" : suppliedAction;
   if (actionRaw === "create" && isRecord(raw.node)) {
     return liftLegacyCreate(raw) ?? { action: "invalid", raw };
   }
@@ -130,11 +149,12 @@ export function parseReasoningIntent(raw: unknown): ReasoningIntent {
   if (actionRaw === "create") {
     return {
       action: "create",
-      nodeType: asString(raw.nodeType),
+      nodeType: asString(raw.nodeType) ?? aliasNodeType,
       text: asString(raw.text),
       confidence: asNumber(raw.confidence),
       parents: asStringArray(raw.parents),
       dependencies: asStringArray(raw.dependencies),
+      subjectId: asString(raw.subjectId ?? raw.subject_id),
       localId: asString(raw.localId),
     };
   }
@@ -147,12 +167,15 @@ export function parseReasoningIntent(raw: unknown): ReasoningIntent {
       confidence: asNumber(raw.confidence),
       parents: asStringArray(raw.parents),
       dependencies: asStringArray(raw.dependencies),
+      subjectId: asString(raw.subjectId ?? raw.subject_id),
       reason: asString(raw.reason),
       localId: asString(raw.localId),
     };
   }
   return {
     action: actionRaw,
+    sourceNodeId: asString(raw.sourceNodeId ?? raw.source_node_id),
+    targetNodeId: asString(raw.targetNodeId ?? raw.target_node_id),
     targetId: asString(raw.targetId),
     reason: asString(raw.reason),
   };

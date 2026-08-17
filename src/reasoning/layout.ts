@@ -1,6 +1,15 @@
 import type { ReasoningGraph, ReasoningNode } from "./types";
 
-export type LayoutEdgeKind = "parent" | "dependency" | "supersedes" | "final";
+export type LayoutEdgeKind =
+  | "parent"
+  | "dependency"
+  | "supersedes"
+  | "final"
+  | "answers"
+  | "supports"
+  | "challenges"
+  | "depends_on"
+  | "revises";
 
 export type GraphLayoutNode = {
   id: string;
@@ -40,6 +49,7 @@ const GAP_X = 36;
 const TURN_STEP = 148;
 const PAD_X = 76;
 const PAD_Y = 36;
+const SUBJECT_GAP_Y = 104;
 const ROOT_CENTER_X = 220;
 const ROOT_LANE_STEP = NODE_W + GAP_X * 2;
 const MIN_CANVAS_W = 640;
@@ -72,13 +82,20 @@ function structuralNeighbors(
   const neighbors = new Set([
     ...node.parents,
     ...node.dependencies,
-    ...(node.supersedes ? [node.supersedes] : []),
+    ...(node.type !== "final_answer" && node.subjectId
+      ? [node.subjectId]
+      : []),
+    ...(node.type !== "final_answer" && node.supersedes
+      ? [node.supersedes]
+      : []),
   ]);
   for (const candidate of nodes) {
     if (
       candidate.parents.includes(node.id) ||
       candidate.dependencies.includes(node.id) ||
-      candidate.supersedes === node.id
+      (candidate.type !== "final_answer" &&
+        candidate.subjectId === node.id) ||
+      (candidate.type !== "final_answer" && candidate.supersedes === node.id)
     ) {
       neighbors.add(candidate.id);
     }
@@ -91,12 +108,20 @@ function placeTurnRow(
   allNodes: ReasoningNode[],
   positionedById: Map<string, GraphLayoutNode>,
   nextRootCenter: { value: number },
+  subjectCenters: Map<string, number>,
   y: number,
 ): GraphLayoutNode[] {
   const rowIds = new Set(row.map((node) => node.id));
   const desiredCenter = new Map<string, number>();
 
   for (const node of row) {
+    if (node.type !== "final_answer" && node.subjectId) {
+      const subjectCenter = subjectCenters.get(node.subjectId);
+      if (subjectCenter !== undefined) {
+        desiredCenter.set(node.id, subjectCenter);
+        continue;
+      }
+    }
     const prior = structuralNeighbors(node, allNodes)
       .map((id) => positionedById.get(id))
       .filter((item): item is GraphLayoutNode => Boolean(item));
@@ -167,7 +192,12 @@ function placeTurnRow(
   let rightEdge = PAD_X - GAP_X;
   const out: GraphLayoutNode[] = [];
   for (const node of ordered) {
-    const width = node.type === "issue" ? ISSUE_W : NODE_W;
+    const width =
+      node.type === "final_answer"
+        ? 280
+        : node.type === "issue"
+          ? ISSUE_W
+          : NODE_W;
     const center = Math.round(desiredCenter.get(node.id) ?? ROOT_CENTER_X);
     const index = groupIndexes.get(center) ?? 0;
     const count = groupSizes.get(center) ?? 1;
@@ -197,8 +227,8 @@ function placeTurnRow(
 
 /**
  * Chronological layout. Canonical node provenance owns the vertical axis;
- * structural relationships influence horizontal lanes only. A synthetic
- * FINAL node is layout-only and is not persisted.
+ * structural relationships influence horizontal lanes only. Final-answer
+ * nodes stay in their terminating turn and sit below that turn's reasoning.
  */
 export function layoutReasoningGraph(
   graph: ReasoningGraph,
@@ -230,10 +260,52 @@ export function layoutReasoningGraph(
   const turnBands: GraphLayoutTurnBand[] = [];
   const positioned: GraphLayoutNode[] = [];
   const positionedById = new Map<string, GraphLayoutNode>();
-  const nextRootCenter = { value: ROOT_CENTER_X };
+  const subjectCenters = new Map<string, number>();
+  const subjects = graph.subjects ?? [];
+  for (let index = 0; index < subjects.length; index++) {
+    const subject = subjects[index]!;
+    const center = ROOT_CENTER_X + index * ROOT_LANE_STEP;
+    subjectCenters.set(subject.id, center);
+    const synthetic: ReasoningNode = {
+      id: subject.id,
+      type: "issue",
+      text: subject.description ?? subject.label,
+      createdBy: "agent_a",
+      createdAtTurn: 0,
+      status: "open",
+      parents: [],
+      dependencies: [],
+      metadata: {
+        ...(subject.metadata ?? {}),
+        taskDefined: true,
+        subjectLabel: subject.label,
+      },
+    };
+    const item: GraphLayoutNode = {
+      id: subject.id,
+      x: center - ISSUE_W / 2,
+      y: PAD_Y,
+      width: ISSUE_W,
+      height: NODE_H,
+      turnIndex: 0,
+      depth: 0,
+      node: synthetic,
+    };
+    positioned.push(item);
+    positionedById.set(item.id, item);
+  }
+  const nextRootCenter = {
+    value:
+      subjects.length > 0
+        ? ROOT_CENTER_X + subjects.length * ROOT_LANE_STEP
+        : ROOT_CENTER_X,
+  };
 
   for (let turn = minTurn; turn <= maxTurn; turn++) {
-    const bandY = PAD_Y + (turn - minTurn) * TURN_STEP;
+    const bandY =
+      PAD_Y +
+      (subjects.length > 0 ? SUBJECT_GAP_Y : 0) +
+      (turn - minTurn) * TURN_STEP;
     const nodeY = bandY + 28;
     turnBands.push({ turnIndex: turn, y: bandY, nodeY });
     positioned.push(
@@ -242,6 +314,7 @@ export function layoutReasoningGraph(
         nodes,
         positionedById,
         nextRootCenter,
+        subjectCenters,
         nodeY,
       ),
     );
@@ -252,46 +325,78 @@ export function layoutReasoningGraph(
     0,
   );
   const maxWidth = Math.max(MIN_CANVAS_W, maxNodeRight + PAD_X);
+  const embeddedFinal = positioned.find(
+    (item) => item.node.type === "final_answer",
+  );
+  if (embeddedFinal) {
+    embeddedFinal.x = (maxWidth - embeddedFinal.width) / 2;
+    embeddedFinal.y += NODE_H + 24;
+  }
   const heightWithoutFinal =
-    turnBands.length > 0
-      ? turnBands[turnBands.length - 1]!.nodeY + NODE_H + PAD_Y
+    positioned.length > 0
+      ? Math.max(...positioned.map((item) => item.y + item.height)) + PAD_Y
       : 220;
 
   const edges: GraphLayoutEdge[] = [];
-  for (const node of nodes) {
-    for (const parentId of node.parents) {
-      if (byId.has(parentId)) {
-        edges.push({ from: parentId, to: node.id, kind: "parent" });
+  if ((graph.edges?.length ?? 0) === 0) {
+    for (const node of nodes) {
+      for (const parentId of node.parents) {
+        if (byId.has(parentId)) {
+          edges.push({ from: parentId, to: node.id, kind: "parent" });
+        }
+      }
+      for (const depId of node.dependencies) {
+        if (byId.has(depId)) {
+          edges.push({ from: node.id, to: depId, kind: "dependency" });
+        }
+      }
+      if (
+        node.type !== "final_answer" &&
+        node.subjectId &&
+        positionedById.has(node.subjectId)
+      ) {
+        edges.push({ from: node.id, to: node.subjectId, kind: "answers" });
+      }
+      if (
+        node.type !== "final_answer" &&
+        node.supersedes &&
+        byId.has(node.supersedes)
+      ) {
+        edges.push({ from: node.id, to: node.supersedes, kind: "supersedes" });
       }
     }
-    for (const depId of node.dependencies) {
-      if (byId.has(depId)) {
-        edges.push({ from: depId, to: node.id, kind: "dependency" });
-      }
-    }
-    if (node.supersedes && byId.has(node.supersedes)) {
-      edges.push({ from: node.supersedes, to: node.id, kind: "supersedes" });
-    }
+  }
+  for (const edge of graph.edges ?? []) {
+    edges.push({
+      from: edge.sourceNodeId,
+      to: edge.targetNodeId,
+      kind:
+        edge.targetNodeId === "__final_answer__" ? "final" : edge.type,
+    });
   }
 
   let width = maxWidth;
   let height = heightWithoutFinal;
 
   const finalAnswer = options.finalAnswer;
-  if (finalAnswer?.text) {
+  if (finalAnswer?.text && !byId.has("__final_answer__")) {
     const finalId = "__final_answer__";
     const finalWidth = Math.min(280, Math.max(ISSUE_W, maxWidth * 0.35));
     const finalY = heightWithoutFinal + 8;
     const finalX = (maxWidth - finalWidth) / 2;
     const synthetic: ReasoningNode = {
       id: finalId,
-      type: "claim",
+      type: "final_answer",
       text: finalAnswer.text,
       createdBy: "agent_a",
-      createdAtTurn: 0,
+      createdAtTurn: maxTurn,
+      sourceMessageId: `legacy-final-turn-${maxTurn}`,
+      sourceEventId: `legacy-final-turn-${maxTurn}`,
       status: "accepted",
       parents: [...finalAnswer.supportingNodeIds],
       dependencies: [],
+      supportingNodeIds: [...finalAnswer.supportingNodeIds],
+      supportErrors: [],
     };
     const layoutNode: GraphLayoutNode = {
       id: finalId,
@@ -299,18 +404,20 @@ export function layoutReasoningGraph(
       y: finalY,
       width: finalWidth,
       height: NODE_H,
-      turnIndex: maxTurn + 1,
-      depth: maxTurn + 1,
+      turnIndex: maxTurn,
+      depth: maxTurn,
       node: synthetic,
     };
     positioned.push(layoutNode);
     height = finalY + NODE_H + PAD_Y;
-    const supports =
-      finalAnswer.supportingNodeIds.length > 0
-        ? finalAnswer.supportingNodeIds
-        : nodes.filter((n) => n.status === "accepted").map((n) => n.id);
-    for (const id of supports) {
-      if (positionedById.has(id)) {
+    for (const id of finalAnswer.supportingNodeIds) {
+      const support = byId.get(id);
+      if (
+        positionedById.has(id) &&
+        support &&
+        support.status !== "rejected" &&
+        support.status !== "superseded"
+      ) {
         edges.push({ from: id, to: finalId, kind: "final" });
       }
     }

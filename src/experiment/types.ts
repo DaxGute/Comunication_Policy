@@ -13,7 +13,9 @@ import type {
   ReasoningIntent,
   ReasoningNode,
   ReasoningOperation,
+  ReasoningSubject,
 } from "../reasoning/types";
+import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
 import type { TranscriptProtocol } from "./transcriptProtocol";
 
 export type { ModelUsage, ReasoningEffort, TranscriptProtocol };
@@ -110,6 +112,10 @@ export type ProblemConversation = {
    */
   reasoningNodes?: ReasoningNode[];
   reasoningEvents?: ReasoningEvent[];
+  /** Stable task-defined issue anchors used by new reasoning graphs. */
+  reasoningSubjects?: ReasoningSubject[];
+  /** Deterministic graph-quality measurements computed when the problem ends. */
+  reasoningDiagnostics?: ReasoningGraphDiagnostics;
   stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
   /**
    * Set while this problem is mid-run (streaming into the inspector).

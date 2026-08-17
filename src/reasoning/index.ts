@@ -7,9 +7,14 @@ export {
   REASONING_OPERATION_TYPES,
 } from "./types";
 export type {
+  AtomicReasoningNode,
+  AtomicReasoningNodeType,
   FinalAnswerSupport,
+  FinalAnswerNode,
   ParsedAgentTurn,
   ReasoningEvent,
+  ReasoningEdge,
+  ReasoningEdgeType,
   ReasoningGraph,
   ReasoningIntent,
   ReasoningIntentAction,
@@ -18,6 +23,7 @@ export type {
   ReasoningNodeType,
   ReasoningOperation,
   ReasoningOperationType,
+  ReasoningSubject,
 } from "./types";
 export {
   applyReasoningIntents,
@@ -45,6 +51,11 @@ export {
 } from "./queries";
 export { parseAgentTurn, parseReasoningIntent } from "./parseTurn";
 export { formatReasoningState, reasoningStateUserMessage } from "./renderState";
+export { computeReasoningGraphDiagnostics } from "./diagnostics";
+export type {
+  AtomicityWarning,
+  ReasoningGraphDiagnostics,
+} from "./diagnostics";
 export { layoutReasoningGraph } from "./layout";
 export type {
   GraphLayout,
@@ -58,5 +69,6 @@ export {
   parseReasoningEvent,
   parseReasoningNode,
   parseReasoningOperation,
+  parseReasoningSubject,
 } from "./parseStored";
 export { allocateReasoningId, isValidReasoningId, nextReasoningId } from "./ids";

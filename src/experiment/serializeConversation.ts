@@ -13,7 +13,15 @@ import {
   type TranscriptProtocol,
 } from "./transcriptProtocol";
 import type { ExperimentRun, ProblemConversation } from "./types";
-import type { ReasoningEvent, ReasoningIntent, ReasoningNode, ReasoningOperation } from "../reasoning/types";
+import type {
+  ReasoningEdge,
+  ReasoningEvent,
+  ReasoningIntent,
+  ReasoningNode,
+  ReasoningOperation,
+  ReasoningSubject,
+} from "../reasoning/types";
+import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
 import { hydrateReasoningGraph } from "../reasoning";
 
 export type ConversationExportMessage = {
@@ -71,7 +79,7 @@ export type ConversationExportEfficiency = {
 };
 
 export type ConversationExport = {
-  schema_version: "1.4";
+  schema_version: "1.5";
   run_id: string;
   conversation_id: string;
   problem: {
@@ -104,11 +112,15 @@ export type ConversationExport = {
     final_answer?: string;
     supporting_node_ids?: string[];
     supporting_node_errors?: string[];
+    final_support_coverage?: number;
     status: ProblemConversation["stoppedReason"];
   };
   reasoning?: {
+    subjects: ReasoningSubject[];
     nodes: ReasoningNode[];
+    edges: ReasoningEdge[];
     events: ReasoningEvent[];
+    diagnostics?: ReasoningGraphDiagnostics;
   };
   usage: {
     conversation?: {
@@ -181,7 +193,7 @@ export function serializeConversation(
   const runModel = resolveRunModel(run.config);
 
   return {
-    schema_version: "1.4",
+    schema_version: "1.5",
     run_id: run.id,
     conversation_id: conversation.problemId,
     problem: {
@@ -282,19 +294,30 @@ export function serializeConversation(
             supporting_node_errors: conversation.finalAnswerSupport.errors,
           }
         : {}),
+      ...(conversation.reasoningDiagnostics?.finalSupportCoverage !== undefined
+        ? {
+            final_support_coverage:
+              conversation.reasoningDiagnostics.finalSupportCoverage,
+          }
+        : {}),
       status: conversation.stoppedReason,
     },
-    ...(Array.isArray(conversation.reasoningNodes) ||
+    ...(Array.isArray(conversation.reasoningSubjects) ||
+    Array.isArray(conversation.reasoningNodes) ||
     Array.isArray(conversation.reasoningEvents)
       ? {
           reasoning: (() => {
             const graph = hydrateReasoningGraph({
+              reasoningSubjects: conversation.reasoningSubjects,
               reasoningNodes: conversation.reasoningNodes,
               reasoningEvents: conversation.reasoningEvents,
             });
             return {
+              subjects: graph.subjects ?? [],
               nodes: graph.nodes,
+              edges: graph.edges ?? [],
               events: graph.events,
+              diagnostics: conversation.reasoningDiagnostics,
             };
           })(),
         }
@@ -351,7 +374,7 @@ export function serializeConversation(
 }
 
 export type RunExport = {
-  schema_version: "1.4";
+  schema_version: "1.5";
   run_id: string;
   title?: string;
   created_at: string;
@@ -384,7 +407,7 @@ export type RunExport = {
  */
 export function serializeRun(run: ExperimentRun): RunExport {
   return {
-    schema_version: "1.4",
+    schema_version: "1.5",
     run_id: run.id,
     ...(run.title ? { title: run.title } : {}),
     created_at: run.createdAt,

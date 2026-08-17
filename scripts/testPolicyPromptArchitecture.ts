@@ -77,7 +77,18 @@ assert.equal(
 assertNoNumericLeak(prompts.agentA, "Agent A system");
 assertNoNumericLeak(prompts.agentB, "Agent B system");
 assert.doesNotMatch(prompts.agentA, /tentative proposals|fair hearing|argue on the merits/i);
-assert.doesNotMatch(prompts.agentA, /crossword|dilemma|proof/i);
+assert.doesNotMatch(
+  [
+    layersA.identity,
+    layersA.task,
+    layersA.policy,
+    layersA.protocol,
+  ].join("\n"),
+  /crossword|dilemma|proof/i,
+);
+assert.match(layersA.reasoning, /Crossword — BAD/);
+assert.match(layersA.reasoning, /Moral reasoning — BAD/);
+assert.match(layersA.reasoning, /Proof — BAD/);
 
 const compiledTwice = compileCommunicationPolicy(baseline);
 assert.equal(

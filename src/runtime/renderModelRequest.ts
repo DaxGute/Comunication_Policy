@@ -229,6 +229,7 @@ export function resolveModelRequest(args: {
   const reasoningGraph = hasReasoning
     ? snapshotBeforeTurn(
         {
+          subjects: args.conversation.reasoningSubjects,
           nodes: [],
           events: args.conversation.reasoningEvents ?? [],
         },

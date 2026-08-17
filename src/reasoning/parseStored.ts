@@ -4,13 +4,15 @@ import {
   REASONING_NODE_STATUSES,
   REASONING_NODE_TYPES,
   REASONING_OPERATION_TYPES,
+  type AtomicReasoningNodeType,
+  type FinalAnswerNode,
   type ReasoningEvent,
   type ReasoningGraph,
   type ReasoningIntent,
   type ReasoningNode,
   type ReasoningNodeStatus,
-  type ReasoningNodeType,
   type ReasoningOperation,
+  type ReasoningSubject,
 } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -21,7 +23,7 @@ function isAgentId(value: unknown): value is AgentId {
   return value === "agent_a" || value === "agent_b";
 }
 
-function isNodeType(value: unknown): value is ReasoningNodeType {
+function isNodeType(value: unknown): value is AtomicReasoningNodeType {
   return (
     typeof value === "string" &&
     (REASONING_NODE_TYPES as readonly string[]).includes(value)
@@ -40,14 +42,56 @@ function asStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+export function parseReasoningSubject(
+  raw: unknown,
+): ReasoningSubject | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (typeof raw.id !== "string" || !raw.id.trim()) return undefined;
+  if (typeof raw.label !== "string" || !raw.label.trim()) return undefined;
+  if (raw.source !== "task") return undefined;
+  return {
+    id: raw.id,
+    label: raw.label,
+    description:
+      typeof raw.description === "string" ? raw.description : undefined,
+    source: "task",
+    metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
+  };
+}
+
 export function parseReasoningNode(raw: unknown): ReasoningNode | undefined {
   if (!isRecord(raw)) return undefined;
-  if (typeof raw.id !== "string" || !isNodeType(raw.type)) return undefined;
+  if (typeof raw.id !== "string") return undefined;
   if (typeof raw.text !== "string") return undefined;
   if (!isAgentId(raw.createdBy)) return undefined;
   if (typeof raw.createdAtTurn !== "number" || !Number.isFinite(raw.createdAtTurn)) {
     return undefined;
   }
+  if (raw.type === "final_answer") {
+    if (
+      raw.id !== "__final_answer__" ||
+      typeof raw.sourceMessageId !== "string" ||
+      typeof raw.sourceEventId !== "string"
+    ) {
+      return undefined;
+    }
+    const finalNode: FinalAnswerNode = {
+      id: "__final_answer__",
+      type: "final_answer",
+      text: raw.text,
+      createdBy: raw.createdBy,
+      createdAtTurn: Math.max(0, Math.round(raw.createdAtTurn)),
+      sourceMessageId: raw.sourceMessageId,
+      sourceEventId: raw.sourceEventId,
+      status: isStatus(raw.status) ? raw.status : "accepted",
+      parents: asStringArray(raw.parents ?? raw.supportingNodeIds),
+      dependencies: [],
+      supportingNodeIds: asStringArray(raw.supportingNodeIds ?? raw.parents),
+      supportErrors: asStringArray(raw.supportErrors),
+    };
+    return finalNode;
+  }
+  if (!isNodeType(raw.type)) return undefined;
   return {
     id: raw.id,
     type: raw.type,
@@ -63,6 +107,7 @@ export function parseReasoningNode(raw: unknown): ReasoningNode | undefined {
     status: isStatus(raw.status) ? raw.status : "open",
     parents: asStringArray(raw.parents),
     dependencies: asStringArray(raw.dependencies),
+    subjectId: typeof raw.subjectId === "string" ? raw.subjectId : undefined,
     supersedes: typeof raw.supersedes === "string" ? raw.supersedes : undefined,
     metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
   };
@@ -75,7 +120,7 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
   }
   if (raw.type === "create") {
     const node = parseReasoningNode(raw.node);
-    if (!node) return undefined;
+    if (!node || node.type === "final_answer") return undefined;
     return { type: "create", node };
   }
   if (raw.type === "protocol_failure") {
@@ -103,10 +148,25 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
       supportingNodeIds: asStringArray(raw.supportingNodeIds),
     };
   }
-  if (!isAgentId(raw.actor) || typeof raw.targetId !== "string") return undefined;
+  if (!isAgentId(raw.actor)) return undefined;
+  if (raw.type === "support" || raw.type === "challenge") {
+    const targetNodeId =
+      typeof raw.targetNodeId === "string" ? raw.targetNodeId : raw.targetId;
+    if (typeof targetNodeId !== "string") return undefined;
+    return {
+      type: raw.type,
+      actor: raw.actor,
+      sourceNodeId:
+        typeof raw.sourceNodeId === "string" ? raw.sourceNodeId : undefined,
+      targetNodeId,
+      targetId: targetNodeId,
+      reason: typeof raw.reason === "string" ? raw.reason : undefined,
+    };
+  }
+  if (typeof raw.targetId !== "string") return undefined;
   if (raw.type === "revise") {
     const replacement = parseReasoningNode(raw.replacement);
-    if (!replacement) return undefined;
+    if (!replacement || replacement.type === "final_answer") return undefined;
     return {
       type: "revise",
       actor: raw.actor,
@@ -115,10 +175,10 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
       reason: typeof raw.reason === "string" ? raw.reason : undefined,
     };
   }
-  if (raw.type === "support" || raw.type === "challenge" || raw.type === "reject") {
+  if (raw.type === "reject") {
     if (typeof raw.reason !== "string") return undefined;
     return {
-      type: raw.type,
+      type: "reject",
       actor: raw.actor,
       targetId: raw.targetId,
       reason: raw.reason,
@@ -150,6 +210,7 @@ function intentFromOperation(operation: ReasoningOperation): ReasoningIntent {
       confidence: operation.node.confidence,
       parents: operation.node.parents,
       dependencies: operation.node.dependencies,
+      subjectId: operation.node.subjectId,
     };
   }
   if (operation.type === "revise") {
@@ -161,6 +222,7 @@ function intentFromOperation(operation: ReasoningOperation): ReasoningIntent {
       confidence: operation.replacement.confidence,
       parents: operation.replacement.parents,
       dependencies: operation.replacement.dependencies,
+      subjectId: operation.replacement.subjectId,
       reason: operation.reason,
     };
   }
@@ -179,6 +241,12 @@ function intentFromOperation(operation: ReasoningOperation): ReasoningIntent {
   }
   return {
     action: operation.type,
+    ...((operation.type === "support" || operation.type === "challenge")
+      ? {
+          sourceNodeId: operation.sourceNodeId,
+          targetNodeId: operation.targetNodeId,
+        }
+      : {}),
     targetId: operation.targetId,
     reason: "reason" in operation ? operation.reason : undefined,
   };
@@ -214,15 +282,24 @@ export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
 }
 
 export function parseReasoningGraph(raw: {
+  reasoningSubjects?: unknown;
   reasoningNodes?: unknown;
   reasoningEvents?: unknown;
 }): ReasoningGraph | undefined {
+  const subjectsRaw = Array.isArray(raw.reasoningSubjects)
+    ? raw.reasoningSubjects
+    : undefined;
   const nodesRaw = Array.isArray(raw.reasoningNodes) ? raw.reasoningNodes : undefined;
   const eventsRaw = Array.isArray(raw.reasoningEvents)
     ? raw.reasoningEvents
     : undefined;
-  if (!nodesRaw && !eventsRaw) return undefined;
+  if (!subjectsRaw && !nodesRaw && !eventsRaw) return undefined;
   return {
+    subjects: subjectsRaw
+      ? subjectsRaw
+          .map(parseReasoningSubject)
+          .filter((subject): subject is ReasoningSubject => Boolean(subject))
+      : [],
     nodes: (nodesRaw ?? [])
       .map(parseReasoningNode)
       .filter((n): n is ReasoningNode => Boolean(n)),

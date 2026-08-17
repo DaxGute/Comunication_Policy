@@ -14,6 +14,7 @@ export function snapshotBeforeTurn(
 ): ReasoningGraph {
   return materializeGraph(
     graph.events.filter((event) => event.turnIndex < turn),
+    graph.subjects,
   );
 }
 
@@ -46,6 +47,12 @@ export function nodeIdsTouchedByMessage(
     else if (op.type === "revise") {
       ids.add(op.targetId);
       ids.add(op.replacement.id);
+    } else if (op.type === "support" || op.type === "challenge") {
+      if (op.sourceNodeId) ids.add(op.sourceNodeId);
+      ids.add(op.targetNodeId);
+    } else if (op.type === "final_answer") {
+      ids.add("__final_answer__");
+      for (const id of op.supportingNodeIds) ids.add(id);
     } else if ("targetId" in op && op.targetId) {
       ids.add(op.targetId);
     }
@@ -62,6 +69,14 @@ export function eventsForNode(
     if (op.type === "create") return op.node.id === nodeId;
     if (op.type === "revise") {
       return op.targetId === nodeId || op.replacement.id === nodeId;
+    }
+    if (op.type === "support" || op.type === "challenge") {
+      return op.sourceNodeId === nodeId || op.targetNodeId === nodeId;
+    }
+    if (op.type === "final_answer") {
+      return (
+        nodeId === "__final_answer__" || op.supportingNodeIds.includes(nodeId)
+      );
     }
     if ("targetId" in op) return op.targetId === nodeId;
     return false;

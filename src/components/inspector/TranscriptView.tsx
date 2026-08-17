@@ -256,7 +256,7 @@ export function TranscriptView({
           className={tab === "graph" ? "is-active" : undefined}
           onClick={() => onTabChange("graph")}
         >
-          Proposal Graph
+          Reasoning Graph
         </button>
       </div>
 
@@ -315,6 +315,7 @@ export function TranscriptView({
                     message.agentId === "agent_a" ? "Agent A" : "Agent B";
                   const stats = messageStatsLabel(message);
                   const graph = hydrateReasoningGraph({
+                    reasoningSubjects: conversation.reasoningSubjects,
                     reasoningNodes: conversation.reasoningNodes,
                     reasoningEvents: conversation.reasoningEvents,
                   });

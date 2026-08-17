@@ -12,8 +12,10 @@ import type { ExperimentRun } from "../src/experiment/types";
 import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults";
 import { normalizeRunConfig } from "../src/experiment/configAccessors";
 import type { Problem } from "../src/problems/types";
+import { reasoningSubjectsForProblem } from "../src/problems/reasoningSubjects";
 import {
   applyReasoningIntents,
+  computeReasoningGraphDiagnostics,
   emptyReasoningGraph,
   hasStructuredReasoning,
   hydrateReasoningGraph,
@@ -90,7 +92,135 @@ function createProposal(
   assert.equal(p1?.status, "superseded");
   assert.equal(p2?.text, "4 Across is EON");
   assert.equal(p2?.supersedes, "P1");
-  assert.ok(p2?.parents.includes("P1"));
+  assert.deepEqual(p2?.parents, []);
+  assert.equal(
+    revised.graph.edges?.some(
+      (edge) =>
+        edge.type === "revises" &&
+        edge.sourceNodeId === "P2" &&
+        edge.targetNodeId === "P1",
+    ),
+    true,
+  );
+}
+
+{
+  const subjects = [
+    {
+      id: "crossword:across:1",
+      label: "Across 1",
+      description: "Top of a suit?",
+      source: "task" as const,
+    },
+  ];
+  const first = apply(
+    emptyReasoningGraph(subjects),
+    [
+      {
+        action: "create",
+        nodeType: "claim",
+        text: "Across 1 = SITE",
+        subjectId: "crossword:across:1",
+      },
+    ],
+    "agent_a",
+    1,
+  );
+  const second = apply(
+    first.graph,
+    [
+      {
+        action: "create",
+        nodeType: "claim",
+        text: "Across 1 = SITH",
+        subjectId: "crossword:across:1",
+      },
+    ],
+    "agent_b",
+    3,
+  );
+  assert.deepEqual(
+    second.graph.nodes.map((node) =>
+      node.type === "final_answer" ? undefined : node.subjectId,
+    ),
+    ["crossword:across:1", "crossword:across:1"],
+  );
+  assert.equal(
+    second.graph.edges?.filter((edge) => edge.type === "answers").length,
+    2,
+  );
+  assert.equal(
+    second.graph.edges?.some((edge) => edge.type === "revises"),
+    false,
+  );
+  const layout = layoutReasoningGraph(second.graph);
+  const c1 = layout.nodes.find((node) => node.id === "C1")!;
+  const c2 = layout.nodes.find((node) => node.id === "C2")!;
+  assert.equal(c1.x + c1.width / 2, c2.x + c2.width / 2);
+  assert.ok(c1.y < c2.y);
+  assert.equal(
+    layout.nodes.some(
+      (node) =>
+        node.id === "crossword:across:1" &&
+        node.node.metadata?.taskDefined === true,
+    ),
+    true,
+  );
+  const state = formatReasoningState(second.graph);
+  assert.match(state, /AVAILABLE ISSUES/);
+  assert.match(state, /crossword:across:1 — Across 1/);
+  assert.match(state, /C1 \[Agent A\] claim/);
+  assert.match(state, /C2 \[Agent B\] claim/);
+
+  const spoofed = apply(
+    second.graph,
+    [
+      {
+        action: "create",
+        nodeType: "claim",
+        text: "Unknown answer",
+        subjectId: "crossword:down:99",
+      },
+    ],
+    "agent_a",
+    4,
+  );
+  assert.equal(spoofed.events.at(-1)?.accepted, false);
+  assert.match(spoofed.events.at(-1)?.errors.join(" ") ?? "", /unknown issue/);
+}
+
+{
+  const emergent = apply(emptyReasoningGraph(), [
+    {
+      action: "create",
+      nodeType: "issue",
+      text: "Is f continuous?",
+      localId: "continuity",
+    },
+    {
+      action: "create",
+      nodeType: "claim",
+      text: "f is continuous",
+      subjectId: "continuity",
+    },
+  ]);
+  assert.equal(emergent.events.every((event) => event.accepted), true);
+  assert.equal(
+    emergent.graph.nodes.find((node) => node.id === "C1")?.type ===
+      "final_answer"
+      ? undefined
+      : emergent.graph.nodes.find((node) => node.id === "C1")?.subjectId,
+    "I1",
+  );
+  assert.equal(
+    emergent.graph.edges?.some(
+      (edge) =>
+        edge.type === "answers" &&
+        edge.sourceNodeId === "C1" &&
+        edge.targetNodeId === "I1",
+    ),
+    true,
+  );
 }
 
 {
@@ -116,6 +246,15 @@ function createProposal(
     5,
   );
   const layout = layoutReasoningGraph(turn5.graph);
+  assert.equal(
+    turn2.graph.edges?.some(
+      (edge) =>
+        edge.type === "supports" &&
+        edge.sourceNodeId === "P1" &&
+        edge.targetNodeId === "P2",
+    ),
+    false,
+  );
   const at = (id: string) => layout.nodes.find((node) => node.id === id)!;
 
   assert.ok(at("P1").y < at("P2").y);
@@ -228,6 +367,15 @@ function createProposal(
     ["P2"],
   );
   assert.equal(chained.graph.nodes.find((n) => n.id === "P3")?.status, "unresolved");
+  assert.equal(
+    chained.graph.edges?.some(
+      (edge) =>
+        edge.type === "depends_on" &&
+        edge.sourceNodeId === "P3" &&
+        edge.targetNodeId === "P2",
+    ),
+    true,
+  );
 }
 
 {
@@ -275,7 +423,8 @@ function createProposal(
   });
   assert.equal(failed.events[0]?.operation.type, "protocol_failure");
   assert.equal(failed.events[0]?.accepted, false);
-  assert.equal(failed.graph.nodes.length, 0);
+  assert.equal(failed.graph.nodes.length, 1);
+  assert.equal(failed.graph.nodes[0]?.type, "final_answer");
 }
 
 {
@@ -312,12 +461,182 @@ function createProposal(
 }
 
 {
+  const parsed = parseAgentTurn(
+    JSON.stringify({
+      message: "Atomic graph",
+      reasoningIntents: [
+        { action: "evidence", text: "Observed datum", localId: "datum" },
+        { action: "claim", text: "Atomic conclusion", localId: "conclusion" },
+        {
+          action: "support",
+          sourceNodeId: "datum",
+          targetNodeId: "conclusion",
+          reason: "The datum bears on the conclusion",
+        },
+      ],
+    }),
+    "agent_a",
+    1,
+  );
+  assert.equal(parsed.intents[0]?.action, "create");
+  assert.equal(
+    parsed.intents[0]?.action === "create" ? parsed.intents[0].nodeType : "",
+    "evidence",
+  );
+  const applied = apply(emptyReasoningGraph(), parsed.intents);
+  assert.equal(applied.graph.edges?.length, 1);
+  assert.deepEqual(
+    {
+      type: applied.graph.edges?.[0]?.type,
+      source: applied.graph.edges?.[0]?.sourceNodeId,
+      target: applied.graph.edges?.[0]?.targetNodeId,
+      event: applied.graph.edges?.[0]?.sourceEventId,
+    },
+    { type: "supports", source: "E1", target: "C1", event: "rev-3" },
+  );
+
+  const invalidSource = apply(
+    applied.graph,
+    [
+      {
+        action: "challenge",
+        sourceNodeId: "C404",
+        targetNodeId: "C1",
+      },
+    ],
+    "agent_b",
+    2,
+  );
+  assert.equal(invalidSource.events.at(-1)?.accepted, false);
+  assert.match(invalidSource.events.at(-1)?.errors.join(" ") ?? "", /source.*C404/);
+
+  const legacyStance = apply(
+    applied.graph,
+    [{ action: "support", targetId: "C1", reason: "legacy stance" }],
+    "agent_b",
+    2,
+  );
+  assert.equal(legacyStance.events.at(-1)?.accepted, true);
+  assert.equal(legacyStance.graph.edges?.length, 1);
+  assert.deepEqual(
+    materializeGraph(legacyStance.graph.events).edges,
+    legacyStance.graph.edges,
+  );
+}
+
+{
+  const many = Array.from({ length: 66 }, (_, index) =>
+    createProposal(`atomic proposal ${index + 1}`),
+  );
+  const capped = apply(emptyReasoningGraph(), many);
+  assert.equal(capped.graph.nodes.length, 64);
+  assert.equal(capped.events.length, 66);
+  assert.match(capped.events[64]?.errors.join(" ") ?? "", /per-turn cap of 64/);
+  assert.match(capped.events[65]?.errors.join(" ") ?? "", /per-turn cap of 64/);
+}
+
+{
+  const created = apply(
+    emptyReasoningGraph(),
+    [
+      {
+        action: "create",
+        nodeType: "evidence",
+        text: "Crossing requires N",
+      },
+      {
+        action: "create",
+        nodeType: "claim",
+        text: "Across 1 = EON",
+      },
+      {
+        action: "create",
+        nodeType: "claim",
+        text: "Unrelated same-turn claim",
+      },
+    ],
+    "agent_a",
+    1,
+  );
+  const related = apply(
+    created.graph,
+    [
+      {
+        action: "support",
+        sourceNodeId: "E1",
+        targetNodeId: "C1",
+      },
+      {
+        action: "challenge",
+        sourceNodeId: "C2",
+        targetNodeId: "C1",
+      },
+    ],
+    "agent_b",
+    3,
+  );
+  assert.equal(
+    related.graph.edges?.some(
+      (edge) =>
+        edge.type === "supports" &&
+        edge.sourceNodeId === "E1" &&
+        edge.targetNodeId === "C1",
+    ),
+    true,
+  );
+  assert.equal(
+    related.graph.edges?.some(
+      (edge) =>
+        edge.type === "challenges" &&
+        edge.sourceNodeId === "C2" &&
+        edge.targetNodeId === "C1",
+    ),
+    true,
+  );
+  assert.equal(
+    created.graph.edges?.some(
+      (edge) => edge.sourceNodeId === "C1" || edge.targetNodeId === "C1",
+    ),
+    false,
+  );
+  const consecutive = apply(
+    created.graph,
+    [createProposal("Unrelated next-turn proposal")],
+    "agent_b",
+    2,
+  );
+  assert.equal(consecutive.graph.edges?.length, 0);
+}
+
+{
   const created = apply(emptyReasoningGraph(), [createProposal("live claim")]);
   const text = formatReasoningState(created.graph);
   assert.match(text, /CURRENT REASONING STATE/);
   assert.match(text, /P1/);
   assert.match(text, /Agent A proposed/);
   assert.doesNotMatch(text, /trustA|authority|familiarity/i);
+}
+
+{
+  const first = apply(
+    emptyReasoningGraph(),
+    Array.from({ length: 64 }, (_, index) =>
+      createProposal(`older atomic claim ${index + 1}`),
+    ),
+    "agent_a",
+    1,
+  );
+  const recent = apply(
+    first.graph,
+    Array.from({ length: 10 }, (_, index) =>
+      createProposal(`recent atomic claim ${index + 1}`),
+    ),
+    "agent_b",
+    2,
+  );
+  const state = formatReasoningState(recent.graph);
+  assert.match(state, /P74/);
+  assert.match(state, /10 more nodes omitted/);
 }
 
 {
@@ -405,6 +724,49 @@ function createProposal(
 }
 
 {
+  const base = {
+    type: "claim" as const,
+    createdBy: "agent_a" as const,
+    status: "open" as const,
+    parents: [],
+    dependencies: [],
+  };
+  const legacy: ReasoningGraph = {
+    nodes: [
+      { ...base, id: "C1", text: "old", createdAtTurn: 1 },
+      {
+        ...base,
+        id: "C2",
+        text: "new",
+        createdAtTurn: 2,
+        dependencies: ["C1"],
+        supersedes: "C1",
+      },
+    ],
+    events: [],
+  };
+  const fallback = layoutReasoningGraph(legacy);
+  assert.equal(
+    fallback.edges.some(
+      (edge) =>
+        edge.kind === "dependency" &&
+        edge.from === "C2" &&
+        edge.to === "C1",
+    ),
+    true,
+  );
+  assert.equal(
+    fallback.edges.some(
+      (edge) =>
+        edge.kind === "supersedes" &&
+        edge.from === "C2" &&
+        edge.to === "C1",
+    ),
+    true,
+  );
+}
+
+{
   const created = apply(emptyReasoningGraph(), [createProposal("answer")]);
   const unknownSupport = apply(created.graph, [], "agent_a", 2, {
     finalAnswer: { text: "42", supportingNodeIds: ["P88"] },
@@ -415,6 +777,18 @@ function createProposal(
     "Supporting-node linkage invalid: P88 does not exist",
   );
   assert.equal(unknownSupport.events.at(-1)?.accepted, false);
+  const finalNode = unknownSupport.graph.nodes.find(
+    (node) => node.type === "final_answer",
+  );
+  assert.equal(finalNode?.sourceEventId, unknownSupport.events.at(-1)?.id);
+  assert.deepEqual(
+    finalNode?.type === "final_answer" ? finalNode.supportingNodeIds : [],
+    ["P88"],
+  );
+  assert.match(
+    finalNode?.type === "final_answer" ? finalNode.supportErrors.join(" ") : "",
+    /P88 does not exist/,
+  );
 
   const superseded = apply(
     created.graph,
@@ -437,6 +811,63 @@ function createProposal(
     finalAnswer: { text: "x", supportingNodeIds: ["P1"] },
   });
   assert.match(rejectedLink.finalAnswerSupport?.errors.join(" ") ?? "", /rejected/);
+}
+
+{
+  const atomic = apply(emptyReasoningGraph(), [
+    {
+      action: "create",
+      nodeType: "proposal",
+      text: "1A = HUT",
+      localId: "oneAcross",
+    },
+    {
+      action: "create",
+      nodeType: "proposal",
+      text: "3A = MARC; 5A = SEE; 7A = TEN",
+    },
+    {
+      action: "create",
+      nodeType: "evidence",
+      text: "2D requires U at the crossing",
+      localId: "crossing",
+    },
+    {
+      action: "support",
+      sourceNodeId: "crossing",
+      targetNodeId: "oneAcross",
+    },
+  ]);
+  const finalized = apply(atomic.graph, [], "agent_a", 3, {
+    finalAnswer: {
+      text: "ACROSS\n1: HUT\n3: MARC",
+      supportingNodeIds: ["P1"],
+    },
+  });
+  const diagnostics = computeReasoningGraphDiagnostics(finalized.graph, {
+    turnCount: 3,
+    finalAnswer: "ACROSS\n1: HUT\n3: MARC",
+  });
+  assert.equal(diagnostics.evidenceCount, 1);
+  assert.equal(diagnostics.atomicityWarningCount, 1);
+  assert.equal(diagnostics.relationshipCount, 1);
+  assert.equal(diagnostics.finalSupportingNodeCount, 1);
+  assert.equal(diagnostics.finalSupportCoverage, 0.5);
+
+  const layout = layoutReasoningGraph(finalized.graph, { throughTurn: 3 });
+  const final = layout.nodes.find((node) => node.id === "__final_answer__");
+  const proposal = layout.nodes.find((node) => node.id === "P1");
+  assert.equal(final?.turnIndex, 3);
+  assert.ok((final?.y ?? 0) > (proposal?.y ?? 0));
+  assert.equal(
+    layout.edges.some(
+      (edge) =>
+        edge.kind === "final" &&
+        edge.from === "P1" &&
+        edge.to === "__final_answer__",
+    ),
+    true,
+  );
 }
 
 {
@@ -476,6 +907,11 @@ function createProposal(
   );
   assert.equal(low.reasoning, high.reasoning);
   assert.match(low.reasoning, /reasoningIntents/);
+  assert.match(low.reasoning, /ATOMICITY IS REQUIRED/);
+  assert.match(low.reasoning, /Crossword — BAD/);
+  assert.match(low.reasoning, /Moral reasoning — BAD/);
+  assert.match(low.reasoning, /Proof — BAD/);
+  assert.match(low.reasoning, /challenge` node type exists only for old stored data/);
   assert.doesNotMatch(low.reasoning, /One agent's accept does not globally settle/);
   assert.notEqual(low.trust, high.trust);
 }
@@ -517,6 +953,52 @@ class JsonClient implements ModelClient {
     };
     return { content: JSON.stringify(payload), provider: "mock" };
   }
+}
+
+{
+  const subjects = reasoningSubjectsForProblem({
+    id: "crossword-subject-test",
+    category: "crossword",
+    title: "Subject test",
+    text: "Puzzle",
+    kind: "crossword_puzzle",
+    crossword: {
+      width: 3,
+      height: 1,
+      difficulty: "test",
+      category: "test",
+      grid: ["..."],
+      solution: ["EON"],
+      source: "crosswordbench",
+      sourceId: 1,
+      clues: [
+        {
+          number: 1,
+          direction: "across",
+          clue: "Long period",
+          row: 0,
+          col: 0,
+          length: 3,
+          answer: "EON",
+        },
+      ],
+    },
+  });
+  assert.deepEqual(
+    subjects.map(({ id, label, description }) => ({
+      id,
+      label,
+      description,
+    })),
+    [
+      {
+        id: "crossword:across:1",
+        label: "Across 1",
+        description: "Long period",
+      },
+    ],
+  );
+  assert.equal(JSON.stringify(subjects).includes("EON"), false);
 }
 
 const policy = createCommunicationPolicy({
@@ -608,9 +1090,11 @@ const run: ExperimentRun = {
   status: "completed",
 };
 const exported = serializeConversation(left, run);
-assert.equal(exported.schema_version, "1.4");
+assert.equal(exported.schema_version, "1.5");
 assert.ok(exported.reasoning);
 assert.equal(exported.reasoning.nodes.length, left.reasoningNodes?.length);
+assert.equal(exported.reasoning.edges.length, 1);
+assert.ok(exported.reasoning.diagnostics);
 assert.ok(exported.messages[0]?.raw_content);
 assert.deepEqual(exported.result.supporting_node_ids, ["P1"]);
 

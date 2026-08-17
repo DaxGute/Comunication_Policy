@@ -14,6 +14,7 @@ import type { ProblemConversation, RunConfig } from "../experiment/types";
 import { calculateModelCost } from "../models/cost";
 import { normalizeUsage, sumUsage } from "../models/usage";
 import type { Problem } from "../problems/types";
+import { computeReasoningGraphDiagnostics } from "../reasoning";
 import {
   runInteractionLoop,
   type InteractionLoopCallbacks,
@@ -81,8 +82,14 @@ export async function runProblem(args: {
     messages: result.messages,
     finalAnswer: result.finalAnswer,
     finalAnswerSupport: result.finalAnswerSupport,
+    reasoningSubjects: result.reasoning.subjects,
     reasoningNodes: result.reasoning.nodes,
     reasoningEvents: result.reasoning.events,
+    reasoningDiagnostics: computeReasoningGraphDiagnostics(result.reasoning, {
+      turnCount: result.messages.length,
+      finalAnswer: result.finalAnswer,
+      crosswordClues: problem.crossword?.clues,
+    }),
     stoppedReason: result.stoppedReason,
     error: result.error,
     conversationUsage: hasUsage ? conversationUsage : undefined,
