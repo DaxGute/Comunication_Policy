@@ -69,11 +69,44 @@ export { compileReasoningMoves, resolveSubjectAlias, resolveClaimTarget } from "
 export { normalizeReasoningMove } from "./normalize";
 export { seedGraphForProblem, seedTaskReasoningGraph } from "./seed";
 export {
+  DEFAULT_CLOSURE_STAGNANT_TURNS,
+  DEFAULT_CYCLE_WINDOW_TURNS,
+  DEFAULT_DEVELOPED_COVERAGE,
+  DEFAULT_FINALIZATION_TURNS,
+  DEFAULT_LOCAL_LOOP_TURNS,
   DEFAULT_STALL_FAIL_TURNS,
   DEFAULT_STALL_RECOVERY_TURNS,
+  NO_STATE_CHANGE_PREFIX,
   STRUCTURED_REASONING_MISSING_FEEDBACK,
   STRUCTURED_REASONING_STALL_FEEDBACK,
+  acceptedGraphMutations,
+  closureWarningFeedback,
+  eventChangedCanonicalState,
+  finalizationRequiredFeedback,
+  localLoopFeedback,
+  meaningfulStateMutations,
+  noStateChangeFeedback,
+  semanticStallFeedback,
+  stallWarningFeedback,
 } from "./stall";
+export type { StallInterventionKind, StallRecoveryPhase } from "./stall";
+export {
+  emptySolverProgressState,
+  genericSolverStateFingerprint,
+  reduceSolverProgress,
+  snapshotSolverProgress,
+  solutionIsDeveloped,
+  solutionQualityImproved,
+  solverSolutionQuality,
+  solverStateFingerprint,
+} from "./solverProgress";
+export type {
+  SolverProgressCounters,
+  SolverProgressSnapshot,
+  SolverProgressState,
+  SolverProgressTurnResult,
+  SolverSolutionQuality,
+} from "./solverProgress";
 export { auditReasoningProtocol } from "./protocolAudit";
 export type { ReasoningProtocolAudit } from "./protocolAudit";
 export { formatReasoningState, reasoningStateUserMessage } from "./renderState";

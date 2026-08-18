@@ -184,6 +184,16 @@ export function deriveIssueConvergenceStates(
       ...allClaims.map((claim) => claim.createdAtTurn),
       ...graph.events
         .filter((event) => {
+          if (event.stateChanged === false) return false;
+          if (
+            event.diagnostics?.some(
+              (item) =>
+                item === "no_state_change" ||
+                item.startsWith("no_state_change:"),
+            )
+          ) {
+            return false;
+          }
           const op = event.operation;
           if ("targetId" in op && allClaims.some((claim) => claim.id === op.targetId)) {
             return true;
@@ -265,6 +275,7 @@ export function deriveReasoningProgress(
   const semanticEvents = graph.events.filter(
     (event) =>
       event.accepted &&
+      event.stateChanged !== false &&
       ["support", "challenge", "revise"].includes(event.operation.type),
   );
   const repeatedClaimCount = graph.events.filter(

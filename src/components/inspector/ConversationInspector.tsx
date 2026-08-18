@@ -359,7 +359,7 @@ export function ConversationInspector({
                                   title={
                                     conversation.stoppedReason ===
                                     "reasoning_protocol_stalled"
-                                      ? "Structured reasoning stalled"
+                                      ? "Canonical solver state stalled"
                                       : "Reached max turns without finishing"
                                   }
                                 >

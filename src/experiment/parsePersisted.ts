@@ -12,7 +12,11 @@ import type {
 import { normalizeUsage, type ModelUsage } from "../models/usage";
 import type { ProblemCategory } from "../problems/types";
 import { normalizeRunConfig } from "./configAccessors";
-import { DEFAULT_RUN_CONFIG } from "./defaults";
+import {
+  DEFAULT_RUN_CONFIG,
+  MAX_INTERACTION_TURNS,
+  MIN_INTERACTION_TURNS,
+} from "./defaults";
 import { resolveTranscriptProtocol } from "./transcriptProtocol";
 import type {
   ConversationMessage,
@@ -88,7 +92,11 @@ export function parseRunConfig(raw: unknown): RunConfig | undefined {
       ...parsed,
       problemCategory: category as ProblemCategory,
       problemCount: clamp(Number(parsed.problemCount), 1, 150),
-      maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
+      maxTurns: clamp(
+        Number(parsed.maxTurns),
+        MIN_INTERACTION_TURNS,
+        MAX_INTERACTION_TURNS,
+      ),
       temperature: clamp(Number(parsed.temperature), 0, 2),
     },
     DEFAULT_RUN_CONFIG,

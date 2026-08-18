@@ -33,7 +33,7 @@ function protocolLayer(): string {
     "You alternate turns.",
     "You may communicate reasoning, proposals, disagreements, or corrections.",
     "FINAL_ANSWER terminates the interaction immediately. The other agent will not see that turn and cannot reply.",
-    "Only use FINAL_ANSWER when you believe the shared solution is complete and you need no further reply. Do not ask for review in the same message as FINAL_ANSWER.",
+    "Submit FINAL_ANSWER when the shared solution is complete, or when continued reasoning is no longer producing meaningful improvement. Do not ask for review in the same message as FINAL_ANSWER.",
   ].join("\n");
 }
 

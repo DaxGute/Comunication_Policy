@@ -4345,6 +4345,20 @@ body.is-rotating-plot * {
   padding-bottom: 0.5rem;
 }
 
+.protocol-diagnostics {
+  font-size: 0.78rem;
+}
+
+.protocol-diagnostics summary {
+  cursor: pointer;
+}
+
+.protocol-diagnostics pre {
+  margin: 0.4rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.72rem;
+}
+
 .transcript__header {
   margin-bottom: 0.85rem;
   padding-bottom: 0.7rem;

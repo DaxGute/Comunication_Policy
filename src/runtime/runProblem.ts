@@ -56,6 +56,8 @@ export async function runProblem(args: {
     maxTurns: config.maxTurns,
     stallRecoveryTurns: config.stallRecoveryTurns,
     stallFailTurns: config.stallFailTurns,
+    localLoopTurns: config.localLoopTurns,
+    cycleWindowTurns: config.cycleWindowTurns,
     reasoningEffort: config.runReasoningEffort,
     client,
     signal,
@@ -118,6 +120,41 @@ export async function runProblem(args: {
       issueStates,
       genericReadiness,
       progress,
+      protocolStallStreak: result.solverProgress?.unchangedStreak,
+      solverProgress: result.solverProgress
+        ? {
+            rawMutationCount: result.solverProgress.rawMutationCount,
+            meaningfulStateTransitionCount:
+              result.solverProgress.meaningfulStateTransitionCount,
+            noOpMutationCount: result.solverProgress.noOpMutationCount,
+            repeatedStateCount: result.solverProgress.repeatedStateCount,
+            cycleDetectionCount: result.solverProgress.cycleDetectionCount,
+            localLoopInterventions: result.solverProgress.localLoopInterventions,
+            diversificationInterventions:
+              result.solverProgress.diversificationInterventions,
+            fingerprintCount: result.solverProgress.fingerprintCount,
+            lastFingerprint: result.solverProgress.lastFingerprint,
+            semanticStallReason: result.solverProgress.semanticStallReason,
+            stallWarningCount: result.solverProgress.stallWarningCount,
+            closureWarningCount: result.solverProgress.closureWarningCount,
+            finalizationRequiredCount:
+              result.solverProgress.finalizationRequiredCount,
+            stallWarningTurn: result.solverProgress.stallWarningTurn,
+            stallWarningKind: result.solverProgress.stallWarningKind,
+            closureWarningTurn: result.solverProgress.closureWarningTurn,
+            finalizationRequiredTurn:
+              result.solverProgress.finalizationRequiredTurn,
+            recoveryTurnsBeforeFinalization:
+              result.solverProgress.recoveryTurnsBeforeFinalization,
+            progressResumedAfterWarning:
+              result.solverProgress.progressResumedAfterWarning,
+            finalAnswerAfterFinalization:
+              result.solverProgress.finalAnswerAfterFinalization,
+            terminatedAsProtocolStall:
+              result.solverProgress.terminatedAsProtocolStall,
+            phase: result.solverProgress.phase,
+          }
+        : undefined,
       task: taskReadiness
         ? {
             readiness: taskReadiness,

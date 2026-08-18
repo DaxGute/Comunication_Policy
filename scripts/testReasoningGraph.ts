@@ -365,8 +365,9 @@ function createProposal(
     "agent_b",
     2,
   );
-  assert.equal(dup.events.at(-1)?.accepted, false);
-  assert.match(dup.events.at(-1)?.errors.join(" ") ?? "", /duplicate of P1/);
+  assert.equal(dup.events.at(-1)?.accepted, true);
+  assert.equal(dup.events.at(-1)?.stateChanged, false);
+  assert.match(dup.events.at(-1)?.diagnostics?.join(" ") ?? "", /already the live candidate/);
   assert.equal(dup.graph.nodes.filter((n) => n.type === "proposal").length, 1);
 }
 

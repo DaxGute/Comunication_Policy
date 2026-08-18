@@ -132,10 +132,29 @@ function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] 
   if (ledger.liveCandidates.length === 0) {
     lines.push("(none)");
   } else {
+    if (ledger.currentCandidate) {
+      lines.push(`currentCandidate: ${ledger.currentCandidate}`);
+    }
     for (const candidate of ledger.liveCandidates) {
-      lines.push(`${candidate.nodeId}: ${candidate.normalizedAnswer ?? "(unparsed)"}`);
+      const answer = candidate.normalizedAnswer ?? "(unparsed)";
+      lines.push(`${answer}:`);
       lines.push(`  status: ${candidate.live ? "live" : candidate.status}`);
-      lines.push(`  proposed turn: ${candidate.createdAtTurn}`);
+      lines.push(`  node: ${candidate.nodeId}`);
+      lines.push(
+        `  firstProposed: turn ${candidate.firstProposedTurn ?? candidate.createdAtTurn}`,
+      );
+      if (candidate.lastTouchedTurn) {
+        lines.push(`  lastTouched: turn ${candidate.lastTouchedTurn}`);
+      }
+      if (candidate.proposedBy && candidate.proposedBy.length > 0) {
+        lines.push(`  proposedBy: ${candidate.proposedBy.join(", ")}`);
+      }
+      if (candidate.supportedBy && candidate.supportedBy.length > 0) {
+        lines.push(`  supportedBy: ${candidate.supportedBy.join(", ")}`);
+      }
+      if (candidate.challengedBy && candidate.challengedBy.length > 0) {
+        lines.push(`  challengedBy: ${candidate.challengedBy.join(", ")}`);
+      }
       lines.push(`  ${agentStatusLine(graph, candidate.nodeId)}`);
       lines.push(`  TASK COMPATIBILITY: ${candidate.compatibility}`);
       if (candidate.crossingDescription) {
@@ -143,19 +162,27 @@ function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] 
       }
       if (candidate.priorTurns && candidate.priorTurns.length > 0) {
         lines.push(
-          `  ${candidate.normalizedAnswer} was previously tried on turns ${candidate.priorTurns.join(" and ")}.`,
+          `  ${answer} was previously tried on turns ${candidate.priorTurns.join(" and ")}.`,
         );
       }
     }
   }
   if (ledger.previousCandidates.length > 0) {
-    lines.push("PREVIOUS CANDIDATES");
+    lines.push("PREVIOUSLY ATTEMPTED");
     for (const candidate of ledger.previousCandidates) {
       const outcome = candidate.priorOutcome ?? candidate.status;
+      const reason = candidate.rejectionReason
+        ? ` because ${candidate.rejectionReason}`
+        : "";
       lines.push(
-        `${candidate.nodeId}: ${candidate.normalizedAnswer ?? "(unparsed)"}`,
+        `${candidate.normalizedAnswer ?? "(unparsed)"} — ${outcome}${reason}`,
       );
-      lines.push(`  ${outcome} turn ${candidate.createdAtTurn}`);
+      lines.push(
+        `  firstProposed turn ${candidate.firstProposedTurn ?? candidate.createdAtTurn}` +
+          (candidate.lastTouchedTurn
+            ? `; lastTouched turn ${candidate.lastTouchedTurn}`
+            : ""),
+      );
     }
   }
   if (ledger.triedAnswers.length > 0) {

@@ -36,6 +36,96 @@ export function crosswordCandidateIdentity(
   return `${issueId}:${normalizeCrosswordCandidate(answer)}`;
 }
 
+const CROSSWORD_ANSWER_FORMAT = /^[A-Z]+$/;
+
+export function validateCrosswordCandidate(
+  problem: Problem,
+  node: {
+    type: string;
+    text: string;
+    subjectId?: string;
+    metadata?: Record<string, unknown>;
+  },
+): { ok: boolean; reasons?: string[] } {
+  if (node.type !== "claim" && node.type !== "proposal") {
+    return { ok: true };
+  }
+  if (!node.subjectId) {
+    return { ok: false, reasons: ["crossword claim is missing a subject"] };
+  }
+  const clue = clueForIssue(problem, node.subjectId);
+  if (!clue) {
+    return { ok: false, reasons: [`unknown crossword entry ${node.subjectId}`] };
+  }
+  const answer = candidateAnswer(node, clue);
+  if (!answer) {
+    return {
+      ok: false,
+      reasons: [`${clueLabel(clue)} has no parseable candidate answer`],
+    };
+  }
+  const reasons: string[] = [];
+  if (!CROSSWORD_ANSWER_FORMAT.test(answer)) {
+    reasons.push(
+      `${clueLabel(clue)} candidate must be letters-only crossword fill`,
+    );
+  }
+  if (answer.length !== clue.length) {
+    reasons.push(
+      `${clueLabel(clue)} candidate length ${answer.length} does not equal ${clue.length}`,
+    );
+  }
+  return reasons.length > 0 ? { ok: false, reasons } : { ok: true };
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+export function crosswordSolverStateFingerprint(
+  problem: Problem,
+  graph: ReasoningGraph,
+  issueStates: IssueConvergenceState[],
+): string {
+  const spec = crossword(problem);
+  const ledgers = deriveCrosswordCandidateLedger(problem, graph);
+  const conflicts = deriveCrosswordConflicts(problem, graph)
+    .filter((conflict) => conflict.source === "task_constraint")
+    .map((conflict) => conflict.description ?? conflict.nodeIds.slice().sort().join("|"))
+    .sort();
+  const entries = spec.clues.map((clue) => {
+    const issueId = crosswordIssueId(clue.direction, clue.number);
+    const ledger = ledgers.find((item) => item.issueId === issueId);
+    const state = issueStates.find((item) => item.issueId === issueId);
+    return {
+      id: issueId,
+      leading: ledger?.currentCandidate ?? null,
+      live: (ledger?.liveCandidates ?? [])
+        .map((candidate) => candidate.normalizedAnswer ?? candidate.identity)
+        .filter((item): item is string => Boolean(item))
+        .sort(),
+      rejected: (ledger?.previousCandidates ?? [])
+        .map((candidate) => candidate.normalizedAnswer ?? candidate.identity)
+        .filter((item): item is string => Boolean(item))
+        .sort(),
+      settled: Boolean(state?.settledClaimId),
+      unresolved: state?.unresolved ?? true,
+      untouched: Boolean(ledger?.untouched),
+    };
+  });
+  return stableStringify({ entries, conflicts });
+}
+
 function crossword(problem: Problem) {
   if (!problem.crossword) {
     throw new Error(`Problem ${problem.id} has no crossword specification`);
@@ -368,33 +458,94 @@ export function deriveCrosswordCandidateLedger(
           node.subjectId === issueId,
       )
       .sort((a, b) => a.createdAtTurn - b.createdAtTurn || a.id.localeCompare(b.id));
-    const records: TaskCandidateRecord[] = [];
-    const turnsByIdentity = new Map<string, number[]>();
+    const grouped = new Map<
+      string,
+      {
+        answer: string;
+        nodes: ReasoningNode[];
+      }
+    >();
     for (const node of nodes) {
       const answer = candidateAnswer(node, clue);
       if (!answer) continue;
       const identity = crosswordCandidateIdentity(issueId, answer);
-      const turns = turnsByIdentity.get(identity) ?? [];
-      turns.push(node.createdAtTurn);
-      turnsByIdentity.set(identity, turns);
-      const crossing = live(node)
-        ? crossingCompatibility(problem, graph, issueId, node.id, answer)
+      const group = grouped.get(identity) ?? { answer, nodes: [] };
+      group.nodes.push(node);
+      grouped.set(identity, group);
+    }
+    const records: TaskCandidateRecord[] = [];
+    for (const [identity, group] of grouped) {
+      const latest = group.nodes[group.nodes.length - 1]!;
+      const liveNode = [...group.nodes].reverse().find((node) => live(node));
+      const representative = liveNode ?? latest;
+      const proposedBy = [
+        ...new Set(
+          group.nodes
+            .map((node) => node.createdBy)
+            .filter((actor) => actor === "agent_a" || actor === "agent_b"),
+        ),
+      ];
+      const supportedBy: string[] = [];
+      const challengedBy: string[] = [];
+      let lastTouched = representative.createdAtTurn;
+      for (const node of group.nodes) {
+        for (const stance of stancesForNode(graph, node.id)) {
+          lastTouched = Math.max(lastTouched, stance.turnIndex);
+          if (stance.kind === "support" && !supportedBy.includes(stance.actor)) {
+            supportedBy.push(stance.actor);
+          }
+          if (stance.kind === "challenge" && !challengedBy.includes(stance.actor)) {
+            challengedBy.push(stance.actor);
+          }
+        }
+      }
+      const crossing = live(representative)
+        ? crossingCompatibility(
+            problem,
+            graph,
+            issueId,
+            representative.id,
+            group.answer,
+          )
         : { compatibility: "unknown" as const };
+      const rejectedNode = group.nodes.find((node) => node.status === "rejected");
+      const rejectionReason =
+        rejectedNode &&
+        stancesForNode(graph, rejectedNode.id).find((stance) => stance.kind === "reject")
+          ?.reason;
       records.push({
-        nodeId: node.id,
+        nodeId: representative.id,
         identity,
-        normalizedAnswer: answer,
-        createdAtTurn: node.createdAtTurn,
-        live: live(node),
-        status: node.status,
+        normalizedAnswer: group.answer,
+        createdAtTurn: group.nodes[0]!.createdAtTurn,
+        firstProposedTurn: group.nodes[0]!.createdAtTurn,
+        lastTouchedTurn: lastTouched,
+        live: Boolean(liveNode),
+        status: representative.status,
         compatibility: crossing.compatibility,
         crossingDescription: crossing.crossingDescription,
-        priorTurns: turns.filter((turn) => turn !== node.createdAtTurn),
-        priorOutcome: priorOutcome(node, graph),
+        priorTurns: group.nodes
+          .slice(0, -1)
+          .map((node) => node.createdAtTurn),
+        priorOutcome: priorOutcome(representative, graph),
+        proposedBy,
+        supportedBy,
+        challengedBy,
+        rejectionReason:
+          rejectionReason ??
+          (representative.status === "rejected"
+            ? crossing.crossingDescription
+            : undefined),
       });
     }
     const liveRecords = records.filter((record) => record.live);
     const previous = records.filter((record) => !record.live);
+    const leading = [...liveRecords].sort(
+      (a, b) =>
+        (b.lastTouchedTurn ?? b.createdAtTurn) -
+          (a.lastTouchedTurn ?? a.createdAtTurn) ||
+        b.nodeId.localeCompare(a.nodeId),
+    )[0];
     const tried: string[] = [];
     for (const record of records) {
       if (record.normalizedAnswer && !tried.includes(record.normalizedAnswer)) {
@@ -414,6 +565,8 @@ export function deriveCrosswordCandidateLedger(
       previousCandidates: previous,
       triedAnswers: tried,
       conflicts,
+      currentCandidate: leading?.normalizedAnswer,
+      untouched: records.length === 0,
     };
   });
 }
@@ -618,6 +771,8 @@ export const crosswordReasoningAdapter: TaskReasoningAdapter = {
   deriveIssueState: deriveCrosswordIssueState,
   deriveConflicts: deriveCrosswordConflicts,
   candidateIdentity: crosswordCandidateIdentityForNode,
+  validateCandidate: validateCrosswordCandidate,
+  solverStateFingerprint: crosswordSolverStateFingerprint,
   deriveCandidateLedger: deriveCrosswordCandidateLedger,
   deriveTaskDiagnostics: deriveCrosswordTaskDiagnostics,
   deriveDeterministicEvidence(problem, graph) {

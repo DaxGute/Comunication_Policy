@@ -12,6 +12,10 @@ import {
   loadRunSettingsOpen,
   saveRunSettingsOpen,
 } from "../../experiment/persistence";
+import {
+  MAX_INTERACTION_TURNS,
+  MIN_INTERACTION_TURNS,
+} from "../../experiment/defaults";
 import type { RunConfig, RunProgress } from "../../experiment/types";
 import {
   estimateExperimentCost,
@@ -218,8 +222,8 @@ export function RunSettingsPanel({
               <label className="field">
                 <span>Maximum interaction turns</span>
                 <NumberStepper
-                  min={1}
-                  max={40}
+                  min={MIN_INTERACTION_TURNS}
+                  max={MAX_INTERACTION_TURNS}
                   value={config.maxTurns}
                   onChange={(maxTurns) => onConfigChange({ maxTurns })}
                 />

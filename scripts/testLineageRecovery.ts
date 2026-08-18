@@ -77,18 +77,11 @@ function apply(
     turnIndex: turn,
     messageId: `msg-${turn}-${actor}`,
     candidateIdentity: (node) =>
-      crosswordReasoningAdapter.candidateIdentity?.(crosswordProblem, {
-        id: "preview",
-        type: node.type,
-        text: node.text,
-        createdBy: actor,
-        createdAtTurn: turn,
-        status: "open",
-        parents: [],
-        dependencies: [],
-        subjectId: node.subjectId,
-        metadata: node.metadata,
-      }),
+      crosswordReasoningAdapter.candidateIdentity?.(crosswordProblem, node),
+    validateCandidate: (node) =>
+      crosswordReasoningAdapter.validateCandidate?.(crosswordProblem, node) ?? {
+        ok: true,
+      },
     conflicts: crosswordReasoningAdapter.deriveConflicts?.(
       crosswordProblem,
       graph,
@@ -208,8 +201,9 @@ const empty = emptyReasoningGraph(issues);
     ledger,
   );
   assert.match(state, /CURRENT LIVE CANDIDATES/);
-  assert.match(state, /C1: AB/);
-  assert.match(state, /C2: CB/);
+  assert.match(state, /currentCandidate: CB/);
+  assert.match(state, /AB:/);
+  assert.match(state, /CB:/);
   assert.match(state, /TRIED ANSWERS/);
   assert.match(state, /TASK COMPATIBILITY/);
   assert.doesNotMatch(
@@ -283,8 +277,9 @@ const empty = emptyReasoningGraph(issues);
     "agent_b",
     2,
   );
-  assert.equal(variant.events.at(-1)?.accepted, false);
-  assert.match(variant.events.at(-1)?.errors.join(" ") ?? "", /duplicate of C1/);
+  assert.equal(variant.events.at(-1)?.accepted, true);
+  assert.equal(variant.events.at(-1)?.stateChanged, false);
+  assert.match(variant.events.at(-1)?.diagnostics?.join(" ") ?? "", /no_state_change/);
   assert.equal(variant.graph.nodes.length, 1);
 }
 
@@ -324,27 +319,28 @@ const empty = emptyReasoningGraph(issues);
     8,
   );
   assert.equal(revisited.events.at(-1)?.accepted, true);
-  assert.equal(revisited.graph.nodes.filter((node) => node.type === "claim").length, 3);
+  assert.equal(revisited.events.at(-1)?.stateChanged, false);
+  assert.equal(revisited.graph.nodes.filter((node) => node.type === "claim").length, 2);
   assert.match(
     revisited.events.at(-1)?.diagnostics?.join(" ") ?? "",
-    /candidate_revisit/,
+    /no_state_change/,
   );
   assert.match(
     revisited.events.at(-1)?.diagnostics?.join(" ") ?? "",
-    /without new evidence/,
+    /already tried/,
   );
   const ledger = deriveCrosswordCandidateLedger(crosswordProblem, revisited.graph);
   const across = ledger.find((item) => item.issueId === "crossword:across:1")!;
   assert.equal(
     across.liveCandidates.some((candidate) => candidate.normalizedAnswer === "AB"),
-    true,
+    false,
   );
   assert.equal(
     across.previousCandidates.some((candidate) => candidate.normalizedAnswer === "AB"),
     true,
   );
   const state = formatReasoningState(revisited.graph, undefined, ledger);
-  assert.match(state, /PREVIOUS CANDIDATES/);
+  assert.match(state, /PREVIOUSLY ATTEMPTED/);
 }
 
 {

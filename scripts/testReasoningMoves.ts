@@ -125,6 +125,8 @@ function applyTurn(
     messageId: `msg-${turn}-${actor}`,
     protocolFailure: parsed.protocolFailure,
     candidateIdentity: (node) => adapter.candidateIdentity?.(problem, node),
+    validateCandidate: (node) =>
+      adapter.validateCandidate?.(problem, node) ?? { ok: true },
     resolveSubjectAlias: (rawSubject) =>
       adapter.resolveSubject?.(problem, rawSubject) ?? {},
     resolveBasis: (basis, subjectId) => {

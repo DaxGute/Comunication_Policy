@@ -227,7 +227,10 @@ export function TranscriptView({
             Maximum conversation length reached ({run.config.maxTurns} of{" "}
             {run.config.maxTurns} turns) without a final answer
             {conversation.stoppedReason === "reasoning_protocol_stalled"
-              ? " because structured reasoning stalled."
+              ? conversation.reasoningDiagnostics?.solverProgress
+                  ?.semanticStallReason
+                ? ` because the solver stalled (${conversation.reasoningDiagnostics.solverProgress.semanticStallReason.replaceAll("_", " ")}).`
+                : " because canonical solver state stalled."
               : "."}
           </span>
         </div>
@@ -281,6 +284,78 @@ export function TranscriptView({
               evaluationUi={evaluationUi}
               onRunEvaluation={onRunEvaluation}
             />
+            {conversation.reasoningDiagnostics?.solverProgress ? (
+              <details className="protocol-diagnostics muted">
+                <summary>Solver progress diagnostics</summary>
+                <pre className="mono">
+                  {JSON.stringify(
+                    {
+                      rawMutationCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .rawMutationCount,
+                      meaningfulStateTransitionCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .meaningfulStateTransitionCount,
+                      noOpMutationCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .noOpMutationCount,
+                      repeatedStateCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .repeatedStateCount,
+                      cycleDetectionCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .cycleDetectionCount,
+                      localLoopInterventions:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .localLoopInterventions,
+                      diversificationInterventions:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .diversificationInterventions,
+                      semanticStallReason:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .semanticStallReason,
+                      stallWarningTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .stallWarningTurn,
+                      stallWarningKind:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .stallWarningKind,
+                      closureWarningTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .closureWarningTurn,
+                      finalizationRequiredTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .finalizationRequiredTurn,
+                      recoveryTurnsBeforeFinalization:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .recoveryTurnsBeforeFinalization,
+                      progressResumedAfterWarning:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .progressResumedAfterWarning,
+                      finalAnswerAfterFinalization:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .finalAnswerAfterFinalization,
+                      terminatedAsProtocolStall:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .terminatedAsProtocolStall,
+                      stallWarningCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .stallWarningCount,
+                      closureWarningCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .closureWarningCount,
+                      finalizationRequiredCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .finalizationRequiredCount,
+                      protocolStallStreak:
+                        conversation.reasoningDiagnostics.protocolStallStreak,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+            ) : null}
           </div>
         ) : null}
 

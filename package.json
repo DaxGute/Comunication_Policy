@@ -27,6 +27,7 @@
     "test:convergence": "vite-node scripts/testConvergence.ts",
     "test:lineage": "vite-node scripts/testLineageRecovery.ts",
     "test:reasoning-moves": "vite-node scripts/testReasoningMoves.ts",
+    "test:solver-progress": "vite-node scripts/testSolverProgress.ts",
     "verify:crossword": "vite-node scripts/verifyCrosswordIntegration.ts",
     "verify:crossword-live": "vite-node scripts/verifyCrosswordLive.ts"
   },

@@ -438,6 +438,12 @@ export type ReasoningEvent = {
    * transitions without semantic lineage). Never used to reject the event.
    */
   diagnostics?: string[];
+  /**
+   * False when the event was recorded but canonical solver state did not
+   * change (duplicate live candidate, same-answer revise, restated support).
+   * Absent on historical events; treat missing as `accepted`.
+   */
+  stateChanged?: boolean;
 };
 
 export type ReasoningGraph = {

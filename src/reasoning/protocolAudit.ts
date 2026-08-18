@@ -1,8 +1,11 @@
+import { eventChangedCanonicalState } from "./stall";
 import type { ConversationMessage } from "../experiment/types";
 import type { ReasoningGraph } from "./types";
 
 export type ReasoningProtocolAudit = {
   acceptedMutationsPerTurn: number;
+  meaningfulStateTransitionsPerTurn: number;
+  noOpMutationCount: number;
   allIntentsRejectedTurns: number;
   emptyMoveSubstantiveTurns: number;
   unknownTargetErrors: number;
@@ -82,23 +85,34 @@ export function auditReasoningProtocol(args: {
   }).length;
   let stallStreak = 0;
   let current = 0;
+  let meaningfulTotal = 0;
+  let noOpMutationCount = 0;
+  for (const event of graph.events) {
+    if (event.turnIndex < 1) continue;
+    if (eventChangedCanonicalState(event)) {
+      meaningfulTotal += 1;
+    } else if (event.accepted && event.operation.type !== "protocol_failure") {
+      noOpMutationCount += 1;
+    }
+  }
   for (const message of messages) {
-    const accepted = acceptedByTurn.get(message.turnIndex) ?? 0;
-    const missing = graph.events.some(
+    const meaningful = graph.events.filter(
       (event) =>
         event.turnIndex === message.turnIndex &&
-        event.diagnostics?.includes("structured_reasoning_missing"),
-    );
-    if (missing && accepted === 0) {
+        eventChangedCanonicalState(event),
+    ).length;
+    if (meaningful === 0) {
       current += 1;
       stallStreak = Math.max(stallStreak, current);
-    } else if (accepted > 0) {
+    } else {
       current = 0;
     }
   }
-  const acceptedTotal = [...acceptedByTurn.values()].reduce((sum, n) => sum + n, 0);
+  const acceptedTotal = [...acceptedByTurn.values()].reduce((sum, n) => n + sum, 0);
   return {
     acceptedMutationsPerTurn: turns > 0 ? acceptedTotal / turns : 0,
+    meaningfulStateTransitionsPerTurn: turns > 0 ? meaningfulTotal / turns : 0,
+    noOpMutationCount,
     allIntentsRejectedTurns: rejectedAll.size,
     emptyMoveSubstantiveTurns,
     unknownTargetErrors,

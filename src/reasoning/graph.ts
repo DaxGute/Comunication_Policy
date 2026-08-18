@@ -48,6 +48,10 @@ export type ApplyIntentsContext = {
   candidateIdentity?: (
     node: Pick<AtomicReasoningNode, "type" | "text" | "subjectId" | "metadata">,
   ) => string | undefined;
+  /** Adapter structural gate (e.g. crossword length / format). */
+  validateCandidate?: (
+    node: Pick<AtomicReasoningNode, "type" | "text" | "subjectId" | "metadata">,
+  ) => { ok: boolean; reasons?: string[] };
   /** Known task conflicts at the start of this turn. */
   conflicts?: IssueConflict[];
   resolveSubjectAlias?: (raw: string) => { id?: string; error?: string };
@@ -330,6 +334,64 @@ function historicalIdentityNodes(
   );
 }
 
+function liveIdentityNode(
+  nodes: Iterable<ReasoningNode>,
+  identity: string,
+  identityOf: (node: ReasoningNode) => string | undefined,
+  exceptId?: string,
+): ReasoningNode | undefined {
+  for (const node of nodes) {
+    if (exceptId && node.id === exceptId) continue;
+    if (node.status === "superseded" || node.status === "rejected") continue;
+    if (node.type !== "claim" && node.type !== "proposal") continue;
+    if (identityOf(node) === identity) return node;
+  }
+  return undefined;
+}
+
+function hasNovelAgentEvidence(
+  mutable: MutableGraph,
+  ctx: ApplyIntentsContext,
+): boolean {
+  const priorTexts = new Set(
+    [...mutable.nodes.values()]
+      .filter(
+        (node) =>
+          node.type === "evidence" && node.createdAtTurn < ctx.turnIndex,
+      )
+      .map((node) => normalizeNodeText(node.text)),
+  );
+  return [...mutable.nodes.values()].some(
+    (node) =>
+      node.type === "evidence" &&
+      node.createdAtTurn === ctx.turnIndex &&
+      node.evidenceOrigin === "agent" &&
+      !priorTexts.has(normalizeNodeText(node.text)),
+  );
+}
+
+type IntentApplyResult = {
+  accepted: boolean;
+  stateChanged?: boolean;
+  errors: string[];
+  stored: ReasoningOperation;
+  diagnostics?: string[];
+};
+
+function noStateChangeResult(
+  stored: ReasoningOperation,
+  detail: string,
+  diagnostics: string[] = [],
+): IntentApplyResult {
+  return {
+    accepted: true,
+    stateChanged: false,
+    errors: [],
+    stored,
+    diagnostics: [`no_state_change: ${detail}`, ...diagnostics],
+  };
+}
+
 function liveRevisionId(
   nodes: Iterable<ReasoningNode>,
   id: string,
@@ -533,6 +595,15 @@ function materializeEdges(events: ReasoningEvent[]): ReasoningEdge[] {
       continue;
     }
     if (!event.accepted) continue;
+    if (event.stateChanged === false) continue;
+    if (
+      event.diagnostics?.some(
+        (item) =>
+          item === "no_state_change" || item.startsWith("no_state_change:"),
+      )
+    ) {
+      continue;
+    }
     if (op.type === "create") {
       if (op.node.subjectId && (op.node.type === "claim" || op.node.type === "proposal")) {
         add(
@@ -734,7 +805,16 @@ export function materializeGraph(
       nodes.set(FINAL_ANSWER_NODE_ID, final);
       continue;
     }
-    if (event.accepted) applyAcceptedOperation(nodes, event.operation);
+    if (
+      event.accepted &&
+      event.stateChanged !== false &&
+      !event.diagnostics?.some(
+        (item) =>
+          item === "no_state_change" || item.startsWith("no_state_change:"),
+      )
+    ) {
+      applyAcceptedOperation(nodes, event.operation);
+    }
   }
   const mutable: MutableGraph = {
     subjects: subjects.map((subject) => ({
@@ -1093,6 +1173,7 @@ function appendEvent(
   accepted: boolean,
   errors: string[],
   diagnostics?: string[],
+  stateChanged?: boolean,
 ): ReasoningEvent {
   const seq = mutable.events.length + 1;
   const event: ReasoningEvent = {
@@ -1106,6 +1187,7 @@ function appendEvent(
     accepted,
     errors: [...errors],
     ...(diagnostics && diagnostics.length > 0 ? { diagnostics: [...diagnostics] } : {}),
+    ...(stateChanged === false ? { stateChanged: false } : {}),
   };
   mutable.events.push(event);
   return event;
@@ -1241,7 +1323,7 @@ function applyCreate(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+): IntentApplyResult {
   const errors: string[] = [];
   const diagnostics: string[] = [];
   const type = isNodeType(intent.nodeType) ? intent.nodeType : undefined;
@@ -1303,12 +1385,46 @@ function applyCreate(
     }
   }
 
+  if ((type === "claim" || type === "proposal") && ctx.validateCandidate) {
+    const validity = ctx.validateCandidate({
+      type,
+      text,
+      subjectId: subject.id,
+      metadata: intent.metadata,
+    });
+    if (!validity.ok) {
+      return {
+        accepted: false,
+        errors: [
+          ...errors,
+          ...(validity.reasons ?? ["candidate failed structural validation"]),
+        ],
+        stored: invalidOperation(ctx),
+        diagnostics,
+      };
+    }
+  }
+
   const identity = ctx.candidateIdentity?.({
     type,
     text,
     subjectId: subject.id,
     metadata: intent.metadata,
   });
+  if (identity) {
+    const liveDup = liveIdentityNode(
+      mutable.nodes.values(),
+      identity,
+      (node) => candidateIdentityOf(ctx, node),
+    );
+    if (liveDup) {
+      return noStateChangeResult(
+        invalidOperation(ctx, liveDup.id),
+        `${identity} is already the live candidate`,
+        diagnostics,
+      );
+    }
+  }
   const historical = identity
     ? historicalIdentityNodes(
         mutable.nodes.values(),
@@ -1321,6 +1437,13 @@ function applyCreate(
     diagnostics.push(
       `candidate_revisit: ${identity} was previously tried on turns ${priorTurns.join(" and ")}`,
     );
+    if (!hasNovelAgentEvidence(mutable, ctx)) {
+      return noStateChangeResult(
+        invalidOperation(ctx, historical[0]?.id),
+        `${identity} was already tried on turns ${priorTurns.join(" and ")} without materially new evidence`,
+        diagnostics,
+      );
+    }
   }
   const metadata = {
     ...(intent.metadata ?? {}),
@@ -1364,6 +1487,16 @@ function applyCreate(
   errors.push(...grounding.errors);
   diagnostics.push(...grounding.diagnostics);
   if (!prepared.node || errors.length > 0) {
+    const duplicates = errors.filter((error) => error.startsWith("duplicate of "));
+    const others = errors.filter((error) => !error.startsWith("duplicate of "));
+    if (duplicates.length > 0 && others.length === 0) {
+      return noStateChangeResult(
+        invalidOperation(ctx),
+        duplicates[0]!.replace(/^duplicate of /, "") +
+          " is already the live candidate; reference the existing node instead of recreating it",
+        diagnostics,
+      );
+    }
     return { accepted: false, errors, stored: invalidOperation(ctx), diagnostics };
   }
 
@@ -1405,7 +1538,7 @@ function applyRevise(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+): IntentApplyResult {
   const targetResolved = resolveClaimTarget(
     {
       targetId: intent.targetId,
@@ -1478,6 +1611,76 @@ function applyRevise(
   const depIds =
     intent.dependencies !== undefined ? deps.ids : [...target.dependencies];
 
+  if ((type === "claim" || type === "proposal") && ctx.validateCandidate) {
+    const validity = ctx.validateCandidate({
+      type,
+      text,
+      subjectId: subject.id,
+      metadata: intent.metadata ?? target.metadata,
+    });
+    if (!validity.ok) {
+      return {
+        accepted: false,
+        errors: [
+          ...errors,
+          ...(validity.reasons ?? ["candidate failed structural validation"]),
+        ],
+        stored: invalidOperation(ctx, resolved.id),
+        diagnostics,
+      };
+    }
+  }
+
+  const identity = ctx.candidateIdentity?.({
+    type,
+    text,
+    subjectId: subject.id,
+    metadata: intent.metadata ?? target.metadata,
+  });
+  const targetIdentity = candidateIdentityOf(ctx, target);
+  if (
+    (identity && identity === targetIdentity) ||
+    (!identity && normalizeNodeText(text) === normalizeNodeText(target.text))
+  ) {
+    return noStateChangeResult(
+      invalidOperation(ctx, target.id),
+      `${identity ?? target.text} is already the live candidate`,
+      diagnostics,
+    );
+  }
+  if (identity) {
+    const liveDup = liveIdentityNode(
+      mutable.nodes.values(),
+      identity,
+      (node) => candidateIdentityOf(ctx, node),
+      target.id,
+    );
+    if (liveDup) {
+      return noStateChangeResult(
+        invalidOperation(ctx, liveDup.id),
+        `${identity} is already the live candidate`,
+        diagnostics,
+      );
+    }
+    const historical = historicalIdentityNodes(
+      mutable.nodes.values(),
+      identity,
+      (node) => candidateIdentityOf(ctx, node),
+      target.id,
+    );
+    if (historical.length > 0 && !hasNovelAgentEvidence(mutable, ctx)) {
+      const priorTurns = [...new Set(historical.map((node) => node.createdAtTurn))];
+      diagnostics.push(
+        `candidate_revisit: ${identity} was previously tried on turns ${priorTurns.join(" and ")}`,
+      );
+      return noStateChangeResult(
+        invalidOperation(ctx, target.id),
+        `${identity} was already tried on turns ${priorTurns.join(" and ")} without materially new evidence`,
+        diagnostics,
+      );
+    }
+  }
+
   const prepared = prepareNewNode(
     {
       type,
@@ -1487,7 +1690,10 @@ function applyRevise(
       subjectId: subject.id,
       confidence: intent.confidence ?? target.confidence,
       supersedes: target.id,
-      metadata: intent.metadata,
+      metadata: {
+        ...(intent.metadata ?? {}),
+        ...(identity ? { candidateIdentity: identity } : {}),
+      },
     },
     ctx,
     mutable,
@@ -1509,6 +1715,16 @@ function applyRevise(
   errors.push(...grounding.errors);
   diagnostics.push(...grounding.diagnostics);
   if (!prepared.node || errors.length > 0) {
+    const duplicates = errors.filter((error) => error.startsWith("duplicate of "));
+    const others = errors.filter((error) => !error.startsWith("duplicate of "));
+    if (duplicates.length > 0 && others.length === 0) {
+      return noStateChangeResult(
+        invalidOperation(ctx, resolved.id),
+        duplicates[0]!.replace(/^duplicate of /, "") +
+          " is already the live candidate",
+        diagnostics,
+      );
+    }
     return {
       accepted: false,
       errors,
@@ -1558,7 +1774,7 @@ function applyStance(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+): IntentApplyResult {
   const targetResolved = resolveClaimTarget(
     {
       targetId:
@@ -1646,6 +1862,38 @@ function applyStance(
       : {}),
     reason: reason || undefined,
   } as ReasoningOperation;
+
+  if (
+    (intent.action === "support" ||
+      intent.action === "challenge" ||
+      intent.action === "accept") &&
+    ctx.actor !== "system"
+  ) {
+    const existing = stancesForNode(toGraph(mutable), resolved.id).find(
+      (stance) => stance.actor === ctx.actor,
+    );
+    const novelEvidence =
+      Boolean(sourceNodeId) && hasNovelAgentEvidence(mutable, ctx);
+    if (
+      existing &&
+      existing.kind === intent.action &&
+      !novelEvidence &&
+      (!reason || reason === (existing.reason ?? ""))
+    ) {
+      const target = mutable.nodes.get(resolved.id);
+      const identity =
+        target && target.type !== "final_answer"
+          ? candidateIdentityOf(ctx, target)
+          : undefined;
+      return noStateChangeResult(
+        stored,
+        identity
+          ? `${identity} is already ${intent.action}ed by this agent`
+          : `${resolved.id} is already ${intent.action}ed by this agent`,
+      );
+    }
+  }
+
   return { accepted: true, errors: [], stored };
 }
 
@@ -1654,7 +1902,7 @@ function applyOneIntent(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+): IntentApplyResult {
   if (intent.action === "invalid") {
     const detail =
       intent.raw &&
@@ -1915,6 +2163,7 @@ export function applyReasoningIntents(
         result.accepted,
         result.errors,
         result.diagnostics,
+        result.stateChanged,
       ),
     );
     refreshStatuses(mutable);

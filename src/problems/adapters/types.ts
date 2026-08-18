@@ -43,6 +43,12 @@ export type TaskCandidateRecord = {
   crossingDescription?: string;
   priorTurns?: number[];
   priorOutcome?: string;
+  firstProposedTurn?: number;
+  lastTouchedTurn?: number;
+  proposedBy?: string[];
+  supportedBy?: string[];
+  challengedBy?: string[];
+  rejectionReason?: string;
 };
 
 export type TaskIssueLedger = {
@@ -52,6 +58,8 @@ export type TaskIssueLedger = {
   previousCandidates: TaskCandidateRecord[];
   triedAnswers: string[];
   conflicts: Array<{ nodeIds: string[]; description?: string }>;
+  currentCandidate?: string;
+  untouched?: boolean;
 };
 
 export type TaskIssueState = {
@@ -117,6 +125,28 @@ export type TaskReasoningAdapter = {
       metadata?: Record<string, unknown>;
     },
   ): string | undefined;
+  /**
+   * Structural candidate checks (length, format) before a claim becomes live.
+   * Generic graph identity stays adapter-agnostic; this is the task gate.
+   */
+  validateCandidate?(
+    problem: Problem,
+    node: {
+      type: string;
+      text: string;
+      subjectId?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ): { ok: boolean; reasons?: string[] };
+  /**
+   * Compact canonical solver-state fingerprint. Conversation length must not
+   * change this unless live hypotheses, conflicts, or settlement change.
+   */
+  solverStateFingerprint?(
+    problem: Problem,
+    reasoningGraph: ReasoningGraph,
+    issueStates: IssueConvergenceState[],
+  ): string;
   deriveCandidateLedger?(
     problem: Problem,
     reasoningGraph: ReasoningGraph,

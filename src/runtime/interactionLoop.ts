@@ -25,12 +25,18 @@ import {
   type ReasoningOperation,
 } from "../reasoning";
 import {
+  DEFAULT_CYCLE_WINDOW_TURNS,
+  DEFAULT_LOCAL_LOOP_TURNS,
   DEFAULT_STALL_FAIL_TURNS,
   DEFAULT_STALL_RECOVERY_TURNS,
-  STRUCTURED_REASONING_MISSING_FEEDBACK,
-  STRUCTURED_REASONING_STALL_FEEDBACK,
-  acceptedGraphMutations,
 } from "../reasoning/stall";
+import {
+  emptySolverProgressState,
+  reduceSolverProgress,
+  snapshotSolverProgress,
+  solverStateFingerprint,
+  type SolverProgressSnapshot,
+} from "../reasoning/solverProgress";
 import { isAbortError, throwIfAborted } from "./abort";
 import type { ModelClient } from "./modelClient";
 import { buildTurnRequestForAgent } from "./renderModelRequest";
@@ -48,6 +54,7 @@ export type InteractionLoopResult = {
   finalAnswer?: string;
   finalAnswerSupport?: FinalAnswerSupport;
   reasoning: ReasoningGraph;
+  solverProgress?: SolverProgressSnapshot;
   stoppedReason:
     | "final_answer"
     | "max_turns"
@@ -82,6 +89,8 @@ export async function runInteractionLoop(args: {
   maxTurns: number;
   stallRecoveryTurns?: number;
   stallFailTurns?: number;
+  localLoopTurns?: number;
+  cycleWindowTurns?: number;
   reasoningEffort?: ReasoningEffort;
   client: ModelClient;
   signal?: AbortSignal;
@@ -97,6 +106,8 @@ export async function runInteractionLoop(args: {
     maxTurns,
     stallRecoveryTurns = DEFAULT_STALL_RECOVERY_TURNS,
     stallFailTurns = DEFAULT_STALL_FAIL_TURNS,
+    localLoopTurns = DEFAULT_LOCAL_LOOP_TURNS,
+    cycleWindowTurns = DEFAULT_CYCLE_WINDOW_TURNS,
     reasoningEffort,
     client,
     signal,
@@ -108,8 +119,22 @@ export async function runInteractionLoop(args: {
   const taskAdapter = taskReasoningAdapterFor(problem);
   let graph = seedGraphForProblem(problem, taskAdapter);
   let finalAnswerSupport: FinalAnswerSupport | undefined;
-  let stallStreak = 0;
   let protocolFeedback: string | undefined;
+  let solverProgress = emptySolverProgressState();
+  const seedConflicts = taskAdapter.deriveConflicts?.(problem, graph) ?? [];
+  const seedSignals = taskAdapter.deriveDeterministicEvidence?.(problem, graph) ?? [];
+  solverProgress.fingerprints = [
+    solverStateFingerprint({
+      problem,
+      adapter: taskAdapter,
+      graph,
+      issueStates: deriveIssueConvergenceStates(graph, {
+        conflicts: seedConflicts,
+        deterministicSignals: seedSignals,
+        currentTurn: 0,
+      }),
+    }),
+  ];
 
   const stop = (
     reason: InteractionLoopResult["stoppedReason"],
@@ -123,6 +148,7 @@ export async function runInteractionLoop(args: {
         extractFinalAnswerFromText(messages[messages.length - 1]?.content ?? ""),
       finalAnswerSupport,
       reasoning: graph,
+      solverProgress: snapshotSolverProgress(solverProgress),
       stoppedReason: reason,
       error,
     };
@@ -213,6 +239,8 @@ export async function runInteractionLoop(args: {
       conflicts: taskConflicts,
       candidateIdentity: (node) =>
         taskAdapter.candidateIdentity?.(problem, node),
+      validateCandidate: (node) =>
+        taskAdapter.validateCandidate?.(problem, node) ?? { ok: true },
       resolveSubjectAlias: (raw) =>
         taskAdapter.resolveSubject?.(problem, raw) ?? {},
       resolveBasis: (raw, subjectId) => {
@@ -289,7 +317,12 @@ export async function runInteractionLoop(args: {
     messages.push(message);
     callbacks?.onMessage?.(message, graph);
 
-    const mutationCount = acceptedGraphMutations(applied.events, turn);
+    const mutationCount = applied.events.filter(
+      (event) =>
+        event.accepted &&
+        event.operation.type !== "invalid" &&
+        event.operation.type !== "protocol_failure",
+    ).length;
     const substantive =
       parsed.moves.length > 0 ||
       parsed.extractedFromMessage ||
@@ -297,19 +330,37 @@ export async function runInteractionLoop(args: {
       Boolean(
         taskAdapter.messageLooksSubstantive?.(problem, parsed.message),
       );
-    if (substantive && mutationCount === 0) {
-      stallStreak += 1;
-      protocolFeedback =
-        parsed.structuredReasoningMissing && stallStreak < stallRecoveryTurns
-          ? STRUCTURED_REASONING_MISSING_FEEDBACK
-          : STRUCTURED_REASONING_STALL_FEEDBACK;
-    } else if (mutationCount > 0) {
-      stallStreak = 0;
-      protocolFeedback = undefined;
-    }
-    if (stallStreak >= stallFailTurns) {
-      return stop("reasoning_protocol_stalled");
-    }
+    const nextConflicts = taskAdapter.deriveConflicts?.(problem, graph) ?? [];
+    const nextSignals =
+      taskAdapter.deriveDeterministicEvidence?.(problem, graph) ?? [];
+    const nextIssueStates = deriveIssueConvergenceStates(graph, {
+      conflicts: nextConflicts,
+      deterministicSignals: nextSignals,
+      currentTurn: turn,
+    });
+    const nextLedgers = taskAdapter.deriveCandidateLedger?.(problem, graph);
+    const fingerprint = solverStateFingerprint({
+      problem,
+      adapter: taskAdapter,
+      graph,
+      issueStates: nextIssueStates,
+    });
+    const progressTurn = reduceSolverProgress(solverProgress, {
+      turnIndex: turn,
+      maxTurns,
+      graph,
+      events: applied.events,
+      issueStates: nextIssueStates,
+      ledgers: nextLedgers,
+      fingerprint,
+      substantive: substantive || mutationCount > 0,
+      structuredReasoningMissing: Boolean(parsed.structuredReasoningMissing),
+      stallRecoveryTurns,
+      stallFailTurns,
+      localLoopTurns,
+      cycleWindowTurns,
+    });
+    solverProgress = progressTurn.state;
 
     const finalAnswer =
       parsed.finalAnswerSupport?.text ??
@@ -324,7 +375,16 @@ export async function runInteractionLoop(args: {
       } else if (!finalAnswerSupport.text) {
         finalAnswerSupport = { ...finalAnswerSupport, text: finalAnswer };
       }
+      if (solverProgress.finalizationRequiredTurn !== undefined) {
+        solverProgress.counters.finalAnswerAfterFinalization = true;
+      }
       return stop("final_answer");
+    }
+
+    protocolFeedback = progressTurn.protocolFeedback;
+    if (progressTurn.stalled) {
+      solverProgress.counters.terminatedAsProtocolStall = true;
+      return stop("reasoning_protocol_stalled");
     }
   }
 

@@ -23,6 +23,9 @@ export {
 };
 export type { ModelProvider, ReasoningEffort };
 
+export const MIN_INTERACTION_TURNS = 1;
+export const MAX_INTERACTION_TURNS = 200;
+
 export const DEFAULT_RUN_CONFIG: RunConfig = {
   problemCategory: "crossword",
   problemCount: 1,

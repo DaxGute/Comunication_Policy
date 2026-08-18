@@ -71,6 +71,30 @@ export type ReasoningGraphDiagnostics = {
   ungroundedClaimCount?: number;
   structuredReasoningMissingCount?: number;
   protocolStallStreak?: number;
+  solverProgress?: {
+    rawMutationCount: number;
+    meaningfulStateTransitionCount: number;
+    noOpMutationCount: number;
+    repeatedStateCount: number;
+    cycleDetectionCount: number;
+    localLoopInterventions: number;
+    diversificationInterventions: number;
+    stallWarningCount?: number;
+    closureWarningCount?: number;
+    finalizationRequiredCount?: number;
+    fingerprintCount?: number;
+    lastFingerprint?: string;
+    semanticStallReason?: string;
+    stallWarningTurn?: number;
+    stallWarningKind?: string;
+    closureWarningTurn?: number;
+    finalizationRequiredTurn?: number;
+    recoveryTurnsBeforeFinalization?: number;
+    progressResumedAfterWarning?: boolean;
+    finalAnswerAfterFinalization?: boolean;
+    terminatedAsProtocolStall?: boolean;
+    phase?: string;
+  };
 };
 
 type DiagnosticOptions = {
@@ -80,6 +104,8 @@ type DiagnosticOptions = {
   genericReadiness?: GenericReadiness;
   progress?: ReasoningProgressState;
   task?: Record<string, unknown>;
+  solverProgress?: ReasoningGraphDiagnostics["solverProgress"];
+  protocolStallStreak?: number;
 };
 
 function warningFor(node: ReasoningNode): AtomicityWarning | undefined {
@@ -328,5 +354,7 @@ export function computeReasoningGraphDiagnostics(
     deterministicEvidenceCount: evidenceByOrigin.deterministic,
     ungroundedClaimCount: claims.filter((claim) => !groundedIds.has(claim.id)).length,
     structuredReasoningMissingCount,
+    protocolStallStreak: options.protocolStallStreak,
+    solverProgress: options.solverProgress,
   };
 }

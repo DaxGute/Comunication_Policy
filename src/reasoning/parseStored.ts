@@ -329,6 +329,7 @@ export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
       Array.isArray(raw.diagnostics) && raw.diagnostics.length > 0
         ? asStringArray(raw.diagnostics)
         : undefined,
+    ...(raw.stateChanged === false ? { stateChanged: false as const } : {}),
   };
 }
 

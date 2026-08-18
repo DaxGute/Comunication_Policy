@@ -14,7 +14,7 @@ export function formatProofProblemText(item: ProofSolverItem): string {
     item.question,
     "",
     "Work the argument jointly: surface gaps, challenge unjustified steps, and converge on a single write-up.",
-    "FINAL_ANSWER ends the interaction immediately — only emit it once the joint proof is locked in and you need no further partner review.",
+    "FINAL_ANSWER ends the interaction immediately. Emit it when the joint proof is ready, or when further reasoning is not improving the argument.",
     "When ready, report the finished proof as a multi-line block:",
     "FINAL_ANSWER:",
     "<full joint proof>",

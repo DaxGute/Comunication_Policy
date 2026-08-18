@@ -91,6 +91,8 @@ export function normalizeRunConfig(
     temperature: parsed.temperature ?? defaults.temperature,
     stallRecoveryTurns: parsed.stallRecoveryTurns ?? defaults.stallRecoveryTurns,
     stallFailTurns: parsed.stallFailTurns ?? defaults.stallFailTurns,
+    localLoopTurns: parsed.localLoopTurns ?? defaults.localLoopTurns,
+    cycleWindowTurns: parsed.cycleWindowTurns ?? defaults.cycleWindowTurns,
   };
 }
 

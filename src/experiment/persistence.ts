@@ -6,7 +6,12 @@
  */
 import type { ProblemCategory } from "../problems/types";
 import { normalizeRunConfig } from "./configAccessors";
-import { AVAILABLE_MODEL_IDS, DEFAULT_RUN_CONFIG } from "./defaults";
+import {
+  AVAILABLE_MODEL_IDS,
+  DEFAULT_RUN_CONFIG,
+  MAX_INTERACTION_TURNS,
+  MIN_INTERACTION_TURNS,
+} from "./defaults";
 import { syncRunCostFields } from "./runCost";
 import { VALID_CATEGORIES, clamp, parseRun } from "./parsePersisted";
 import type {
@@ -60,7 +65,11 @@ export function loadRunConfig(): RunConfig {
         problemCount: clamp(Number(parsed.problemCount), 1, 150),
         runModel,
         evaluationModel,
-        maxTurns: clamp(Number(parsed.maxTurns), 1, 40),
+        maxTurns: clamp(
+          Number(parsed.maxTurns),
+          MIN_INTERACTION_TURNS,
+          MAX_INTERACTION_TURNS,
+        ),
         temperature: clamp(Number(parsed.temperature), 0, 2),
       },
       DEFAULT_RUN_CONFIG,

@@ -62,7 +62,7 @@ assert.ok(layersA.identity.includes("The other agent is Agent B"));
 assert.ok(layersA.task.includes("share the goal of solving the provided problem"));
 assert.ok(layersA.protocol.includes("You alternate turns."));
 assert.ok(layersA.protocol.includes("FINAL_ANSWER terminates the interaction immediately"));
-assert.ok(layersA.protocol.includes("Do not ask for review in the same message as FINAL_ANSWER"));
+assert.ok(layersA.protocol.includes("continued reasoning is no longer producing meaningful improvement"));
 assert.match(layersA.reasoning, /"moves"/);
 assert.equal(
   splitAgentPromptLayers(buildAgentPrompt("agent_a", baseline)).reasoning,

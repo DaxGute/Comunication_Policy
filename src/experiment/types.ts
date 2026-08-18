@@ -178,10 +178,14 @@ export type RunConfig = {
   provider: "mock" | "openai";
   maxTurns: number;
   temperature: number;
-  /** Consecutive substantive turns without accepted graph mutations before recovery feedback. */
+  /** Recovery turns after a freeze warning before FINALIZATION REQUIRED. */
   stallRecoveryTurns?: number;
-  /** Consecutive stalled turns before failing the problem as reasoning_protocol_stalled. */
+  /** Unchanged-turn threshold that detects a freeze (finalization follows the recovery window). */
   stallFailTurns?: number;
+  /** Consecutive turns on the same unresolved issue(s) before diversification. */
+  localLoopTurns?: number;
+  /** Recent fingerprint window used to detect small state cycles. */
+  cycleWindowTurns?: number;
 };
 
 export type ExperimentRun = {
