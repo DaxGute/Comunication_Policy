@@ -13,6 +13,14 @@ export const DEFAULT_DEVELOPED_COVERAGE = 0.5;
 
 export type StallInterventionKind = "local_loop" | "semantic_stall" | "closure";
 export type StallRecoveryPhase = "normal" | "recovery" | "finalization";
+export type FreezeType =
+  | "local_loop"
+  | "semantic_stall_repeated_state"
+  | "semantic_stall_state_cycle"
+  | "semantic_stall_no_state_change";
+export type ClosureWarningReason =
+  | "quality_stagnant_developed"
+  | "near_turn_budget";
 
 export const NO_STATE_CHANGE_PREFIX = "no_state_change";
 
@@ -43,15 +51,11 @@ export function noStateChangeFeedback(detail: string): string {
   ].join("\n");
 }
 
-export function localLoopFeedback(args: { loopingLabels: string[] }): string {
-  const looping =
-    args.loopingLabels.length > 0
-      ? args.loopingLabels.join(", ")
-      : "the same unresolved entry";
+export function localLoopFeedback(_args?: { loopingLabels?: string[] }): string {
   return [
     "LOCAL_LOOP",
     "",
-    `You are repeatedly revisiting ${looping}. Either reconsider an earlier crossing assumption, investigate a different unresolved clue, or keep the best current candidate and move on.`,
+    "You are repeatedly revisiting the same unresolved issue without improving the solution. Change strategy: reconsider an earlier assumption, work elsewhere, or keep the best current candidate and move on.",
   ].join("\n");
 }
 
@@ -59,7 +63,7 @@ export function stallWarningFeedback(): string {
   return [
     "STALL WARNING",
     "",
-    "The solution state has not materially improved for several turns. Reconsider an earlier assumption or investigate another unresolved clue. If no better solution can be found, submit the best internally consistent FINAL_ANSWER rather than continuing to cycle.",
+    "The solution state has not materially improved over recent turns. Change reasoning strategy, revisit an earlier assumption, or move toward your best available final answer.",
   ].join("\n");
 }
 
@@ -80,8 +84,19 @@ export function finalizationRequiredFeedback(): string {
   return [
     "FINALIZATION REQUIRED",
     "",
-    "Further reasoning has not improved the solution. Return the best FINAL_ANSWER supported by the current evidence, even if some entries remain uncertain.",
+    "Further reasoning has not improved the solution. Submit the best FINAL_ANSWER currently supported, even if some entries remain uncertain.",
   ].join("\n");
+}
+
+export function freezeProtocolKind(
+  feedback: string | undefined,
+): StallInterventionKind | "finalization" | undefined {
+  if (!feedback) return undefined;
+  if (feedback.startsWith("LOCAL_LOOP")) return "local_loop";
+  if (feedback.startsWith("STALL WARNING")) return "semantic_stall";
+  if (feedback.startsWith("CLOSURE WARNING")) return "closure";
+  if (feedback.startsWith("FINALIZATION REQUIRED")) return "finalization";
+  return undefined;
 }
 
 export function eventChangedCanonicalState(event: {

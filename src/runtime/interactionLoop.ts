@@ -7,7 +7,7 @@
 import { otherAgentId } from "../agents/identity";
 import type { AgentDefinition, AgentId } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
-import { extractFinalAnswerFromText } from "../evaluation/graders/answerExtraction";
+import { extractFinalAnswerFromText, hasFinalAnswerMarker } from "../evaluation/graders/answerExtraction";
 import type { ConversationMessage } from "../experiment/types";
 import { createId } from "../lib/id";
 import type { ReasoningEffort } from "../models/modelRegistry";
@@ -29,6 +29,7 @@ import {
   DEFAULT_LOCAL_LOOP_TURNS,
   DEFAULT_STALL_FAIL_TURNS,
   DEFAULT_STALL_RECOVERY_TURNS,
+  freezeProtocolKind,
 } from "../reasoning/stall";
 import {
   emptySolverProgressState,
@@ -164,6 +165,22 @@ export async function runInteractionLoop(args: {
     const agentId = order[(turn - 1) % 2];
     callbacks?.onSpeaking?.(agentId);
     callbacks?.onTurnProgress?.(turn, maxTurns);
+
+    const deliveredKind = freezeProtocolKind(protocolFeedback);
+    if (deliveredKind === "local_loop" || deliveredKind === "semantic_stall") {
+      if (solverProgress.counters.warningDeliveredTurn === undefined) {
+        solverProgress.counters.warningDeliveredTurn = turn;
+      }
+    } else if (deliveredKind === "closure") {
+      if (solverProgress.counters.closureWarningDeliveredTurn === undefined) {
+        solverProgress.counters.closureWarningDeliveredTurn = turn;
+      }
+      if (solverProgress.counters.warningDeliveredTurn === undefined) {
+        solverProgress.counters.warningDeliveredTurn = turn;
+      }
+    } else if (deliveredKind === "finalization") {
+      solverProgress.counters.finalizationDeliveredTurn = turn;
+    }
 
     const taskConflicts = taskAdapter.deriveConflicts?.(problem, graph) ?? [];
     const taskSignals =
@@ -345,6 +362,9 @@ export async function runInteractionLoop(args: {
       graph,
       issueStates: nextIssueStates,
     });
+    const extractedFinalAnswer =
+      parsed.finalAnswerSupport?.text ??
+      extractFinalAnswerFromText(parsed.message);
     const progressTurn = reduceSolverProgress(solverProgress, {
       turnIndex: turn,
       maxTurns,
@@ -355,6 +375,10 @@ export async function runInteractionLoop(args: {
       fingerprint,
       substantive: substantive || mutationCount > 0,
       structuredReasoningMissing: Boolean(parsed.structuredReasoningMissing),
+      attemptedFinalAnswer:
+        !extractedFinalAnswer &&
+        (hasFinalAnswerMarker(parsed.message) ||
+          Boolean(parsed.finalAnswerSupport)),
       stallRecoveryTurns,
       stallFailTurns,
       localLoopTurns,
@@ -362,9 +386,7 @@ export async function runInteractionLoop(args: {
     });
     solverProgress = progressTurn.state;
 
-    const finalAnswer =
-      parsed.finalAnswerSupport?.text ??
-      extractFinalAnswerFromText(parsed.message);
+    const finalAnswer = extractedFinalAnswer;
     if (finalAnswer) {
       if (!finalAnswerSupport) {
         finalAnswerSupport = {
@@ -374,6 +396,17 @@ export async function runInteractionLoop(args: {
         };
       } else if (!finalAnswerSupport.text) {
         finalAnswerSupport = { ...finalAnswerSupport, text: finalAnswer };
+      }
+      const deliveredWarningTurn = solverProgress.counters.warningDeliveredTurn;
+      if (deliveredWarningTurn !== undefined) {
+        solverProgress.counters.finalAnswerAfterWarning = true;
+        solverProgress.counters.turnsFromWarningToFinalAnswer =
+          turn - deliveredWarningTurn;
+      } else if (
+        solverProgress.stallWarningTurn !== undefined ||
+        solverProgress.closureWarningTurn !== undefined
+      ) {
+        solverProgress.counters.turnsFromWarningToFinalAnswer = 0;
       }
       if (solverProgress.finalizationRequiredTurn !== undefined) {
         solverProgress.counters.finalAnswerAfterFinalization = true;
@@ -388,5 +421,6 @@ export async function runInteractionLoop(args: {
     }
   }
 
+  solverProgress.counters.terminatedAsMaxTurns = true;
   return stop("max_turns");
 }

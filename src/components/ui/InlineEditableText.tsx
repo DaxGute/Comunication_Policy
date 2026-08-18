@@ -10,6 +10,10 @@ type Props = {
    * without entering rename mode. Default true.
    */
   allowEditOnClick?: boolean;
+  /** When true, mount already in rename mode (used for newly created folders). */
+  autoEdit?: boolean;
+  /** Called when rename mode closes (commit or cancel). */
+  onEditEnd?: () => void;
   className?: string;
   inputClassName?: string;
   ariaLabel?: string;
@@ -25,12 +29,14 @@ export function InlineEditableText({
   onCommit,
   onEditStart,
   allowEditOnClick = true,
+  autoEdit = false,
+  onEditEnd,
   className,
   inputClassName,
   ariaLabel,
   as: Tag = "span",
 }: Props) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(autoEdit);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
@@ -47,6 +53,7 @@ export function InlineEditableText({
   function commit() {
     const next = draft.trim();
     setEditing(false);
+    onEditEnd?.();
     if (next && next !== value) onCommit(next);
   }
 
@@ -54,6 +61,7 @@ export function InlineEditableText({
     skipBlurCommit.current = true;
     setDraft(value);
     setEditing(false);
+    onEditEnd?.();
   }
 
   if (editing) {

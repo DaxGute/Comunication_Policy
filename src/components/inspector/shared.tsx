@@ -1,6 +1,25 @@
 /**
  * Small inspector chrome shared by the run tree, transcript, and results panes.
  */
+export function InspectorBusySpinner({
+  kind,
+}: {
+  kind: "run" | "analysis";
+}) {
+  const analysis = kind === "analysis";
+  return (
+    <span
+      className={
+        analysis
+          ? "conv-tree__problem-spinner conv-tree__problem-spinner--analysis"
+          : "conv-tree__problem-spinner"
+      }
+      aria-label={analysis ? "Analyzing" : "Running"}
+      title={analysis ? "Analyzing" : "Running"}
+    />
+  );
+}
+
 export function RunWarningBanner({
   title,
   message,

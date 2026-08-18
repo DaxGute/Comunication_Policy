@@ -12,6 +12,7 @@ import {
   DEFAULT_CLOSURE_STAGNANT_TURNS,
   DEFAULT_CYCLE_WINDOW_TURNS,
   DEFAULT_DEVELOPED_COVERAGE,
+  DEFAULT_FINALIZATION_TURNS,
   DEFAULT_LOCAL_LOOP_TURNS,
   DEFAULT_STALL_FAIL_TURNS,
   DEFAULT_STALL_RECOVERY_TURNS,
@@ -21,6 +22,8 @@ import {
   noStateChangeFeedback,
   stallWarningFeedback,
   STRUCTURED_REASONING_MISSING_FEEDBACK,
+  type ClosureWarningReason,
+  type FreezeType,
   type StallInterventionKind,
   type StallRecoveryPhase,
 } from "./stall";
@@ -51,14 +54,25 @@ export type SolverProgressCounters = {
   closureWarningCount: number;
   finalizationRequiredCount: number;
   semanticStallReason?: string;
+  freezeType?: FreezeType;
+  freezeDetectedTurn?: number;
   stallWarningTurn?: number;
   stallWarningKind?: StallInterventionKind;
+  stallWarningFingerprint?: string;
+  warningDeliveredTurn?: number;
   closureWarningTurn?: number;
+  closureWarningReason?: ClosureWarningReason;
+  closureWarningDeliveredTurn?: number;
   finalizationRequiredTurn?: number;
+  finalizationDeliveredTurn?: number;
+  recoveryTurnCount?: number;
   recoveryTurnsBeforeFinalization?: number;
   progressResumedAfterWarning?: boolean;
+  finalAnswerAfterWarning?: boolean;
   finalAnswerAfterFinalization?: boolean;
+  turnsFromWarningToFinalAnswer?: number;
   terminatedAsProtocolStall?: boolean;
+  terminatedAsMaxTurns?: boolean;
 };
 
 export type SolverProgressSnapshot = SolverProgressCounters & {
@@ -66,6 +80,7 @@ export type SolverProgressSnapshot = SolverProgressCounters & {
   fingerprintCount: number;
   lastFingerprint?: string;
   phase: StallRecoveryPhase;
+  recoveryTurnCount: number;
 };
 
 export type SolverProgressState = {
@@ -81,9 +96,13 @@ export type SolverProgressState = {
   recoveryTurnCount: number;
   lastQuality?: SolverSolutionQuality;
   qualityUnchangedStreak: number;
+  freezeType?: FreezeType;
+  freezeDetectedTurn?: number;
   stallWarningTurn?: number;
   stallWarningKind?: StallInterventionKind;
+  stallWarningFingerprint?: string;
   closureWarningTurn?: number;
+  closureWarningReason?: ClosureWarningReason;
   finalizationRequiredTurn?: number;
   counters: SolverProgressCounters;
 };
@@ -98,6 +117,8 @@ export type SolverProgressTurnInput = {
   fingerprint: string;
   substantive: boolean;
   structuredReasoningMissing: boolean;
+  /** True when the agent wrote FINAL_ANSWER but no extractable answer was found. */
+  attemptedFinalAnswer?: boolean;
   stallRecoveryTurns?: number;
   stallFailTurns?: number;
   localLoopTurns?: number;
@@ -281,6 +302,7 @@ export function snapshotSolverProgress(
     fingerprintCount: state.fingerprints.length,
     lastFingerprint: state.fingerprints[state.fingerprints.length - 1],
     phase: state.phase,
+    recoveryTurnCount: state.recoveryTurnCount,
   };
 }
 
@@ -351,10 +373,6 @@ function isSubset(inner: string[], outer: string[]): boolean {
   return inner.every((id) => set.has(id));
 }
 
-function ledgerLabel(ledgers: TaskIssueLedger[] | undefined, issueId: string): string {
-  return ledgers?.find((ledger) => ledger.issueId === issueId)?.label ?? issueId;
-}
-
 function untouchedLabels(
   issueStates: IssueConvergenceState[],
   ledgers: TaskIssueLedger[] | undefined,
@@ -393,6 +411,17 @@ function remainingTurnsAfter(
 ): number | undefined {
   if (maxTurns === undefined) return undefined;
   return Math.max(0, maxTurns - turnIndex);
+}
+
+function freezeTypeFor(args: {
+  localLoop: boolean;
+  cycle: boolean;
+  repeatedState: boolean;
+}): FreezeType {
+  if (args.localLoop) return "local_loop";
+  if (args.cycle) return "semantic_stall_state_cycle";
+  if (args.repeatedState) return "semantic_stall_repeated_state";
+  return "semantic_stall_no_state_change";
 }
 
 function nearTurnBudget(turnIndex: number, maxTurns: number | undefined): boolean {
@@ -533,9 +562,13 @@ export function reduceSolverProgress(
   let diversified = previous.diversified;
   let lastInterventionTurn = previous.lastInterventionTurn;
   let recoveryTurnCount = previous.recoveryTurnCount;
+  let freezeType = previous.freezeType;
+  let freezeDetectedTurn = previous.freezeDetectedTurn;
   let stallWarningTurn = previous.stallWarningTurn;
   let stallWarningKind = previous.stallWarningKind;
+  let stallWarningFingerprint = previous.stallWarningFingerprint;
   let closureWarningTurn = previous.closureWarningTurn;
+  let closureWarningReason = previous.closureWarningReason;
   let finalizationRequiredTurn = previous.finalizationRequiredTurn;
   let progressResumedAfterWarning = previous.counters.progressResumedAfterWarning;
   let recoveryTurnsBeforeFinalization =
@@ -551,32 +584,42 @@ export function reduceSolverProgress(
     recoveryTurnCount = 0;
   };
 
+  // Observed Mode A (0015): fingerprint churn during recovery is not
+  // improvement. Only coverage/settlement/conflict reduction resumes search.
   const freezeRecovered =
-    phase === "recovery" || phase === "finalization"
-      ? stallWarningKind === "local_loop"
-        ? !localLoop || qualityImproved
-        : stallWarningKind === "closure"
-          ? qualityImproved
-          : stateChanged
-      : false;
+    (phase === "recovery" || phase === "finalization") && qualityImproved;
 
   if (freezeRecovered) {
     resumeProgress();
   }
 
-  const enterRecovery = (kind: StallInterventionKind, feedback: string): void => {
+  const enterRecovery = (
+    kind: StallInterventionKind,
+    feedback: string,
+    reason?: ClosureWarningReason,
+  ): void => {
     phase = "recovery";
     recoveryTurnCount = 0;
     stallWarningKind = kind;
-    if (stallWarningTurn === undefined) stallWarningTurn = input.turnIndex;
     lastInterventionTurn = input.turnIndex;
+    if (stallWarningTurn === undefined) stallWarningTurn = input.turnIndex;
+    if (stallWarningFingerprint === undefined) {
+      stallWarningFingerprint = input.fingerprint;
+    }
     if (kind === "local_loop") {
       localLoopInterventions += 1;
       if (untouched.length > 0) diversificationInterventions += 1;
       diversified = true;
+      if (freezeDetectedTurn === undefined) freezeDetectedTurn = input.turnIndex;
+      freezeType ??= "local_loop";
     } else if (kind === "closure") {
       closureWarningCount += 1;
       if (closureWarningTurn === undefined) closureWarningTurn = input.turnIndex;
+      if (reason && closureWarningReason === undefined) {
+        closureWarningReason = reason;
+      }
+    } else {
+      if (freezeDetectedTurn === undefined) freezeDetectedTurn = input.turnIndex;
     }
     if (kind !== "closure") {
       stallWarningCount += 1;
@@ -599,31 +642,32 @@ export function reduceSolverProgress(
     protocolFeedback = finalizationRequiredFeedback();
   };
 
+  const detectedFreezeType = freezeTypeFor({
+    localLoop,
+    cycle,
+    repeatedState,
+  });
+
   if (phase === "normal") {
-    if (freezeDetected && !freezeRecovered) {
-      const kind: StallInterventionKind = localLoop ? "local_loop" : "semantic_stall";
+    if (freezeDetected) {
+      const kind: StallInterventionKind = localLoop
+        ? "local_loop"
+        : "semantic_stall";
+      freezeType ??= detectedFreezeType;
+      stallReason = detectedFreezeType;
+      counters.semanticStallReason = stallReason;
       enterRecovery(
         kind,
-        localLoop
-          ? localLoopFeedback({
-              loopingLabels: localLoopIssueIds.map((id) =>
-                ledgerLabel(input.ledgers, id),
-              ),
-            })
-          : stallWarningFeedback(),
+        localLoop ? localLoopFeedback() : stallWarningFeedback(),
       );
-      if (kind === "semantic_stall") {
-        stallReason = cycle
-          ? "semantic_stall_state_cycle"
-          : repeatedState
-            ? "semantic_stall_repeated_state"
-            : localLoop
-              ? "semantic_stall_local_loop"
-              : "semantic_stall_no_state_change";
-        counters.semanticStallReason = stallReason;
-      }
     } else if (failureToClose) {
-      enterRecovery("closure", closureWarningFeedback());
+      const reason: ClosureWarningReason = nearTurnBudget(
+        input.turnIndex,
+        input.maxTurns,
+      )
+        ? "near_turn_budget"
+        : "quality_stagnant_developed";
+      enterRecovery("closure", closureWarningFeedback(), reason);
     } else if (input.structuredReasoningMissing && unchangedStreak === 1) {
       protocolFeedback = STRUCTURED_REASONING_MISSING_FEEDBACK;
     } else if (
@@ -637,14 +681,21 @@ export function reduceSolverProgress(
     recoveryTurnCount += 1;
     const recoveryExpired = recoveryTurnCount >= stallRecoveryTurns;
     const failExpired = unchangedStreak >= stallFailTurns && !stateChanged;
-    if (recoveryExpired || failExpired || budgetTight) {
+    const emptyCloseAttempt = Boolean(input.attemptedFinalAnswer);
+    if (
+      recoveryExpired ||
+      failExpired ||
+      budgetTight ||
+      emptyCloseAttempt
+    ) {
       enterFinalization();
     }
   } else if (phase === "finalization") {
-    if (
-      previous.finalizationRequiredTurn !== undefined &&
-      input.turnIndex > previous.finalizationRequiredTurn
-    ) {
+    const elapsed =
+      previous.finalizationRequiredTurn === undefined
+        ? 0
+        : input.turnIndex - previous.finalizationRequiredTurn;
+    if (elapsed >= DEFAULT_FINALIZATION_TURNS) {
       stalled = true;
       stallReason =
         previous.stallWarningKind === "closure"
@@ -652,7 +703,6 @@ export function reduceSolverProgress(
           : previous.stallWarningKind === "local_loop"
             ? "finalization_ignored_after_local_loop"
             : "finalization_ignored_after_stall";
-      counters.semanticStallReason = stallReason;
     }
   }
 
@@ -661,15 +711,22 @@ export function reduceSolverProgress(
   counters.stallWarningCount = stallWarningCount;
   counters.closureWarningCount = closureWarningCount;
   counters.finalizationRequiredCount = finalizationRequiredCount;
+  counters.freezeType = freezeType;
+  counters.freezeDetectedTurn = freezeDetectedTurn;
   counters.stallWarningTurn = stallWarningTurn;
   counters.stallWarningKind = stallWarningKind;
+  counters.stallWarningFingerprint = stallWarningFingerprint;
+  counters.warningDeliveredTurn = previous.counters.warningDeliveredTurn;
   counters.closureWarningTurn = closureWarningTurn;
+  counters.closureWarningReason = closureWarningReason;
+  counters.closureWarningDeliveredTurn =
+    previous.counters.closureWarningDeliveredTurn;
   counters.finalizationRequiredTurn = finalizationRequiredTurn;
+  counters.finalizationDeliveredTurn =
+    previous.counters.finalizationDeliveredTurn;
+  counters.recoveryTurnCount = recoveryTurnCount;
   counters.recoveryTurnsBeforeFinalization = recoveryTurnsBeforeFinalization;
   counters.progressResumedAfterWarning = progressResumedAfterWarning;
-  if (stalled) {
-    counters.terminatedAsProtocolStall = true;
-  }
 
   return {
     state: {
@@ -685,9 +742,13 @@ export function reduceSolverProgress(
       recoveryTurnCount,
       lastQuality: quality,
       qualityUnchangedStreak,
+      freezeType,
+      freezeDetectedTurn,
       stallWarningTurn,
       stallWarningKind,
+      stallWarningFingerprint,
       closureWarningTurn,
+      closureWarningReason,
       finalizationRequiredTurn,
       counters,
     },

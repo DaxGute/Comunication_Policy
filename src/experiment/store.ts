@@ -4,7 +4,7 @@
  * Execution lives on the server (RunManager). Evaluation UI mapping is in
  * evaluationUi.ts. Persistence of picker state is in persistence.ts.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { AgentId } from "../agents/types";
 import {
@@ -19,6 +19,10 @@ import {
   startBatchEvaluation as apiStartBatchEvaluation,
   startEvaluation as apiStartEvaluation,
 } from "../api/runsClient";
+import {
+  getRunTree as apiGetRunTree,
+  putRunTree as apiPutRunTree,
+} from "../api/runTreeClient";
 import { createCommunicationPolicy } from "../communication/policy";
 import type { CommunicationPolicy } from "../communication/types";
 import type {
@@ -29,8 +33,10 @@ import { modelSupportsReasoningEffort } from "../models/modelRegistry";
 import { createInitialExperimentState, providerForModel } from "./defaults";
 import {
   evaluationUiFromRuns,
+  sameEvaluationUi,
   type EvaluationUiState,
 } from "./evaluationUi";
+import { reuseUnchangedRuns, sameProgressMap } from "./runIdentity";
 import {
   loadLegacyRunsForMigration,
   loadRunConfig,
@@ -45,10 +51,25 @@ import type {
   RunConfig,
   RunProgress,
 } from "./types";
+import {
+  deleteFolder as deleteFolderFromTree,
+  emptyRunTree,
+  insertFolder,
+  moveTreeItem,
+  prependRunToTree,
+  reconcileRunTree,
+  removeRunFromTree,
+  renameFolder as renameFolderInTree,
+  sameRunTree,
+  type DraggedTreeItem,
+  type DropTarget,
+  type RunTree,
+} from "./runTree";
 
 const POLL_INTERVAL_MS = 750;
 
 export type { EvaluationUiState } from "./evaluationUi";
+export type { DraggedTreeItem, DropTarget, RunTree } from "./runTree";
 
 export type ExperimentStore = {
   state: ExperimentState;
@@ -65,6 +86,11 @@ export type ExperimentStore = {
   deleteRun: (runId: string) => void;
   renameRun: (runId: string, title: string) => void;
   renameProblem: (runId: string, problemId: string, title: string) => void;
+  runTree: RunTree;
+  createFolder: () => string;
+  renameFolder: (folderId: string, title: string) => void;
+  deleteFolder: (folderId: string) => void;
+  moveTreeItem: (dragged: DraggedTreeItem, target: DropTarget) => void;
   startRun: () => Promise<void>;
   cancelRun: (runId: string) => void;
   appendMultiAgentEvaluation: (
@@ -123,11 +149,12 @@ function applyRunsToState(
   prev: ExperimentState,
   runs: ExperimentRun[],
 ): ExperimentState {
+  const nextRuns = reuseUnchangedRuns(prev.runs, runs);
   const selectedRunId =
-    prev.selectedRunId && runs.some((r) => r.id === prev.selectedRunId)
+    prev.selectedRunId && nextRuns.some((r) => r.id === prev.selectedRunId)
       ? prev.selectedRunId
-      : runs[0]?.id;
-  const selectedRun = runs.find((r) => r.id === selectedRunId);
+      : nextRuns[0]?.id;
+  const selectedRun = nextRuns.find((r) => r.id === selectedRunId);
   const selectedProblemId =
     prev.selectedProblemId &&
     selectedRun?.conversations.some(
@@ -135,19 +162,33 @@ function applyRunsToState(
     )
       ? prev.selectedProblemId
       : selectedRun?.conversations[0]?.problemId;
+  const isRunning = isRunningFromRuns(nextRuns);
+  const runProgressById = progressFromRuns(nextRuns);
+  const speakingAgentId = speakingFromSelection(
+    nextRuns,
+    selectedRunId,
+    selectedProblemId,
+  );
+
+  if (
+    nextRuns === prev.runs &&
+    selectedRunId === prev.selectedRunId &&
+    selectedProblemId === prev.selectedProblemId &&
+    isRunning === prev.isRunning &&
+    speakingAgentId === prev.speakingAgentId &&
+    sameProgressMap(runProgressById, prev.runProgressById)
+  ) {
+    return prev;
+  }
 
   return {
     ...prev,
-    runs,
+    runs: nextRuns,
     selectedRunId,
     selectedProblemId,
-    isRunning: isRunningFromRuns(runs),
-    runProgressById: progressFromRuns(runs),
-    speakingAgentId: speakingFromSelection(
-      runs,
-      selectedRunId,
-      selectedProblemId,
-    ),
+    isRunning,
+    runProgressById,
+    speakingAgentId,
   };
 }
 
@@ -163,8 +204,15 @@ export function useExperimentStore(): ExperimentStore {
   >();
   const [hydrated, setHydrated] = useState(false);
   const [problemSelectGeneration, setProblemSelectGeneration] = useState(0);
+  const [runTree, setRunTree] = useState<RunTree>(emptyRunTree);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const runTreeRef = useRef(runTree);
+  runTreeRef.current = runTree;
+  const evalFocusRef = useRef(evalFocus);
+  evalFocusRef.current = evalFocus;
+  const evaluationUiRef = useRef(evaluationUi);
+  evaluationUiRef.current = evaluationUi;
 
   useEffect(() => {
     saveSelection({
@@ -187,7 +235,18 @@ export function useExperimentStore(): ExperimentStore {
             runs = await apiListRuns();
           }
         }
+        let tree = emptyRunTree();
+        try {
+          tree = await apiGetRunTree();
+        } catch (error) {
+          console.error("Failed to hydrate run tree from server:", error);
+        }
+        tree = reconcileRunTree(
+          tree,
+          runs.map((run) => run.id),
+        );
         if (cancelled) return;
+        setRunTree(tree);
         setState((prev) => applyRunsToState(prev, runs));
         setEvaluationUi(evaluationUiFromRuns(runs, undefined));
       } catch (error) {
@@ -219,7 +278,9 @@ export function useExperimentStore(): ExperimentStore {
     let intervalId: number | undefined;
 
     const needsPollNow = () =>
-      stateRef.current.runs.some(runNeedsPolling) || evalNeedsPolling;
+      stateRef.current.runs.some(runNeedsPolling) ||
+      evaluationUiRef.current?.status === "running" ||
+      Boolean(evalFocusRef.current);
 
     const tick = async () => {
       if (!needsPollNow()) {
@@ -233,18 +294,21 @@ export function useExperimentStore(): ExperimentStore {
         const runs = await apiListRuns();
         if (cancelled) return;
         setState((prev) => applyRunsToState(prev, runs));
-        const nextUi = evaluationUiFromRuns(runs, evalFocus);
-        setEvaluationUi(nextUi);
+        const focus = evalFocusRef.current;
+        const nextUi = evaluationUiFromRuns(runs, focus);
+        setEvaluationUi((prev) =>
+          sameEvaluationUi(prev, nextUi) ? prev : nextUi,
+        );
         if (
-          evalFocus &&
+          focus &&
           nextUi &&
           nextUi.status !== "running" &&
-          !evalFocus.batch
+          !focus.batch
         ) {
           setEvalFocus(undefined);
         }
-        if (evalFocus?.batch) {
-          const run = runs.find((r) => r.id === evalFocus.runId);
+        if (focus?.batch) {
+          const run = runs.find((r) => r.id === focus.runId);
           const anyRunning = (run?.multiAgentEvaluations ?? []).some(
             (e) => e.status === "running",
           );
@@ -276,6 +340,14 @@ export function useExperimentStore(): ExperimentStore {
     };
   }, [hydrated, runsNeedPolling, evalNeedsPolling, evalFocus]);
 
+  useEffect(() => {
+    const runIds = state.runs.map((run) => run.id);
+    setRunTree((prev) => {
+      const next = reconcileRunTree(prev, runIds);
+      return sameRunTree(prev, next) ? prev : next;
+    });
+  }, [state.runs]);
+
   const agentPrompts = useMemo(
     () => buildAgentPromptPair(state.currentPolicy),
     [state.currentPolicy],
@@ -287,7 +359,7 @@ export function useExperimentStore(): ExperimentStore {
     (c) => c.problemId === state.selectedProblemId,
   );
 
-  function setPolicy(partial: Partial<CommunicationPolicy>) {
+  const setPolicy = useCallback((partial: Partial<CommunicationPolicy>) => {
     setState((prev) => ({
       ...prev,
       currentPolicy: createCommunicationPolicy({
@@ -295,9 +367,9 @@ export function useExperimentStore(): ExperimentStore {
         ...partial,
       }),
     }));
-  }
+  }, []);
 
-  function setRunConfig(partial: Partial<RunConfig>) {
+  const setRunConfig = useCallback((partial: Partial<RunConfig>) => {
     setState((prev) => {
       const currentRunConfig = { ...prev.currentRunConfig, ...partial };
 
@@ -314,9 +386,9 @@ export function useExperimentStore(): ExperimentStore {
       saveRunConfig(currentRunConfig);
       return { ...prev, currentRunConfig };
     });
-  }
+  }, []);
 
-  function selectRun(runId: string | undefined) {
+  const selectRun = useCallback((runId: string | undefined) => {
     setState((prev) => {
       const run = prev.runs.find((r) => r.id === runId);
       const selectedProblemId = run?.conversations[0]?.problemId;
@@ -331,9 +403,9 @@ export function useExperimentStore(): ExperimentStore {
         ),
       };
     });
-  }
+  }, []);
 
-  function selectProblem(problemId: string | undefined, runId?: string) {
+  const selectProblem = useCallback((problemId: string | undefined, runId?: string) => {
     setProblemSelectGeneration((n) => n + 1);
     setState((prev) => {
       const selectedRunId = runId ?? prev.selectedRunId;
@@ -348,9 +420,33 @@ export function useExperimentStore(): ExperimentStore {
         ),
       };
     });
-  }
+  }, []);
 
-  function mergeRun(run: ExperimentRun) {
+  const persistTree = useCallback((next: RunTree) => {
+    const reconciled = reconcileRunTree(
+      next,
+      stateRef.current.runs.map((run) => run.id),
+    );
+    setRunTree(reconciled);
+    void apiPutRunTree(reconciled).catch((error) => {
+      console.error("Failed to save run tree:", error);
+      void apiGetRunTree()
+        .then((tree) => {
+          setRunTree(
+            reconcileRunTree(
+              tree,
+              stateRef.current.runs.map((run) => run.id),
+            ),
+          );
+        })
+        .catch(() => {
+          // Ignore secondary failure; original error already logged.
+        });
+    });
+  }, []);
+
+  const mergeRun = useCallback((run: ExperimentRun) => {
+    setRunTree((tree) => prependRunToTree(tree, run.id));
     setState((prev) => {
       const exists = prev.runs.some((r) => r.id === run.id);
       const runs = exists
@@ -368,11 +464,12 @@ export function useExperimentStore(): ExperimentStore {
         runs,
       );
     });
-  }
+  }, []);
 
-  async function startRun() {
-    const policySnapshot = createCommunicationPolicy(state.currentPolicy);
-    const configSnapshot: RunConfig = { ...state.currentRunConfig };
+  const startRun = useCallback(async () => {
+    const { currentPolicy, currentRunConfig } = stateRef.current;
+    const policySnapshot = createCommunicationPolicy(currentPolicy);
+    const configSnapshot: RunConfig = { ...currentRunConfig };
 
     setState((prev) => ({ ...prev, isRunning: true }));
 
@@ -389,9 +486,9 @@ export function useExperimentStore(): ExperimentStore {
         isRunning: isRunningFromRuns(prev.runs),
       }));
     }
-  }
+  }, [mergeRun]);
 
-  function cancelRun(runId: string) {
+  const cancelRun = useCallback((runId: string) => {
     // Select immediately so Run Results shows the cancelled banner when the
     // server finishes unwinding the run.
     setState((prev) => {
@@ -423,15 +520,16 @@ export function useExperimentStore(): ExperimentStore {
       .catch((error) => {
         console.error("Failed to cancel run:", error);
       });
-  }
+  }, [mergeRun]);
 
-  function deleteRun(runId: string) {
+  const deleteRun = useCallback((runId: string) => {
     // Optimistic: drop from UI immediately. Server delete is authoritative;
     // on failure, re-list so a failed wipe does not leave a ghost gap.
     setState((prev) => {
       const runs = prev.runs.filter((r) => r.id !== runId);
       return applyRunsToState(prev, runs);
     });
+    setRunTree((tree) => removeRunFromTree(tree, runId));
     setEvaluationUi((prev) => (prev?.runId === runId ? undefined : prev));
     setEvalFocus((prev) => (prev?.runId === runId ? undefined : prev));
 
@@ -445,9 +543,9 @@ export function useExperimentStore(): ExperimentStore {
           // Ignore secondary failure; original error already logged.
         });
     });
-  }
+  }, []);
 
-  function renameRun(runId: string, title: string) {
+  const renameRun = useCallback((runId: string, title: string) => {
     const next = title.trim();
     if (!next) return;
     // Optimistic local update
@@ -460,9 +558,9 @@ export function useExperimentStore(): ExperimentStore {
     void apiRenameRun(runId, next)
       .then((run) => mergeRun(run))
       .catch((error) => console.error("Failed to rename run:", error));
-  }
+  }, [mergeRun]);
 
-  function renameProblem(runId: string, problemId: string, title: string) {
+  const renameProblem = useCallback((runId: string, problemId: string, title: string) => {
     const next = title.trim();
     if (!next) return;
     setState((prev) => ({
@@ -480,23 +578,45 @@ export function useExperimentStore(): ExperimentStore {
     void apiRenameProblem(runId, problemId, next)
       .then((run) => mergeRun(run))
       .catch((error) => console.error("Failed to rename problem:", error));
-  }
+  }, [mergeRun]);
 
-  function appendMultiAgentEvaluation(
-    _runId: string,
-    _evaluation: MultiAgentEvaluation,
-  ) {
-    // Server is authoritative; polling will pick up evaluation writes.
-  }
+  const createFolder = useCallback((): string => {
+    const { tree, folder } = insertFolder(runTreeRef.current);
+    persistTree(tree);
+    return folder.id;
+  }, [persistTree]);
 
-  async function runConversationEvaluation(options: {
-    runId: string;
-    problemId: string;
-    evaluatorModel: string;
-    evaluationReasoningEffort?: ReasoningEffort;
-    retryFrom?: MultiAgentEvaluation;
-    overrideExisting?: boolean;
-  }): Promise<MultiAgentEvaluation | undefined> {
+  const renameFolder = useCallback((folderId: string, title: string) => {
+    persistTree(renameFolderInTree(runTreeRef.current, folderId, title));
+  }, [persistTree]);
+
+  const deleteFolder = useCallback((folderId: string) => {
+    persistTree(deleteFolderFromTree(runTreeRef.current, folderId));
+  }, [persistTree]);
+
+  const moveInspectorTreeItem = useCallback(
+    (dragged: DraggedTreeItem, target: DropTarget) => {
+      persistTree(moveTreeItem(runTreeRef.current, dragged, target));
+    },
+    [persistTree],
+  );
+
+  const appendMultiAgentEvaluation = useCallback(
+    (_runId: string, _evaluation: MultiAgentEvaluation) => {
+      // Server is authoritative; polling will pick up evaluation writes.
+    },
+    [],
+  );
+
+  const runConversationEvaluation = useCallback(
+    async (options: {
+      runId: string;
+      problemId: string;
+      evaluatorModel: string;
+      evaluationReasoningEffort?: ReasoningEffort;
+      retryFrom?: MultiAgentEvaluation;
+      overrideExisting?: boolean;
+    }): Promise<MultiAgentEvaluation | undefined> => {
     const evaluationReasoningEffort =
       options.evaluationReasoningEffort ??
       stateRef.current.runs.find((r) => r.id === options.runId)?.config
@@ -544,14 +664,17 @@ export function useExperimentStore(): ExperimentStore {
       });
       return undefined;
     }
-  }
+    },
+    [mergeRun],
+  );
 
-  async function runAllConversationEvaluations(options: {
-    runId: string;
-    evaluatorModel: string;
-    evaluationReasoningEffort?: ReasoningEffort;
-    overrideExisting?: boolean;
-  }): Promise<void> {
+  const runAllConversationEvaluations = useCallback(
+    async (options: {
+      runId: string;
+      evaluatorModel: string;
+      evaluationReasoningEffort?: ReasoningEffort;
+      overrideExisting?: boolean;
+    }): Promise<void> => {
     const run = stateRef.current.runs.find((r) => r.id === options.runId);
     if (!run || run.conversations.length === 0) return;
 
@@ -589,7 +712,9 @@ export function useExperimentStore(): ExperimentStore {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-  }
+    },
+    [mergeRun],
+  );
 
   return {
     state,
@@ -605,6 +730,11 @@ export function useExperimentStore(): ExperimentStore {
     deleteRun,
     renameRun,
     renameProblem,
+    runTree,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    moveTreeItem: moveInspectorTreeItem,
     startRun,
     cancelRun,
     appendMultiAgentEvaluation,

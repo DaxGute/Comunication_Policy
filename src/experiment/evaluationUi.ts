@@ -29,6 +29,56 @@ export type EvaluationUiState = {
   };
 };
 
+/** True while multi-agent analysis is in flight for this problem. */
+export function isProblemAnalysisRunning(
+  run: ExperimentRun,
+  problemId: string,
+  evaluationUi?: EvaluationUiState,
+): boolean {
+  if (
+    (run.multiAgentEvaluations ?? []).some(
+      (e) => e.problemId === problemId && e.status === "running",
+    )
+  ) {
+    return true;
+  }
+  return (
+    evaluationUi?.status === "running" &&
+    evaluationUi.runId === run.id &&
+    evaluationUi.problemId === problemId
+  );
+}
+
+export function sameEvaluationUi(
+  a: EvaluationUiState | undefined,
+  b: EvaluationUiState | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (
+    a.runId !== b.runId ||
+    a.problemId !== b.problemId ||
+    a.evaluationId !== b.evaluationId ||
+    a.status !== b.status ||
+    a.error !== b.error ||
+    a.evaluatorModel !== b.evaluatorModel ||
+    a.evaluationReasoningEffort !== b.evaluationReasoningEffort ||
+    a.batch?.currentIndex !== b.batch?.currentIndex ||
+    a.batch?.total !== b.batch?.total ||
+    a.partial?.id !== b.partial?.id ||
+    a.partial?.status !== b.partial?.status ||
+    a.stages.length !== b.stages.length
+  ) {
+    return false;
+  }
+  return a.stages.every(
+    (stage, index) =>
+      stage.id === b.stages[index]?.id &&
+      stage.status === b.stages[index]?.status &&
+      stage.detail === b.stages[index]?.detail,
+  );
+}
+
 export function evaluationUiFromRuns(
   runs: ExperimentRun[],
   focus?: { runId: string; problemId?: string; batch?: boolean },

@@ -3998,6 +3998,36 @@ body.is-rotating-plot * {
   margin-bottom: 0.35rem;
 }
 
+.conversation-inspector__nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.conversation-inspector__nav-header h2 {
+  margin-bottom: 0;
+}
+
+.conv-tree__new-folder {
+  flex-shrink: 0;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-2);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.conv-tree__new-folder:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--bg-3);
+}
+
 .results-header {
   display: flex;
   align-items: center;
@@ -4046,19 +4076,115 @@ body.is-rotating-plot * {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  position: relative;
 }
 
-.conv-tree__run-row {
+.conv-tree__item--dragging {
+  opacity: 0.45;
+}
+
+.conv-tree__item--drop-before::before,
+.conv-tree__item--drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.conv-tree__item--drop-before::before {
+  top: -2px;
+}
+
+.conv-tree__item--drop-after::after {
+  bottom: -2px;
+}
+
+.conv-tree__item--drop-inside > .conv-tree__folder-row {
+  outline: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-2));
+}
+
+.conv-tree__run-row,
+.conv-tree__folder-row {
   display: flex;
   align-items: stretch;
   border: 1px solid transparent;
   border-radius: 4px;
   overflow: hidden;
+  cursor: grab;
+  user-select: none;
+}
+
+.conv-tree__run-row:active,
+.conv-tree__folder-row:active {
+  cursor: grabbing;
 }
 
 .conv-tree__run-row--active {
   background: var(--bg-2);
   border-color: var(--border);
+}
+
+.conv-tree__folder-row:hover,
+.conv-tree__run-row:hover {
+  background: var(--bg-2);
+}
+
+.conv-tree__folder {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.35rem 0.45rem;
+  cursor: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+}
+
+.conv-tree__folder-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  transform: translateY(0.08em);
+}
+
+.conv-tree__folder-count {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.conv-tree__children {
+  list-style: none;
+  margin: 0 0 0.15rem 0.55rem;
+  padding: 0.1rem 0 0.15rem 0.55rem;
+  border-left: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0.4rem;
+}
+
+.conv-tree__children:empty {
+  min-height: 1.35rem;
+}
+
+.conv-tree--drop-end {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .conv-tree__run {
@@ -4072,17 +4198,13 @@ body.is-rotating-plot * {
   border: none;
   border-radius: 0;
   padding: 0.35rem 0.45rem;
-  cursor: var(--cursor-pointer);
+  cursor: inherit;
   font-size: 0.8rem;
   color: inherit;
 }
 
 .conv-tree__run-row:hover .conv-tree__run {
   background: transparent;
-}
-
-.conv-tree__run-row:hover {
-  background: var(--bg-2);
 }
 
 .conv-tree__run-title {
@@ -4200,7 +4322,8 @@ body.is-rotating-plot * {
 }
 
 .conv-tree__run-row--active .conv-tree__delete,
-.conv-tree__run-row:hover .conv-tree__delete {
+.conv-tree__run-row:hover .conv-tree__delete,
+.conv-tree__folder-row:hover .conv-tree__delete {
   border-left-color: var(--border-soft);
 }
 
@@ -4274,6 +4397,11 @@ body.is-rotating-plot * {
   animation: conv-tree-spin 0.7s linear infinite;
 }
 
+.conv-tree__problem-spinner--analysis {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-top-color: var(--accent);
+}
+
 .conv-tree__problem .conv-tree__problem-spinner {
   margin-left: auto;
 }
@@ -4317,6 +4445,9 @@ body.is-rotating-plot * {
   padding: 0.32rem 0.75rem;
   cursor: var(--cursor-pointer);
   border-right: 1px solid var(--border-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .problem-tabs button:last-child {

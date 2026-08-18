@@ -5,7 +5,7 @@
  * the numeric CommunicationPolicy object.
  */
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import {
   authorityWeightA,
   authorityWeightB,
@@ -22,7 +22,7 @@ type Props = {
   agentBPrompt: string;
 };
 
-export function CommunicationPolicyPanel({
+export const CommunicationPolicyPanel = memo(function CommunicationPolicyPanel({
   policy,
   onChange,
   agentAPrompt,
@@ -157,7 +157,7 @@ export function CommunicationPolicyPanel({
       />
     </section>
   );
-}
+});
 
 function LayeredTrustSlider({
   trustA,

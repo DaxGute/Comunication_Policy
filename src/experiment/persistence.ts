@@ -23,6 +23,7 @@ const RUN_CONFIG_KEY = "communication-policy:run-config";
 const RUN_SETTINGS_OPEN_KEY = "communication-policy:run-settings-open";
 const RUNS_KEY = "communication-policy:runs";
 const SELECTION_KEY = "communication-policy:selection";
+const EXPANDED_FOLDERS_KEY = "communication-policy:expanded-folders";
 
 export function loadRunConfig(): RunConfig {
   try {
@@ -133,6 +134,29 @@ export function loadSelection(): PersistedSelection {
 export function saveSelection(selection: PersistedSelection): void {
   try {
     localStorage.setItem(SELECTION_KEY, JSON.stringify(selection));
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}
+
+export function loadExpandedFolderIds(): string[] {
+  try {
+    const raw = localStorage.getItem(EXPANDED_FOLDERS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === "string");
+  } catch {
+    return [];
+  }
+}
+
+export function saveExpandedFolderIds(ids: ReadonlySet<string> | string[]): void {
+  try {
+    localStorage.setItem(
+      EXPANDED_FOLDERS_KEY,
+      JSON.stringify([...ids]),
+    );
   } catch {
     // Ignore quota / private-mode failures.
   }

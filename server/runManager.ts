@@ -41,6 +41,12 @@ import {
   withOpenAIScheduler,
 } from "./openaiScheduler.ts";
 import { RunPersistence } from "./runPersistence.ts";
+import { getRunTreePersistence } from "./runTreePersistence.ts";
+import {
+  prependRunToTree,
+  reconcileRunTree,
+  removeRunFromTree,
+} from "../src/experiment/runTree.ts";
 
 type ActiveRun = {
   abort: AbortController;
@@ -86,23 +92,63 @@ export class RunManager {
     if (this.reconciled) return;
     this.reconciled = true;
     for (const run of this.persistence.list()) {
-      if (run.status !== "running" && run.status !== "queued") continue;
-      if (this.activeRuns.has(run.id)) continue;
+      const runOrphan =
+        (run.status === "running" || run.status === "queued") &&
+        !this.activeRuns.has(run.id);
+      const evalOrphan = (run.multiAgentEvaluations ?? []).some(
+        (evaluation) =>
+          evaluation.status === "running" &&
+          !this.activeEvals.has(evaluation.id),
+      );
+      if (!runOrphan && !evalOrphan) continue;
       this.persistence.update(run.id, (r) => {
-        r.status = "failed";
-        r.error = r.error ?? "Interrupted (server restart)";
-        r.finishedAt = r.finishedAt ?? new Date().toISOString();
-        r.progress = undefined;
-        for (const c of r.conversations) {
-          if (c.status === "running") {
-            c.status = undefined;
-            c.speakingAgentId = undefined;
-            c.stoppedReason = "error";
-            c.error = c.error ?? "Interrupted (server restart)";
+        if (runOrphan) {
+          r.status = "failed";
+          r.error = r.error ?? "Interrupted (server restart)";
+          r.finishedAt = r.finishedAt ?? new Date().toISOString();
+          r.progress = undefined;
+          for (const c of r.conversations) {
+            if (c.status === "running") {
+              c.status = undefined;
+              c.speakingAgentId = undefined;
+              c.stoppedReason = "error";
+              c.error = c.error ?? "Interrupted (server restart)";
+            }
           }
         }
         for (const e of r.multiAgentEvaluations ?? []) {
-          if (e.status === "running") {
+          if (e.status === "running" && !this.activeEvals.has(e.id)) {
+            e.status = "failed";
+            e.finishedAt = e.finishedAt ?? new Date().toISOString();
+            e.errors.push({
+              component: "belief",
+              message: "Interrupted (server restart)",
+              at: new Date().toISOString(),
+              retryable: true,
+            });
+          }
+        }
+        syncRunCostFields(r);
+      });
+    }
+  }
+
+  /**
+   * Evaluations left `running` after a restart (or HMR) have no live job.
+   * Fail those records so the UI stops polling while idle. Does not touch
+   * completed/failed evaluations or live `activeEvals` jobs.
+   */
+  private failOrphanEvaluations(): void {
+    for (const run of this.persistence.list()) {
+      const evalOrphan = (run.multiAgentEvaluations ?? []).some(
+        (evaluation) =>
+          evaluation.status === "running" &&
+          !this.activeEvals.has(evaluation.id),
+      );
+      if (!evalOrphan) continue;
+      this.persistence.update(run.id, (r) => {
+        for (const e of r.multiAgentEvaluations ?? []) {
+          if (e.status === "running" && !this.activeEvals.has(e.id)) {
             e.status = "failed";
             e.finishedAt = e.finishedAt ?? new Date().toISOString();
             e.errors.push({
@@ -120,6 +166,7 @@ export class RunManager {
 
   listRuns(): ExperimentRun[] {
     this.reconcileAfterRestart();
+    this.failOrphanEvaluations();
     const byId = new Map(
       this.persistence.list().map((r) => [r.id, r] as const),
     );
@@ -173,6 +220,7 @@ export class RunManager {
 
     this.live.set(runId, placeholder);
     this.persistLive(runId);
+    getRunTreePersistence().update((tree) => prependRunToTree(tree, runId));
 
     const abort = new AbortController();
     const promise = this.executeRun(runId, policy, config, abort.signal);
@@ -228,7 +276,9 @@ export class RunManager {
     }
 
     this.live.delete(runId);
-    return this.persistence.delete(runId);
+    const existed = this.persistence.delete(runId);
+    getRunTreePersistence().update((tree) => removeRunFromTree(tree, runId));
+    return existed;
   }
 
   renameRun(runId: string, title: string): ExperimentRun | undefined {
@@ -291,6 +341,8 @@ export class RunManager {
       return clone;
     });
     this.persistence.importMany(sanitized);
+    const runIds = this.listRuns().map((run) => run.id);
+    getRunTreePersistence().update((tree) => reconcileRunTree(tree, runIds));
     return { imported: sanitized.length };
   }
 

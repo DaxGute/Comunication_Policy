@@ -3,10 +3,11 @@
  *
  * Does not own the run tree or the run-results sidebar.
  */
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { AgentId } from "../../agents/types";
 import { isIncompleteConversation } from "../../evaluation/evaluators";
 import type { ProblemEvaluation } from "../../evaluation/types";
+import { isProblemAnalysisRunning } from "../../experiment/evaluationUi";
 import { serializeConversation } from "../../experiment/serializeConversation";
 import type { ExperimentRun, ProblemConversation } from "../../experiment/types";
 import {
@@ -34,11 +35,11 @@ import {
   ProblemResultDetails,
 } from "./problemMetrics";
 import { crosswordPredictedGrid, resolveCrosswordDetails } from "./crosswordDetails";
-import { CopyJsonButton } from "./shared";
+import { CopyJsonButton, InspectorBusySpinner } from "./shared";
 import { messageStatsLabel } from "./format";
 import type { InspectorProps, ProblemPaneTab } from "./types";
 
-export function TranscriptView({
+export const TranscriptView = memo(function TranscriptView({
   conversation,
   run,
   evaluation,
@@ -90,9 +91,25 @@ export function TranscriptView({
     [crosswordDetails, evaluation],
   );
 
+  const reasoningGraph = useMemo(
+    () =>
+      hydrateReasoningGraph({
+        reasoningSubjects: conversation.reasoningSubjects,
+        reasoningNodes: conversation.reasoningNodes,
+        reasoningEvents: conversation.reasoningEvents,
+      }),
+    [
+      conversation.reasoningSubjects,
+      conversation.reasoningNodes,
+      conversation.reasoningEvents,
+    ],
+  );
   const convoJsonText = useMemo(
-    () => JSON.stringify(serializeConversation(conversation, run), null, 2),
-    [conversation, run],
+    () =>
+      convoJsonOpen
+        ? JSON.stringify(serializeConversation(conversation, run), null, 2)
+        : "",
+    [convoJsonOpen, conversation, run],
   );
 
   useEffect(() => {
@@ -136,6 +153,11 @@ export function TranscriptView({
   const latestProblemEval = [...problemEvals].sort((a, b) =>
     b.createdAt.localeCompare(a.createdAt),
   )[0];
+  const analysisRunning = isProblemAnalysisRunning(
+    run,
+    conversation.problemId,
+    evaluationUi,
+  );
   const hasProblemTokenUsage =
     !!conversation.conversationUsage ||
     !!latestProblemEval?.usage ||
@@ -241,10 +263,14 @@ export function TranscriptView({
           type="button"
           role="tab"
           aria-selected={tab === "analysis"}
+          aria-busy={analysisRunning || undefined}
           className={tab === "analysis" ? "is-active" : undefined}
           onClick={() => onTabChange("analysis")}
         >
           Analysis
+          {analysisRunning ? (
+            <InspectorBusySpinner kind="analysis" />
+          ) : null}
         </button>
         <button
           type="button"
@@ -314,30 +340,60 @@ export function TranscriptView({
                       semanticStallReason:
                         conversation.reasoningDiagnostics.solverProgress
                           .semanticStallReason,
+                      freezeType:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .freezeType,
+                      freezeDetectedTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .freezeDetectedTurn,
                       stallWarningTurn:
                         conversation.reasoningDiagnostics.solverProgress
                           .stallWarningTurn,
                       stallWarningKind:
                         conversation.reasoningDiagnostics.solverProgress
                           .stallWarningKind,
+                      stallWarningFingerprint:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .stallWarningFingerprint,
+                      warningDeliveredTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .warningDeliveredTurn,
                       closureWarningTurn:
                         conversation.reasoningDiagnostics.solverProgress
                           .closureWarningTurn,
+                      closureWarningReason:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .closureWarningReason,
                       finalizationRequiredTurn:
                         conversation.reasoningDiagnostics.solverProgress
                           .finalizationRequiredTurn,
+                      finalizationDeliveredTurn:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .finalizationDeliveredTurn,
+                      recoveryTurnCount:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .recoveryTurnCount,
                       recoveryTurnsBeforeFinalization:
                         conversation.reasoningDiagnostics.solverProgress
                           .recoveryTurnsBeforeFinalization,
                       progressResumedAfterWarning:
                         conversation.reasoningDiagnostics.solverProgress
                           .progressResumedAfterWarning,
+                      finalAnswerAfterWarning:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .finalAnswerAfterWarning,
                       finalAnswerAfterFinalization:
                         conversation.reasoningDiagnostics.solverProgress
                           .finalAnswerAfterFinalization,
+                      turnsFromWarningToFinalAnswer:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .turnsFromWarningToFinalAnswer,
                       terminatedAsProtocolStall:
                         conversation.reasoningDiagnostics.solverProgress
                           .terminatedAsProtocolStall,
+                      terminatedAsMaxTurns:
+                        conversation.reasoningDiagnostics.solverProgress
+                          .terminatedAsMaxTurns,
                       stallWarningCount:
                         conversation.reasoningDiagnostics.solverProgress
                           .stallWarningCount,
@@ -392,13 +448,8 @@ export function TranscriptView({
                   const agentLabel =
                     message.agentId === "agent_a" ? "Agent A" : "Agent B";
                   const stats = messageStatsLabel(message);
-                  const graph = hydrateReasoningGraph({
-                    reasoningSubjects: conversation.reasoningSubjects,
-                    reasoningNodes: conversation.reasoningNodes,
-                    reasoningEvents: conversation.reasoningEvents,
-                  });
-                  const turnEvents = eventsForMessage(graph, message.id);
-                  const touched = nodeIdsTouchedByMessage(graph, message.id);
+                  const turnEvents = eventsForMessage(reasoningGraph, message.id);
+                  const touched = nodeIdsTouchedByMessage(reasoningGraph, message.id);
                   const rejectedCount = turnEvents.filter(
                     (event) => !event.accepted,
                   ).length;
@@ -508,16 +559,20 @@ export function TranscriptView({
                             </button>
                           </span>
                         </summary>
-                        <pre className="transcript__msg-body">
-                          {message.content}
-                        </pre>
-                        {message.rawContent ? (
-                          <details className="transcript__raw">
-                            <summary>Raw model output</summary>
+                        {expanded ? (
+                          <>
                             <pre className="transcript__msg-body">
-                              {message.rawContent}
+                              {message.content}
                             </pre>
-                          </details>
+                            {message.rawContent ? (
+                              <details className="transcript__raw">
+                                <summary>Raw model output</summary>
+                                <pre className="transcript__msg-body">
+                                  {message.rawContent}
+                                </pre>
+                              </details>
+                            ) : null}
+                          </>
                         ) : null}
                       </details>
                     </li>
@@ -562,7 +617,7 @@ export function TranscriptView({
       ) : null}
     </div>
   );
-}
+});
 
 function ModelRequestAuditModal({
   conversation,

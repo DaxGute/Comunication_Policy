@@ -76,6 +76,7 @@ export {
   DEFAULT_LOCAL_LOOP_TURNS,
   DEFAULT_STALL_FAIL_TURNS,
   DEFAULT_STALL_RECOVERY_TURNS,
+  freezeProtocolKind,
   NO_STATE_CHANGE_PREFIX,
   STRUCTURED_REASONING_MISSING_FEEDBACK,
   STRUCTURED_REASONING_STALL_FEEDBACK,
@@ -89,7 +90,12 @@ export {
   semanticStallFeedback,
   stallWarningFeedback,
 } from "./stall";
-export type { StallInterventionKind, StallRecoveryPhase } from "./stall";
+export type {
+  ClosureWarningReason,
+  FreezeType,
+  StallInterventionKind,
+  StallRecoveryPhase,
+} from "./stall";
 export {
   emptySolverProgressState,
   genericSolverStateFingerprint,

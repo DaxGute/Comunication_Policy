@@ -6,6 +6,10 @@ import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults.ts";
 import type { ExperimentRun, RunConfig } from "../src/experiment/types.ts";
 import type { ReasoningEffort } from "../src/models/modelRegistry.ts";
 import { getRunManager, RunsApiError } from "./runManager.ts";
+import {
+  isRunTreeApiPath,
+  safeHandleRunTreeApiRequest,
+} from "./runTreeApi.ts";
 
 function pathnameOf(url: string | undefined): string {
   if (!url) return "";
@@ -18,7 +22,11 @@ function pathnameOf(url: string | undefined): string {
 
 export function isRunsApiPath(url: string | undefined): boolean {
   const pathname = pathnameOf(url);
-  return pathname === "/api/runs" || pathname.startsWith("/api/runs/");
+  return (
+    pathname === "/api/runs" ||
+    pathname.startsWith("/api/runs/") ||
+    isRunTreeApiPath(url)
+  );
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -103,6 +111,11 @@ export async function handleRunsApiRequest(
   res: ServerResponse,
   getApiKey: () => string | undefined,
 ): Promise<void> {
+  if (isRunTreeApiPath(req.url)) {
+    await safeHandleRunTreeApiRequest(req, res, getApiKey);
+    return;
+  }
+
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.setHeader("Access-Control-Allow-Origin", "*");

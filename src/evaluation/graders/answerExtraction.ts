@@ -4,6 +4,10 @@
 
 const FINAL_ANSWER_MARKER = /FINAL_ANSWER:\s*/i;
 
+export function hasFinalAnswerMarker(content: string): boolean {
+  return FINAL_ANSWER_MARKER.test(content);
+}
+
 export function extractFinalAnswerFromText(content: string): string | undefined {
   const match = content.match(FINAL_ANSWER_MARKER);
   if (!match || match.index === undefined) return undefined;

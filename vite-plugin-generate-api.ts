@@ -20,7 +20,12 @@ function pathnameOf(url: string | undefined): string {
 
 function isRunsApiPath(url: string | undefined): boolean {
   const pathname = pathnameOf(url);
-  return pathname === "/api/runs" || pathname.startsWith("/api/runs/");
+  return (
+    pathname === "/api/runs" ||
+    pathname.startsWith("/api/runs/") ||
+    pathname === "/api/run-tree" ||
+    pathname.startsWith("/api/run-tree/")
+  );
 }
 
 function isMarbleEvaluateApiPath(url: string | undefined): boolean {

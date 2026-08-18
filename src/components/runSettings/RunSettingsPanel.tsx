@@ -4,7 +4,7 @@
  * Post-hoc multi-agent evaluation lives in the conversation inspector, not here.
  * CSS class `evaluation-panel` is historical; the visible heading stays "Evaluation".
  */
-import { useMemo, useState, type CSSProperties } from "react";
+import { memo, useMemo, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { formatPolicyValue } from "../../communication";
 import type { CommunicationPolicy } from "../../communication/types";
@@ -57,7 +57,7 @@ function categoryLabel(id: ProblemCategory): string {
   return PROBLEM_CATEGORIES.find((c) => c.id === id)?.label ?? id;
 }
 
-export function RunSettingsPanel({
+export const RunSettingsPanel = memo(function RunSettingsPanel({
   config,
   onConfigChange,
   onRun,
@@ -383,4 +383,4 @@ export function RunSettingsPanel({
       </section>
     </div>
   );
-}
+});

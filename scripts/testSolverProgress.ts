@@ -21,7 +21,9 @@ import {
   compileReasoningMoves,
   emptySolverProgressState,
   localLoopFeedback,
+  finalizationRequiredFeedback,
   reduceSolverProgress,
+  stallWarningFeedback,
   seedGraphForProblem,
   type IssueConvergenceState,
   type ReasoningEvent,
@@ -201,9 +203,18 @@ function countOccurrences(text: string, pattern: RegExp): number {
 
 {
   const text = localLoopFeedback({ loopingLabels: ["Across 6"] });
-  assert.match(text, /repeatedly revisiting Across 6/);
+  assert.match(text, /repeatedly revisiting the same unresolved issue/);
+  assert.doesNotMatch(text, /Across 6/);
   assert.doesNotMatch(text, /Do not propose another candidate/);
   assert.doesNotMatch(text, /Untouched clues/);
+  const stall = stallWarningFeedback();
+  assert.match(stall, /STALL WARNING/);
+  assert.match(stall, /Change reasoning strategy/);
+  assert.doesNotMatch(stall, /internally consistent/);
+  assert.doesNotMatch(stall, /Do not propose/);
+  const finalize = finalizationRequiredFeedback();
+  assert.match(finalize, /FINALIZATION REQUIRED/);
+  assert.match(finalize, /even if some entries remain uncertain/);
 }
 
 class CrossingLoopClient implements ModelClient {
@@ -310,6 +321,7 @@ assert.ok(problem0006, "crosswordbench_0006 is in the subset");
   assert.match(feedback, /LOCAL_LOOP/);
   assert.match(feedback, /FINALIZATION REQUIRED/);
   assert.doesNotMatch(feedback, /Do not propose another candidate/);
+  assert.doesNotMatch(feedback, /You are cycling on/);
   assert.equal(countOccurrences(feedback, /LOCAL_LOOP/), 1);
   assert.equal(countOccurrences(feedback, /FINALIZATION REQUIRED/), 1);
 }
@@ -498,6 +510,207 @@ assert.ok(problem0006, "crosswordbench_0006 is in the subset");
   assert.ok(state.closureWarningTurn);
   assert.ok(finalized || state.phase === "finalization");
   assert.ok((warning?.split("\n").length ?? 0) <= 6);
+}
+
+{
+  // Observed crosswordbench_0015 (trustA=1): after STALL WARNING, fingerprint
+  // churn without coverage/conflict improvement must not resume search.
+  const graph: ReasoningGraph = { nodes: [], events: [] };
+  const issues = (covered: string[]): IssueConvergenceState[] =>
+    ["a", "b", "c", "d"].map((id) => ({
+      issueId: id,
+      liveClaimIds: covered.includes(id) ? [`${id}-live`] : [],
+      unresolved: !covered.includes(id),
+      contradictory: false,
+      reopened: false,
+      conflicts: [],
+    }));
+  const eventFor = (turn: number, subjectId: string): ReasoningEvent => ({
+    id: `e${turn}`,
+    seq: turn,
+    turnIndex: turn,
+    messageId: `m${turn}`,
+    actor: turn % 2 === 1 ? "agent_a" : "agent_b",
+    intent: { action: "create", nodeType: "claim", text: `${subjectId}-${turn}` },
+    operation: {
+      type: "create",
+      node: {
+        id: `n${turn}`,
+        type: "claim",
+        text: `${subjectId}-${turn}`,
+        subjectId,
+        createdBy: turn % 2 === 1 ? "agent_a" : "agent_b",
+        createdAtTurn: turn,
+        status: "open",
+        parents: [],
+        dependencies: [],
+      },
+    },
+    accepted: true,
+    errors: [],
+    stateChanged: false,
+    diagnostics: ["no_state_change: already the live candidate"],
+  });
+
+  let state = emptySolverProgressState();
+  state.fingerprints = ["frozen"];
+  let warningTurn: number | undefined;
+  let finalizationTurn: number | undefined;
+  for (let turn = 1; turn <= 10; turn++) {
+    const result = reduceSolverProgress(state, {
+      turnIndex: turn,
+      maxTurns: 40,
+      graph,
+      events: [eventFor(turn, "a")],
+      issueStates: issues(["a"]),
+      fingerprint: turn <= 4 ? "frozen" : `churn-${turn}`,
+      substantive: true,
+      structuredReasoningMissing: false,
+      stallRecoveryTurns: 3,
+      stallFailTurns: 8,
+      localLoopTurns: 20,
+    });
+    state = result.state;
+    if (result.protocolFeedback?.includes("STALL WARNING")) {
+      warningTurn = turn;
+    }
+    if (result.protocolFeedback?.includes("FINALIZATION REQUIRED")) {
+      finalizationTurn = turn;
+    }
+  }
+  assert.ok(warningTurn);
+  assert.equal(state.stallWarningKind, "semantic_stall");
+  assert.notEqual(state.counters.progressResumedAfterWarning, true);
+  assert.ok(finalizationTurn);
+  assert.ok(finalizationTurn > warningTurn);
+  assert.ok(finalizationTurn - warningTurn <= 3);
+}
+
+{
+  // Observed 0015 turn 12: empty FINAL_ANSWER after the warning should
+  // escalate immediately rather than wandering for more recovery turns.
+  const graph: ReasoningGraph = { nodes: [], events: [] };
+  const issues: IssueConvergenceState[] = ["a", "b"].map((id) => ({
+    issueId: id,
+    liveClaimIds: id === "a" ? ["a-live"] : [],
+    unresolved: true,
+    contradictory: false,
+    reopened: false,
+    conflicts: [],
+  }));
+  const eventFor = (turn: number): ReasoningEvent => ({
+    id: `e${turn}`,
+    seq: turn,
+    turnIndex: turn,
+    messageId: `m${turn}`,
+    actor: "agent_a",
+    intent: { action: "create", nodeType: "claim", text: "a" },
+    operation: {
+      type: "create",
+      node: {
+        id: `n${turn}`,
+        type: "claim",
+        text: "a",
+        subjectId: "a",
+        createdBy: "agent_a",
+        createdAtTurn: turn,
+        status: "open",
+        parents: [],
+        dependencies: [],
+      },
+    },
+    accepted: true,
+    errors: [],
+    stateChanged: false,
+    diagnostics: ["no_state_change: already the live candidate"],
+  });
+  let state = emptySolverProgressState();
+  state.fingerprints = ["frozen"];
+  let sawFinalization = false;
+  for (let turn = 1; turn <= 8; turn++) {
+    const result = reduceSolverProgress(state, {
+      turnIndex: turn,
+      maxTurns: 40,
+      graph,
+      events: [eventFor(turn)],
+      issueStates: issues,
+      fingerprint: "frozen",
+      substantive: true,
+      structuredReasoningMissing: false,
+      attemptedFinalAnswer: turn === 5,
+      stallRecoveryTurns: 3,
+      stallFailTurns: 8,
+      localLoopTurns: 20,
+    });
+    state = result.state;
+    if (result.protocolFeedback?.includes("FINALIZATION REQUIRED")) {
+      sawFinalization = true;
+      assert.equal(turn, 5);
+    }
+  }
+  assert.ok(sawFinalization);
+  assert.equal(state.phase, "finalization");
+}
+
+{
+  // Genuine recovery: filling a new issue after the warning returns to normal.
+  const graph: ReasoningGraph = { nodes: [], events: [] };
+  const issues = (covered: string[]): IssueConvergenceState[] =>
+    ["a", "b"].map((id) => ({
+      issueId: id,
+      liveClaimIds: covered.includes(id) ? [`${id}-live`] : [],
+      unresolved: !covered.includes(id),
+      contradictory: false,
+      reopened: false,
+      conflicts: [],
+    }));
+  const eventFor = (turn: number, subjectId: string): ReasoningEvent => ({
+    id: `e${turn}`,
+    seq: turn,
+    turnIndex: turn,
+    messageId: `m${turn}`,
+    actor: "agent_a",
+    intent: { action: "create", nodeType: "claim", text: `${subjectId}-${turn}` },
+    operation: {
+      type: "create",
+      node: {
+        id: `n${turn}`,
+        type: "claim",
+        text: `${subjectId}-${turn}`,
+        subjectId,
+        createdBy: "agent_a",
+        createdAtTurn: turn,
+        status: "open",
+        parents: [],
+        dependencies: [],
+      },
+    },
+    accepted: true,
+    errors: [],
+    stateChanged: true,
+  });
+  let state = emptySolverProgressState();
+  state.fingerprints = ["frozen"];
+  for (let turn = 1; turn <= 7; turn++) {
+    const covered = turn >= 5 ? ["a", "b"] : ["a"];
+    const result = reduceSolverProgress(state, {
+      turnIndex: turn,
+      maxTurns: 40,
+      graph,
+      events: [eventFor(turn, turn >= 5 ? "b" : "a")],
+      issueStates: issues(covered),
+      fingerprint: turn >= 5 ? `progress-${turn}` : "frozen",
+      substantive: true,
+      structuredReasoningMissing: false,
+      stallRecoveryTurns: 3,
+      stallFailTurns: 8,
+      localLoopTurns: 20,
+    });
+    state = result.state;
+  }
+  assert.equal(state.counters.progressResumedAfterWarning, true);
+  assert.equal(state.phase, "normal");
+  assert.equal(state.finalizationRequiredTurn, undefined);
 }
 
 console.log(

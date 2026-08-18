@@ -135,23 +135,39 @@ export async function runProblem(args: {
             fingerprintCount: result.solverProgress.fingerprintCount,
             lastFingerprint: result.solverProgress.lastFingerprint,
             semanticStallReason: result.solverProgress.semanticStallReason,
+            freezeType: result.solverProgress.freezeType,
+            freezeDetectedTurn: result.solverProgress.freezeDetectedTurn,
             stallWarningCount: result.solverProgress.stallWarningCount,
             closureWarningCount: result.solverProgress.closureWarningCount,
             finalizationRequiredCount:
               result.solverProgress.finalizationRequiredCount,
             stallWarningTurn: result.solverProgress.stallWarningTurn,
             stallWarningKind: result.solverProgress.stallWarningKind,
+            stallWarningFingerprint:
+              result.solverProgress.stallWarningFingerprint,
+            warningDeliveredTurn: result.solverProgress.warningDeliveredTurn,
             closureWarningTurn: result.solverProgress.closureWarningTurn,
+            closureWarningReason: result.solverProgress.closureWarningReason,
+            closureWarningDeliveredTurn:
+              result.solverProgress.closureWarningDeliveredTurn,
             finalizationRequiredTurn:
               result.solverProgress.finalizationRequiredTurn,
+            finalizationDeliveredTurn:
+              result.solverProgress.finalizationDeliveredTurn,
+            recoveryTurnCount: result.solverProgress.recoveryTurnCount,
             recoveryTurnsBeforeFinalization:
               result.solverProgress.recoveryTurnsBeforeFinalization,
             progressResumedAfterWarning:
               result.solverProgress.progressResumedAfterWarning,
+            finalAnswerAfterWarning:
+              result.solverProgress.finalAnswerAfterWarning,
             finalAnswerAfterFinalization:
               result.solverProgress.finalAnswerAfterFinalization,
+            turnsFromWarningToFinalAnswer:
+              result.solverProgress.turnsFromWarningToFinalAnswer,
             terminatedAsProtocolStall:
               result.solverProgress.terminatedAsProtocolStall,
+            terminatedAsMaxTurns: result.solverProgress.terminatedAsMaxTurns,
             phase: result.solverProgress.phase,
           }
         : undefined,
