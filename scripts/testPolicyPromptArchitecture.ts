@@ -63,7 +63,7 @@ assert.ok(layersA.task.includes("share the goal of solving the provided problem"
 assert.ok(layersA.protocol.includes("You alternate turns."));
 assert.ok(layersA.protocol.includes("FINAL_ANSWER terminates the interaction immediately"));
 assert.ok(layersA.protocol.includes("Do not ask for review in the same message as FINAL_ANSWER"));
-assert.match(layersA.reasoning, /reasoningIntents/);
+assert.match(layersA.reasoning, /"moves"/);
 assert.equal(
   splitAgentPromptLayers(buildAgentPrompt("agent_a", baseline)).reasoning,
   layersA.reasoning,
@@ -86,9 +86,9 @@ assert.doesNotMatch(
   ].join("\n"),
   /crossword|dilemma|proof/i,
 );
-assert.match(layersA.reasoning, /Crossword — BAD/);
-assert.match(layersA.reasoning, /Moral reasoning — BAD/);
-assert.match(layersA.reasoning, /Proof — BAD/);
+assert.match(layersA.reasoning, /Crossword:/);
+assert.match(layersA.reasoning, /Moral:/);
+assert.match(layersA.reasoning, /Proof:/);
 
 const compiledTwice = compileCommunicationPolicy(baseline);
 assert.equal(
@@ -200,7 +200,7 @@ assert.equal(turn1[2]?.role, "user");
 assert.match(turn1[2]?.content ?? "", /CURRENT REASONING STATE/);
 assert.equal(turn1[3]?.role, "user");
 assert.match(turn1[3]?.content ?? "", /Respond as Agent A/);
-assert.match(turn1[3]?.content ?? "", /reasoningIntents/);
+assert.match(turn1[3]?.content ?? "", /"moves"/);
 
 const turn2 = renderModelRequest({
   speaker: "agent_b",

@@ -52,6 +52,7 @@ const VALID_STOPPED = new Set([
   "max_turns",
   "cancelled",
   "error",
+  "reasoning_protocol_stalled",
 ]);
 
 export function clamp(n: number, min: number, max: number): number {
@@ -303,6 +304,9 @@ function parseMessage(raw: unknown): ConversationMessage | undefined {
     modelRequest: parseModelRequest(m.modelRequest),
     requestTelemetry: parseRequestTelemetry(m.requestTelemetry),
     rawContent: typeof m.rawContent === "string" ? m.rawContent : undefined,
+    reasoningMoves: Array.isArray(m.reasoningMoves)
+      ? m.reasoningMoves
+      : undefined,
     reasoningIntents: Array.isArray(m.reasoningIntents)
       ? m.reasoningIntents.map((intent) => parseReasoningIntent(intent))
       : undefined,

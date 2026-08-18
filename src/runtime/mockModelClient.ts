@@ -119,60 +119,63 @@ export class MockModelClient implements ModelClient {
       .filter((line): line is string => line !== null)
       .join("\n");
 
-    const reasoningIntents: Array<Record<string, unknown>> =
+    const issueSubject =
+      problem.category === "crossword"
+        ? "Across 1"
+        : problem.category === "proof"
+          ? "Prove the theorem"
+          : "Main moral question";
+    const issueBasis =
+      problem.category === "crossword"
+        ? ["clue"]
+        : problem.category === "proof"
+          ? ["goal"]
+          : ["scenario_fact_1"];
+
+    const reasoningMoves: Array<Record<string, unknown>> =
       turnIndex === 1
         ? [
             {
-              action: "create",
-              localId: "issue",
-              nodeType: "issue",
-              text: problem.title,
-            },
-            {
-              action: "create",
-              localId: "proposal",
-              nodeType: "proposal",
-              text: isClosing
+              kind: "claim",
+              subject: issueSubject,
+              value: isClosing
                 ? "Submit the joint resolution now."
                 : `Working hypothesis for "${problem.title}".`,
-              parents: ["issue"],
-              confidence: 0.55,
+              basis: issueBasis,
             },
           ]
         : isClosing
           ? [
               {
-                action: "accept",
-                targetId: "P1",
-                reason: "Ready to terminate with a joint answer.",
+                kind: "agree",
+                subject: issueSubject,
               },
             ]
           : ownTrust < 1 / 3
             ? [
                 {
-                  action: "challenge",
-                  targetId: "P1",
-                  reason: "Want independent verification before adopting this.",
+                  kind: "disagree",
+                  subject: issueSubject,
+                  basis: ["Want independent verification before adopting this."],
                 },
               ]
             : [
                 {
-                  action: "support",
-                  targetId: "P1",
-                  reason: "Building on the current hypothesis.",
+                  kind: "agree",
+                  subject: issueSubject,
                 },
               ];
 
     const payload: Record<string, unknown> = {
       message,
-      reasoningIntents,
+      moves: reasoningMoves,
     };
     if (isClosing) {
       const answerText =
         extractFinalAnswerFromText(message) ?? "unresolved";
       payload.finalAnswer = {
         text: answerText,
-        supportingNodeIds: ["P1"],
+        supportingNodeIds: [],
       };
     }
     const content = JSON.stringify(payload);

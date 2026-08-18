@@ -5,7 +5,10 @@ import {
   REASONING_NODE_TYPES,
   REASONING_OPERATION_TYPES,
   type AtomicReasoningNodeType,
+  type EvidenceOrigin,
   type FinalAnswerNode,
+  type GroundingLink,
+  type ReasoningActor,
   type ReasoningEvent,
   type ReasoningGraph,
   type ReasoningIntent,
@@ -21,6 +24,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAgentId(value: unknown): value is AgentId {
   return value === "agent_a" || value === "agent_b";
+}
+
+function isReasoningActor(value: unknown): value is ReasoningActor {
+  return isAgentId(value) || value === "system";
+}
+
+function parseEvidenceOrigin(value: unknown): EvidenceOrigin | undefined {
+  return value === "task" || value === "deterministic" || value === "agent"
+    ? value
+    : undefined;
+}
+
+function parseGrounding(raw: unknown): GroundingLink[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const links: GroundingLink[] = [];
+  for (const item of raw) {
+    if (!isRecord(item) || typeof item.sourceNodeId !== "string") continue;
+    if (
+      item.relation !== "grounds" &&
+      item.relation !== "supports" &&
+      item.relation !== "challenges"
+    ) {
+      continue;
+    }
+    links.push({ sourceNodeId: item.sourceNodeId, relation: item.relation });
+  }
+  return links.length > 0 ? links : undefined;
 }
 
 function isNodeType(value: unknown): value is AtomicReasoningNodeType {
@@ -52,6 +82,8 @@ export function parseReasoningSubject(
   return {
     id: raw.id,
     label: raw.label,
+    kind: raw.kind === "task_defined" ? "task_defined" : undefined,
+    prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     description:
       typeof raw.description === "string" ? raw.description : undefined,
     source: "task",
@@ -63,7 +95,7 @@ export function parseReasoningNode(raw: unknown): ReasoningNode | undefined {
   if (!isRecord(raw)) return undefined;
   if (typeof raw.id !== "string") return undefined;
   if (typeof raw.text !== "string") return undefined;
-  if (!isAgentId(raw.createdBy)) return undefined;
+  if (!isReasoningActor(raw.createdBy)) return undefined;
   if (typeof raw.createdAtTurn !== "number" || !Number.isFinite(raw.createdAtTurn)) {
     return undefined;
   }
@@ -110,6 +142,8 @@ export function parseReasoningNode(raw: unknown): ReasoningNode | undefined {
     subjectId: typeof raw.subjectId === "string" ? raw.subjectId : undefined,
     supersedes: typeof raw.supersedes === "string" ? raw.supersedes : undefined,
     metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
+    evidenceOrigin: parseEvidenceOrigin(raw.evidenceOrigin) ??
+      parseEvidenceOrigin(isRecord(raw.metadata) ? raw.metadata.evidenceOrigin : undefined),
   };
 }
 
@@ -121,10 +155,18 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
   if (raw.type === "create") {
     const node = parseReasoningNode(raw.node);
     if (!node || node.type === "final_answer") return undefined;
-    return { type: "create", node };
+    return {
+      type: "create",
+      node,
+      replacedActiveNodeId:
+        typeof raw.replacedActiveNodeId === "string"
+          ? raw.replacedActiveNodeId
+          : undefined,
+      grounding: parseGrounding(raw.grounding),
+    };
   }
   if (raw.type === "protocol_failure") {
-    if (!isAgentId(raw.actor)) return undefined;
+    if (!isReasoningActor(raw.actor)) return undefined;
     return {
       type: "protocol_failure",
       actor: raw.actor,
@@ -132,7 +174,7 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
     };
   }
   if (raw.type === "invalid") {
-    if (!isAgentId(raw.actor)) return undefined;
+    if (!isReasoningActor(raw.actor)) return undefined;
     return {
       type: "invalid",
       actor: raw.actor,
@@ -140,7 +182,7 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
     };
   }
   if (raw.type === "final_answer") {
-    if (!isAgentId(raw.actor)) return undefined;
+    if (!isReasoningActor(raw.actor)) return undefined;
     return {
       type: "final_answer",
       actor: raw.actor,
@@ -148,7 +190,7 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
       supportingNodeIds: asStringArray(raw.supportingNodeIds),
     };
   }
-  if (!isAgentId(raw.actor)) return undefined;
+  if (!isReasoningActor(raw.actor)) return undefined;
   if (raw.type === "support" || raw.type === "challenge") {
     const targetNodeId =
       typeof raw.targetNodeId === "string" ? raw.targetNodeId : raw.targetId;
@@ -173,6 +215,11 @@ function parseOperation(raw: unknown): ReasoningOperation | undefined {
       targetId: raw.targetId,
       replacement,
       reason: typeof raw.reason === "string" ? raw.reason : undefined,
+      replacedActiveNodeId:
+        typeof raw.replacedActiveNodeId === "string"
+          ? raw.replacedActiveNodeId
+          : undefined,
+      grounding: parseGrounding(raw.grounding),
     };
   }
   if (raw.type === "reject") {
@@ -257,7 +304,7 @@ export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
   const operation = parseOperation(raw.operation);
   if (!operation) return undefined;
   if (typeof raw.id !== "string") return undefined;
-  if (!isAgentId(raw.actor)) return undefined;
+  if (!isReasoningActor(raw.actor)) return undefined;
   if (typeof raw.turnIndex !== "number" || !Number.isFinite(raw.turnIndex)) {
     return undefined;
   }
@@ -278,6 +325,10 @@ export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
     operation,
     accepted: raw.accepted !== false,
     errors: asStringArray(raw.errors),
+    diagnostics:
+      Array.isArray(raw.diagnostics) && raw.diagnostics.length > 0
+        ? asStringArray(raw.diagnostics)
+        : undefined,
   };
 }
 

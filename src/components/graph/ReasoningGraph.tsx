@@ -14,6 +14,7 @@ import {
   layoutReasoningGraph,
   nodeIdsTouchedByMessage,
   stancesForNode,
+  type GraphLayoutEdge,
   type GraphLayoutNode,
   type ReasoningGraph,
   type ReasoningNode,
@@ -56,7 +57,8 @@ function statusClass(status: ReasoningNodeStatus): string {
   return `reasoning-node--${status}`;
 }
 
-function ownerClass(createdBy: AgentId): string {
+function ownerClass(createdBy: string): string {
+  if (createdBy === "system") return "reasoning-node--task";
   return createdBy === "agent_a" ? "reasoning-node--a" : "reasoning-node--b";
 }
 
@@ -443,7 +445,7 @@ export function ReasoningGraphView({
                     }
                   >
                     <text x={14} y={band.y + 4}>
-                      Turn {band.turnIndex}
+                      {band.turnIndex === 0 ? "Task" : `Turn ${band.turnIndex}`}
                     </text>
                     <line
                       x1={68}
@@ -454,7 +456,7 @@ export function ReasoningGraphView({
                   </g>
                 ))}
               </g>
-              {layout.edges.map((edge) => {
+              {sortedLayoutEdges(layout.edges).map((edge) => {
                 const from = layout.nodes.find((n) => n.id === edge.from);
                 const to = layout.nodes.find((n) => n.id === edge.to);
                 if (!from || !to) return null;
@@ -536,12 +538,39 @@ export function ReasoningGraphView({
   );
 }
 
+/**
+ * Canonical `replaced_by` is old → new. Chronology is downward, so the
+ * visual historical flow matches that canonical direction. Do not invert
+ * it in the SVG the way `revises` (new → old) is inverted relative to time.
+ */
+function edgeDrawOrder(kind: string): number {
+  if (kind === "answers" || kind === "parent") return 0;
+  if (kind === "grounds") return 1;
+  if (kind === "depends_on" || kind === "dependency") return 2;
+  if (kind === "supports" || kind === "final") return 3;
+  if (kind === "challenges") return 4;
+  if (kind === "revises" || kind === "supersedes") return 5;
+  if (kind === "replaced_by") return 6;
+  return 3;
+}
+
+function sortedLayoutEdges(edges: GraphLayoutEdge[]): GraphLayoutEdge[] {
+  return [...edges].sort(
+    (a, b) =>
+      edgeDrawOrder(a.kind) - edgeDrawOrder(b.kind) ||
+      a.from.localeCompare(b.from) ||
+      a.to.localeCompare(b.to),
+  );
+}
+
 function edgeLabel(kind: string): string | undefined {
-  if (kind === "answers") return "answers";
+  if (kind === "answers") return undefined;
+  if (kind === "grounds") return "grounds";
   if (kind === "supports" || kind === "final") return "supports";
   if (kind === "challenges") return "challenges";
   if (kind === "depends_on" || kind === "dependency") return "depends on";
   if (kind === "revises" || kind === "supersedes") return "revises";
+  if (kind === "replaced_by") return "replaced by";
   return undefined;
 }
 
@@ -616,13 +645,28 @@ function ReasoningNodeGlyph({
 }) {
   const { node, x, y, width, height } = item;
   const taskSubject = node.metadata?.taskDefined === true;
-  const owner = node.createdBy === "agent_a" ? "A" : "B";
+  const origin =
+    node.type !== "final_answer" ? node.evidenceOrigin : undefined;
+  const owner =
+    isFinal || taskSubject || node.createdBy === "system"
+      ? "·"
+      : node.createdBy === "agent_a"
+        ? "A"
+        : "B";
   const title = isFinal
     ? "FINAL ANSWER"
     : taskSubject
       ? String(node.metadata?.subjectLabel ?? node.id)
       : node.id;
-  const kind = isFinal ? "answer" : taskSubject ? "issue anchor" : node.type;
+  const kind = isFinal
+    ? "answer"
+    : taskSubject
+      ? "issue anchor"
+      : origin === "task"
+        ? "task evidence"
+        : origin === "deterministic"
+          ? "constraint"
+          : node.type;
   const conf =
     !isFinal && typeof node.confidence === "number"
       ? node.confidence.toFixed(2)
@@ -759,7 +803,7 @@ function ReasoningDetail({
         <div>
           <dt>Created</dt>
           <dd>
-            {agentLabel(node.createdBy)}, turn {node.createdAtTurn}
+            {node.createdBy === "system" ? "Task" : agentLabel(node.createdBy)}, turn {node.createdAtTurn}
           </dd>
         </div>
         {typeof node.confidence === "number" ? (
@@ -837,7 +881,7 @@ function ReasoningDetail({
           <ul className="reasoning-detail__events">
             {events.map((event) => (
               <li key={event.id}>
-                {agentLabel(event.actor)} {event.intent.action}
+                {event.actor === "system" ? "Task" : agentLabel(event.actor)} {event.intent.action}
                 {event.accepted
                   ? event.operation.type === "create"
                     ? ` → ${event.operation.node.id}`

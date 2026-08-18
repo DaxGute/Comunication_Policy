@@ -356,7 +356,12 @@ export function ConversationInspector({
                                 <span
                                   className="conv-tree__problem-incomplete"
                                   aria-label="Incomplete"
-                                  title="Reached max turns without finishing"
+                                  title={
+                                    conversation.stoppedReason ===
+                                    "reasoning_protocol_stalled"
+                                      ? "Structured reasoning stalled"
+                                      : "Reached max turns without finishing"
+                                  }
                                 >
                                   ○
                                 </span>

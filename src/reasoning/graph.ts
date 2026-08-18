@@ -6,12 +6,18 @@
  */
 import type { AgentId } from "../agents/types";
 import { nextReasoningId } from "./ids";
+import { resolveKnownSubjectId } from "./subjectRef";
 import {
   REASONING_NODE_TYPES,
   type AtomicReasoningNode,
   type AtomicReasoningNodeType,
+  type DeterministicReasoningSignal,
+  type EvidenceOrigin,
   type FinalAnswerSupport,
   type FinalAnswerNode,
+  type GroundingLink,
+  type IssueConflict,
+  type ReasoningActor,
   type ReasoningEdge,
   type ReasoningEvent,
   type ReasoningGraph,
@@ -28,7 +34,7 @@ const FINAL_ANSWER_NODE_ID = "__final_answer__";
 const LOCAL_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,23}$/;
 
 export type ApplyIntentsContext = {
-  actor: AgentId;
+  actor: ReasoningActor;
   turnIndex: number;
   messageId: string;
   protocolFailure?: string;
@@ -36,6 +42,21 @@ export type ApplyIntentsContext = {
     text?: string;
     supportingNodeIds: string[];
   };
+  /** Adapter-produced structural triggers that may legitimately reopen issues. */
+  reopenSignals?: DeterministicReasoningSignal[];
+  /** Adapter-owned identity for candidate duplicate/revisit detection. */
+  candidateIdentity?: (
+    node: Pick<AtomicReasoningNode, "type" | "text" | "subjectId" | "metadata">,
+  ) => string | undefined;
+  /** Known task conflicts at the start of this turn. */
+  conflicts?: IssueConflict[];
+  resolveSubjectAlias?: (raw: string) => { id?: string; error?: string };
+  resolveBasis?: (
+    raw: string,
+    subjectId?: string,
+  ) => { id?: string; relation?: "grounds" | "supports"; error?: string };
+  autoGround?: (subjectId: string) => { nodeId: string; relation: "grounds" | "supports" } | undefined;
+  extraDiagnostics?: string[];
 };
 
 export type ApplyIntentsResult = {
@@ -91,15 +112,26 @@ function cloneNode(node: ReasoningNode): ReasoningNode {
     parents: [...node.parents],
     dependencies: [...node.dependencies],
     metadata: node.metadata ? { ...node.metadata } : undefined,
+    evidenceOrigin: node.evidenceOrigin,
   };
 }
 
 function cloneOperation(op: ReasoningOperation): ReasoningOperation {
   if (op.type === "create") {
-    return { type: "create", node: cloneNode(op.node) };
+    return {
+      type: "create",
+      node: cloneNode(op.node),
+      replacedActiveNodeId: op.replacedActiveNodeId,
+      grounding: op.grounding?.map((item) => ({ ...item })),
+    };
   }
   if (op.type === "revise") {
-    return { ...op, replacement: cloneNode(op.replacement) };
+    return {
+      ...op,
+      replacement: cloneNode(op.replacement),
+      replacedActiveNodeId: op.replacedActiveNodeId,
+      grounding: op.grounding?.map((item) => ({ ...item })),
+    };
   }
   if (op.type === "final_answer") {
     return { ...op, supportingNodeIds: [...op.supportingNodeIds] };
@@ -113,6 +145,10 @@ function cloneIntent(intent: ReasoningIntent): ReasoningIntent {
       ...intent,
       parents: intent.parents ? [...intent.parents] : undefined,
       dependencies: intent.dependencies ? [...intent.dependencies] : undefined,
+      groundsNodeIds: intent.groundsNodeIds ? [...intent.groundsNodeIds] : undefined,
+      supportsNodeIds: intent.supportsNodeIds ? [...intent.supportsNodeIds] : undefined,
+      basis: intent.basis ? [...intent.basis] : undefined,
+      metadata: intent.metadata ? { ...intent.metadata } : undefined,
     };
   }
   if (intent.action === "final_answer") {
@@ -128,6 +164,7 @@ function cloneEvent(event: ReasoningEvent): ReasoningEvent {
   return {
     ...event,
     errors: [...event.errors],
+    diagnostics: event.diagnostics ? [...event.diagnostics] : undefined,
     intent: cloneIntent(event.intent),
     operation: cloneOperation(event.operation),
   };
@@ -214,9 +251,20 @@ function findDuplicateId(
   nodes: Iterable<ReasoningNode>,
   type: AtomicReasoningNodeType,
   text: string,
-  subjectId?: string,
-  ignoreId?: string,
+  subjectId: string | undefined,
+  ignoreId: string | undefined,
+  identity: string | undefined,
+  identityOf: (node: ReasoningNode) => string | undefined,
 ): string | undefined {
+  if (identity) {
+    for (const node of nodes) {
+      if (ignoreId && node.id === ignoreId) continue;
+      if (node.status === "superseded" || node.status === "rejected") continue;
+      if (node.type !== "claim" && node.type !== "proposal") continue;
+      if (identityOf(node) === identity) return node.id;
+    }
+    return undefined;
+  }
   const needle = normalizeNodeText(text);
   if (!needle) return undefined;
   for (const node of nodes) {
@@ -229,6 +277,57 @@ function findDuplicateId(
     }
   }
   return undefined;
+}
+
+function isCandidateNode(node: ReasoningNode): node is AtomicReasoningNode {
+  return node.type === "claim" || node.type === "proposal";
+}
+
+function previousActiveCandidate(
+  nodes: Iterable<ReasoningNode>,
+  subjectId: string,
+  exceptId?: string,
+): AtomicReasoningNode | undefined {
+  return [...nodes]
+    .filter(
+      (node): node is AtomicReasoningNode =>
+        isCandidateNode(node) &&
+        node.subjectId === subjectId &&
+        node.status !== "rejected" &&
+        node.status !== "superseded" &&
+        node.id !== exceptId,
+    )
+    .sort(
+      (a, b) =>
+        b.createdAtTurn - a.createdAtTurn || b.id.localeCompare(a.id),
+    )[0];
+}
+
+function candidateIdentityOf(
+  ctx: ApplyIntentsContext,
+  node: ReasoningNode,
+): string | undefined {
+  if (node.type === "final_answer") return undefined;
+  return ctx.candidateIdentity?.({
+    type: node.type,
+    text: node.text,
+    subjectId: node.subjectId,
+    metadata: node.metadata,
+  });
+}
+
+function historicalIdentityNodes(
+  nodes: Iterable<ReasoningNode>,
+  identity: string,
+  identityOf: (node: ReasoningNode) => string | undefined,
+  exceptId?: string,
+): ReasoningNode[] {
+  return [...nodes].filter(
+    (node) =>
+      node.id !== exceptId &&
+      (node.status === "rejected" || node.status === "superseded") &&
+      identityOf(node) === identity,
+  );
 }
 
 function liveRevisionId(
@@ -283,6 +382,7 @@ export function stancesForNode(
     const op = event.operation;
     if (!STANCE_OPS.has(op.type)) continue;
     if (!("targetId" in op) || op.targetId !== nodeId) continue;
+    if (op.actor !== "agent_a" && op.actor !== "agent_b") continue;
     latest.set(op.actor, {
       actor: op.actor,
       kind: op.type as NodeStance["kind"],
@@ -321,7 +421,11 @@ function resolutionStatus(
     resolutions.filter((s) => s.kind === "reject").map((s) => s.actor),
   );
 
-  if (rejectors.has(node.createdBy) || (rejectors.has("agent_a") && rejectors.has("agent_b"))) {
+  if (
+    (node.createdBy === "agent_a" || node.createdBy === "agent_b") &&
+    (rejectors.has(node.createdBy) ||
+      (rejectors.has("agent_a") && rejectors.has("agent_b")))
+  ) {
     return "rejected";
   }
   if (acceptors.has("agent_a") && acceptors.has("agent_b")) {
@@ -430,7 +534,7 @@ function materializeEdges(events: ReasoningEvent[]): ReasoningEdge[] {
     }
     if (!event.accepted) continue;
     if (op.type === "create") {
-      if (op.node.subjectId) {
+      if (op.node.subjectId && (op.node.type === "claim" || op.node.type === "proposal")) {
         add(
           edgeFromEvent(
             event,
@@ -455,8 +559,36 @@ function materializeEdges(events: ReasoningEvent[]): ReasoningEdge[] {
           ),
         );
       }
+      if (op.replacedActiveNodeId) {
+        add(
+          edgeFromEvent(
+            event,
+            "replaced_by",
+            op.replacedActiveNodeId,
+            op.node.id,
+          ),
+        );
+      }
+      for (const link of op.grounding ?? []) {
+        add(
+          edgeFromEvent(
+            event,
+            link.relation,
+            link.sourceNodeId,
+            op.node.id,
+          ),
+        );
+      }
     } else if (op.type === "revise") {
       add(edgeFromEvent(event, "revises", op.replacement.id, op.targetId, op.reason));
+      add(
+        edgeFromEvent(
+          event,
+          "replaced_by",
+          op.replacedActiveNodeId ?? op.targetId,
+          op.replacement.id,
+        ),
+      );
       if (op.replacement.subjectId) {
         add(
           edgeFromEvent(
@@ -476,6 +608,16 @@ function materializeEdges(events: ReasoningEvent[]): ReasoningEdge[] {
             dependencyId,
             undefined,
             true,
+          ),
+        );
+      }
+      for (const link of op.grounding ?? []) {
+        add(
+          edgeFromEvent(
+            event,
+            link.relation,
+            link.sourceNodeId,
+            op.replacement.id,
           ),
         );
       }
@@ -701,21 +843,220 @@ function resolveSubjectRef(
   ref: string | undefined,
   mutable: MutableGraph,
   scope: LocalScope,
-): { id?: string; error?: string } {
+  ctx?: ApplyIntentsContext,
+): { id?: string; error?: string; normalizedFrom?: string } {
   if (ref === undefined) return {};
   const trimmed = ref.trim();
   if (!trimmed) return { error: "subjectId is empty" };
-  const taskSubject = mutable.subjects.find((subject) => subject.id === trimmed);
-  if (taskSubject) return { id: taskSubject.id };
+  const knownIds = [
+    ...mutable.subjects.map((subject) => subject.id),
+    ...[...mutable.nodes.values()]
+      .filter((node) => node.type === "issue")
+      .map((node) => node.id),
+  ];
+  const known = resolveKnownSubjectId(trimmed, knownIds);
+  if (known.id) {
+    if (mutable.subjects.some((subject) => subject.id === known.id)) {
+      return known;
+    }
+    const node = mutable.nodes.get(known.id);
+    if (node?.type === "issue") return known;
+    return { error: `subjectId ${known.id} is not an issue` };
+  }
+  const labeled = mutable.subjects.find(
+    (subject) => subject.label.trim().toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (labeled) return { id: labeled.id, normalizedFrom: trimmed };
+  const aliased = ctx?.resolveSubjectAlias?.(trimmed);
+  if (aliased?.id) return { id: aliased.id, normalizedFrom: trimmed };
+  if (aliased?.error) return { error: aliased.error };
   const resolved = resolveRef(trimmed, mutable, scope);
   if (resolved.error || !resolved.id) {
-    return { error: `subjectId references unknown issue ${trimmed}` };
+    return { error: known.error ?? `subjectId references unknown issue ${trimmed}` };
   }
   const node = mutable.nodes.get(resolved.id);
   if (node?.type !== "issue") {
     return { error: `subjectId ${resolved.id} is not an issue` };
   }
   return { id: resolved.id };
+}
+
+function liveClaims(
+  nodes: Iterable<ReasoningNode>,
+  subjectId: string,
+  exceptId?: string,
+): AtomicReasoningNode[] {
+  return [...nodes]
+    .filter(
+      (node): node is AtomicReasoningNode =>
+        isCandidateNode(node) &&
+        node.subjectId === subjectId &&
+        node.status !== "rejected" &&
+        node.status !== "superseded" &&
+        node.id !== exceptId,
+    )
+    .sort(
+      (a, b) =>
+        b.createdAtTurn - a.createdAtTurn || b.id.localeCompare(a.id),
+    );
+}
+
+function previousClaim(
+  nodes: Iterable<ReasoningNode>,
+  subjectId: string,
+): AtomicReasoningNode | undefined {
+  return [...nodes]
+    .filter(
+      (node): node is AtomicReasoningNode =>
+        isCandidateNode(node) &&
+        node.subjectId === subjectId &&
+        (node.status === "superseded" || node.status === "rejected"),
+    )
+    .sort(
+      (a, b) =>
+        b.createdAtTurn - a.createdAtTurn || b.id.localeCompare(a.id),
+    )[0];
+}
+
+function resolveClaimTarget(
+  args: {
+    targetId?: string;
+    subjectId?: string;
+    selector?: "current" | "previous";
+  },
+  mutable: MutableGraph,
+  scope: LocalScope,
+  ctx: ApplyIntentsContext,
+  action: string,
+): { id?: string; subjectId?: string; error?: string; diagnostics: string[] } {
+  const diagnostics: string[] = [];
+  if (args.targetId?.trim()) {
+    const resolved = resolveRef(args.targetId.trim(), mutable, scope);
+    if (resolved.error || !resolved.id) {
+      return {
+        error: resolved.error ?? `unknown target ${args.targetId}`,
+        diagnostics,
+      };
+    }
+    const node = mutable.nodes.get(resolved.id);
+    return {
+      id: resolved.id,
+      subjectId:
+        node && node.type !== "final_answer" ? node.subjectId : undefined,
+      diagnostics,
+    };
+  }
+  const subject = resolveSubjectRef(args.subjectId, mutable, scope, ctx);
+  if (subject.error) return { error: subject.error, diagnostics };
+  if (subject.normalizedFrom && subject.id) {
+    diagnostics.push(
+      `normalized subjectId from "${subject.normalizedFrom}" to "${subject.id}"`,
+    );
+  }
+  if (!subject.id) {
+    return { error: `${action} is missing targetId`, diagnostics };
+  }
+  if (args.selector === "previous") {
+    const previous = previousClaim(mutable.nodes.values(), subject.id);
+    if (!previous) {
+      return {
+        error: `no previous claim for ${subject.id}`,
+        subjectId: subject.id,
+        diagnostics,
+      };
+    }
+    return { id: previous.id, subjectId: subject.id, diagnostics };
+  }
+  const live = liveClaims(mutable.nodes.values(), subject.id);
+  if (live.length === 0) {
+    return {
+      error: `no current claim for ${subject.id}`,
+      subjectId: subject.id,
+      diagnostics,
+    };
+  }
+  if (live.length > 1) {
+    return {
+      error: `ambiguous current claim for ${subject.id}: ${live.map((node) => node.id).join(", ")}`,
+      subjectId: subject.id,
+      diagnostics,
+    };
+  }
+  return { id: live[0]!.id, subjectId: subject.id, diagnostics };
+}
+
+function originFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+  type: AtomicReasoningNodeType,
+  actor: ReasoningActor,
+): EvidenceOrigin | undefined {
+  if (type !== "evidence") return undefined;
+  const raw = metadata?.evidenceOrigin;
+  if (raw === "task" || raw === "deterministic" || raw === "agent") return raw;
+  if (actor === "system") return "task";
+  return "agent";
+}
+
+function resolveGrounding(
+  args: {
+    groundsNodeIds?: string[];
+    supportsNodeIds?: string[];
+    basis?: string[];
+    subjectId?: string;
+    nodeType: AtomicReasoningNodeType;
+  },
+  ctx: ApplyIntentsContext,
+  mutable: MutableGraph,
+  scope: LocalScope,
+): { links: GroundingLink[]; errors: string[]; diagnostics: string[] } {
+  const errors: string[] = [];
+  const diagnostics: string[] = [];
+  const links: GroundingLink[] = [];
+  const push = (id: string, relation: GroundingLink["relation"]) => {
+    if (links.some((link) => link.sourceNodeId === id && link.relation === relation)) {
+      return;
+    }
+    links.push({ sourceNodeId: id, relation });
+  };
+  const resolveOne = (ref: string, relation: GroundingLink["relation"]) => {
+    const resolved = resolveRef(ref, mutable, scope);
+    if (resolved.error || !resolved.id) {
+      errors.push(`basis: ${resolved.error ?? `unknown target ${ref}`}`);
+      return;
+    }
+    push(resolved.id, relation);
+  };
+  for (const id of args.groundsNodeIds ?? []) resolveOne(id, "grounds");
+  for (const id of args.supportsNodeIds ?? []) resolveOne(id, "supports");
+  for (const item of args.basis ?? []) {
+    const adapted = ctx.resolveBasis?.(item, args.subjectId);
+    if (adapted?.error) {
+      errors.push(adapted.error);
+      continue;
+    }
+    if (adapted?.id) {
+      push(adapted.id, adapted.relation ?? "grounds");
+      continue;
+    }
+    const resolved = resolveRef(item, mutable, scope);
+    if (resolved.id) {
+      push(resolved.id, "grounds");
+      continue;
+    }
+    errors.push(`basis references unknown source ${item}`);
+  }
+  if (
+    links.length === 0 &&
+    args.subjectId &&
+    (args.nodeType === "claim" || args.nodeType === "proposal")
+  ) {
+    const auto = ctx.autoGround?.(args.subjectId);
+    if (auto) {
+      push(auto.nodeId, auto.relation);
+      diagnostics.push("auto_grounded_to_task_evidence");
+    }
+  }
+  return { links, errors, diagnostics };
 }
 
 function registerLocal(
@@ -751,6 +1092,7 @@ function appendEvent(
   operation: ReasoningOperation,
   accepted: boolean,
   errors: string[],
+  diagnostics?: string[],
 ): ReasoningEvent {
   const seq = mutable.events.length + 1;
   const event: ReasoningEvent = {
@@ -763,6 +1105,7 @@ function appendEvent(
     operation: cloneOperation(operation),
     accepted,
     errors: [...errors],
+    ...(diagnostics && diagnostics.length > 0 ? { diagnostics: [...diagnostics] } : {}),
   };
   mutable.events.push(event);
   return event;
@@ -798,19 +1141,31 @@ function prepareNewNode(
       subjectId?: string;
     confidence?: number;
     supersedes?: string;
+    metadata?: Record<string, unknown>;
   },
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   ignoreDuplicateId?: string,
 ): { node?: AtomicReasoningNode; errors: string[] } {
   const errors: string[] = [];
-  const duplicateOf = findDuplicateId(
-    mutable.nodes.values(),
-    args.type,
-    args.text,
-    args.subjectId,
-    ignoreDuplicateId,
-  );
+  const identity = ctx.candidateIdentity?.({
+    type: args.type,
+    text: args.text,
+    subjectId: args.subjectId,
+    metadata: args.metadata,
+  });
+  const duplicateOf =
+    args.type === "claim" || args.type === "proposal"
+      ? findDuplicateId(
+          mutable.nodes.values(),
+          args.type,
+          args.text,
+          args.subjectId,
+          ignoreDuplicateId,
+          identity,
+          (node) => candidateIdentityOf(ctx, node),
+        )
+      : undefined;
   if (duplicateOf) {
     return {
       errors: [
@@ -865,6 +1220,8 @@ function prepareNewNode(
     dependencies,
     subjectId: args.subjectId,
     supersedes: args.supersedes,
+    metadata: args.metadata,
+    evidenceOrigin: originFromMetadata(args.metadata, args.type, ctx.actor),
   };
 
   const withPreview = [...mutable.nodes.values(), preview];
@@ -884,8 +1241,9 @@ function applyCreate(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation } {
+): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
   const errors: string[] = [];
+  const diagnostics: string[] = [];
   const type = isNodeType(intent.nodeType) ? intent.nodeType : undefined;
   if (!type) errors.push("create is missing a valid node type");
   const text = sanitizeText(intent.text);
@@ -908,12 +1266,72 @@ function applyCreate(
   }
 
   const deps = resolveIdList(intent.dependencies, mutable, scope, "dependencies");
-  const subject = resolveSubjectRef(intent.subjectId, mutable, scope);
+  const subject = resolveSubjectRef(intent.subjectId, mutable, scope, ctx);
   errors.push(...deps.errors);
   if (subject.error) errors.push(subject.error);
-  if (intent.subjectId && type !== "claim" && type !== "proposal") {
-    errors.push("subjectId is only valid on claim or proposal nodes");
+  if (subject.normalizedFrom && subject.id) {
+    diagnostics.push(
+      `normalized subjectId from "${subject.normalizedFrom}" to "${subject.id}"`,
+    );
   }
+  if (intent.subjectId && type !== "claim" && type !== "proposal" && type !== "evidence") {
+    errors.push("subjectId is only valid on claim, proposal, or evidence nodes");
+  }
+  if (subject.id && (type === "claim" || type === "proposal")) {
+    const settled = [...mutable.nodes.values()].find(
+      (node) =>
+        node.type !== "final_answer" &&
+        (node.type === "claim" || node.type === "proposal") &&
+        node.subjectId === subject.id &&
+        node.status === "accepted",
+    );
+    if (settled) {
+      const explicitTrigger = mutable.events.some(
+        (event) =>
+          event.accepted &&
+          event.operation.type === "challenge" &&
+          event.operation.targetId === settled.id,
+      );
+      const taskTrigger = (ctx.reopenSignals ?? []).some(
+        (signal) => signal.issueId === subject.id,
+      );
+      if (!explicitTrigger && !taskTrigger) {
+        errors.push(
+          `issue ${subject.id} is settled by ${settled.id}; challenge, revise, or provide new evidence before adding an alternative`,
+        );
+      }
+    }
+  }
+
+  const identity = ctx.candidateIdentity?.({
+    type,
+    text,
+    subjectId: subject.id,
+    metadata: intent.metadata,
+  });
+  const historical = identity
+    ? historicalIdentityNodes(
+        mutable.nodes.values(),
+        identity,
+        (node) => candidateIdentityOf(ctx, node),
+      )
+    : [];
+  if (historical.length > 0) {
+    const priorTurns = [...new Set(historical.map((node) => node.createdAtTurn))];
+    diagnostics.push(
+      `candidate_revisit: ${identity} was previously tried on turns ${priorTurns.join(" and ")}`,
+    );
+  }
+  const metadata = {
+    ...(intent.metadata ?? {}),
+    ...(identity ? { candidateIdentity: identity } : {}),
+    ...(historical.length > 0
+      ? {
+          candidateRevisit: true,
+          candidatePriorTurns: historical.map((node) => node.createdAtTurn),
+        }
+      : {}),
+  };
 
   const prepared = prepareNewNode(
     {
@@ -923,25 +1341,62 @@ function applyCreate(
       dependencies: deps.ids,
       subjectId: subject.id,
       confidence: intent.confidence,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     },
     ctx,
     mutable,
   );
   errors.push(...prepared.errors);
+  const grounding = type
+    ? resolveGrounding(
+        {
+          groundsNodeIds: intent.groundsNodeIds,
+          supportsNodeIds: intent.supportsNodeIds,
+          basis: intent.basis,
+          subjectId: subject.id,
+          nodeType: type,
+        },
+        ctx,
+        mutable,
+        scope,
+      )
+    : { links: [], errors: [], diagnostics: [] };
+  errors.push(...grounding.errors);
+  diagnostics.push(...grounding.diagnostics);
   if (!prepared.node || errors.length > 0) {
-    return { accepted: false, errors, stored: invalidOperation(ctx) };
+    return { accepted: false, errors, stored: invalidOperation(ctx), diagnostics };
   }
 
   const localError = registerLocal(scope, intent.localId, prepared.node.id);
   if (localError) {
-    return { accepted: false, errors: [...errors, localError], stored: invalidOperation(ctx) };
+    return {
+      accepted: false,
+      errors: [...errors, localError],
+      stored: invalidOperation(ctx),
+      diagnostics,
+    };
   }
 
   mutable.nodes.set(prepared.node.id, prepared.node);
+  const previous =
+    prepared.node.subjectId && isCandidateNode(prepared.node)
+      ? previousActiveCandidate(
+          [...mutable.nodes.values()].filter((node) => node.id !== prepared.node!.id),
+          prepared.node.subjectId,
+        )
+      : undefined;
+  const replacedActiveNodeId =
+    previous && previous.id !== prepared.node.id ? previous.id : undefined;
   return {
     accepted: true,
     errors: [],
-    stored: { type: "create", node: prepared.node },
+    diagnostics,
+    stored: {
+      type: "create",
+      node: prepared.node,
+      ...(replacedActiveNodeId ? { replacedActiveNodeId } : {}),
+      ...(grounding.links.length > 0 ? { grounding: grounding.links } : {}),
+    },
   };
 }
 
@@ -950,23 +1405,28 @@ function applyRevise(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation } {
-  const targetRaw = intent.targetId?.trim();
-  if (!targetRaw) {
+): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+  const targetResolved = resolveClaimTarget(
+    {
+      targetId: intent.targetId,
+      subjectId: intent.subjectId,
+      selector: intent.selector ?? "current",
+    },
+    mutable,
+    scope,
+    ctx,
+    "revise",
+  );
+  const diagnostics = [...targetResolved.diagnostics];
+  if (targetResolved.error || !targetResolved.id) {
     return {
       accepted: false,
-      errors: ["revise is missing targetId"],
-      stored: invalidOperation(ctx),
+      errors: [targetResolved.error ?? "revise is missing targetId"],
+      stored: invalidOperation(ctx, intent.targetId),
+      diagnostics,
     };
   }
-  const resolved = resolveRef(targetRaw, mutable, scope);
-  if (resolved.error || !resolved.id) {
-    return {
-      accepted: false,
-      errors: [resolved.error ?? `unknown target ${targetRaw}`],
-      stored: invalidOperation(ctx, targetRaw),
-    };
-  }
+  const resolved = { id: targetResolved.id };
   const legality = targetLegality(mutable, resolved.id, "revise");
   if (legality.length > 0) {
     return {
@@ -999,9 +1459,15 @@ function applyRevise(
     intent.subjectId ?? target.subjectId,
     mutable,
     scope,
+    ctx,
   );
   const errors = [...deps.errors];
   if (subject.error) errors.push(subject.error);
+  if (subject.normalizedFrom && subject.id) {
+    diagnostics.push(
+      `normalized subjectId from "${subject.normalizedFrom}" to "${subject.id}"`,
+    );
+  }
   if (
     (intent.subjectId ?? target.subjectId) &&
     type !== "claim" &&
@@ -1021,17 +1487,33 @@ function applyRevise(
       subjectId: subject.id,
       confidence: intent.confidence ?? target.confidence,
       supersedes: target.id,
+      metadata: intent.metadata,
     },
     ctx,
     mutable,
     target.id,
   );
   errors.push(...prepared.errors);
+  const grounding = resolveGrounding(
+    {
+      groundsNodeIds: intent.groundsNodeIds,
+      supportsNodeIds: intent.supportsNodeIds,
+      basis: intent.basis,
+      subjectId: subject.id,
+      nodeType: type,
+    },
+    ctx,
+    mutable,
+    scope,
+  );
+  errors.push(...grounding.errors);
+  diagnostics.push(...grounding.diagnostics);
   if (!prepared.node || errors.length > 0) {
     return {
       accepted: false,
       errors,
       stored: invalidOperation(ctx, resolved.id),
+      diagnostics,
     };
   }
 
@@ -1041,6 +1523,7 @@ function applyRevise(
       accepted: false,
       errors: [...errors, localError],
       stored: invalidOperation(ctx, resolved.id),
+      diagnostics,
     };
   }
 
@@ -1054,12 +1537,15 @@ function applyRevise(
   return {
     accepted: true,
     errors: [],
+    diagnostics,
     stored: {
       type: "revise",
       actor: ctx.actor,
       targetId: target.id,
       replacement,
       reason: intent.reason?.trim() || undefined,
+      replacedActiveNodeId: target.id,
+      ...(grounding.links.length > 0 ? { grounding: grounding.links } : {}),
     },
   };
 }
@@ -1072,31 +1558,36 @@ function applyStance(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation } {
-  const targetRaw =
-    ("targetNodeId" in intent ? intent.targetNodeId?.trim() : undefined) ??
-    intent.targetId?.trim();
-  if (!targetRaw) {
+): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
+  const targetResolved = resolveClaimTarget(
+    {
+      targetId:
+        ("targetNodeId" in intent ? intent.targetNodeId?.trim() : undefined) ??
+        intent.targetId?.trim(),
+      subjectId: "subjectId" in intent ? intent.subjectId : undefined,
+      selector: "selector" in intent ? intent.selector : undefined,
+    },
+    mutable,
+    scope,
+    ctx,
+    intent.action,
+  );
+  if (targetResolved.error || !targetResolved.id) {
     return {
       accepted: false,
       errors: [
-        `${intent.action} is missing ${
-          intent.action === "support" || intent.action === "challenge"
-            ? "targetId (or targetNodeId)"
-            : "targetId"
-        }`,
+        targetResolved.error ??
+          `${intent.action} is missing ${
+            intent.action === "support" || intent.action === "challenge"
+              ? "targetId (or targetNodeId)"
+              : "targetId"
+          }`,
       ],
       stored: invalidOperation(ctx),
+      diagnostics: targetResolved.diagnostics,
     };
   }
-  const resolved = resolveRef(targetRaw, mutable, scope);
-  if (resolved.error || !resolved.id) {
-    return {
-      accepted: false,
-      errors: [resolved.error ?? `unknown target ${targetRaw}`],
-      stored: invalidOperation(ctx, targetRaw),
-    };
-  }
+  const resolved = { id: targetResolved.id };
   const legality = targetLegality(mutable, resolved.id, intent.action);
   if (legality.length > 0) {
     return {
@@ -1163,11 +1654,19 @@ function applyOneIntent(
   ctx: ApplyIntentsContext,
   mutable: MutableGraph,
   scope: LocalScope,
-): { accepted: boolean; errors: string[]; stored: ReasoningOperation } {
+): { accepted: boolean; errors: string[]; stored: ReasoningOperation; diagnostics?: string[] } {
   if (intent.action === "invalid") {
+    const detail =
+      intent.raw &&
+      typeof intent.raw === "object" &&
+      !Array.isArray(intent.raw) &&
+      "error" in intent.raw &&
+      typeof intent.raw.error === "string"
+        ? intent.raw.error
+        : "malformed reasoning intent";
     return {
       accepted: false,
-      errors: ["malformed reasoning intent"],
+      errors: [detail],
       stored: invalidOperation(ctx),
     };
   }
@@ -1254,6 +1753,94 @@ function applyFinalAnswer(
   return support;
 }
 
+function addEventDiagnostic(event: ReasoningEvent, message: string): void {
+  if (event.diagnostics?.includes(message)) return;
+  event.diagnostics = [...(event.diagnostics ?? []), message];
+}
+
+function thisTurnAddresses(events: ReasoningEvent[], nodeId: string): boolean {
+  return events.some((event) => {
+    if (!event.accepted) return false;
+    const op = event.operation;
+    if (op.type === "revise" && op.targetId === nodeId) return true;
+    if (op.type === "challenge" && op.targetId === nodeId) return true;
+    if (op.type === "reject" && op.targetId === nodeId) return true;
+    if (
+      (op.type === "support" || op.type === "challenge") &&
+      op.sourceNodeId &&
+      op.targetId === nodeId
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function thisTurnHasEvidence(events: ReasoningEvent[]): boolean {
+  return events.some((event) => {
+    if (!event.accepted) return false;
+    const op = event.operation;
+    if (op.type === "create" && op.node.type === "evidence") return true;
+    if (op.type === "create" && (op.grounding?.length ?? 0) > 0) return true;
+    if (op.type === "revise" && (op.grounding?.length ?? 0) > 0) return true;
+    if (
+      (op.type === "support" || op.type === "challenge") &&
+      op.sourceNodeId
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function annotateTurnDiagnostics(
+  ctx: ApplyIntentsContext,
+  applied: ReasoningEvent[],
+): void {
+  const turnEvents = applied.filter((event) => event.turnIndex === ctx.turnIndex);
+  const hasEvidence = thisTurnHasEvidence(turnEvents);
+  for (const event of turnEvents) {
+    if (!event.accepted || event.operation.type !== "create") continue;
+    const node = event.operation.node;
+    if (!isCandidateNode(node) || !node.subjectId) continue;
+    if (event.operation.replacedActiveNodeId) {
+      const oldId = event.operation.replacedActiveNodeId;
+      const grounded = (event.operation.grounding?.length ?? 0) > 0;
+      if (!thisTurnAddresses(turnEvents, oldId) && !grounded) {
+        addEventDiagnostic(event, "candidate transition without semantic lineage");
+      }
+    }
+    const revisit = event.diagnostics?.some((item) =>
+      item.startsWith("candidate_revisit"),
+    );
+    if (revisit) {
+      addEventDiagnostic(
+        event,
+        hasEvidence
+          ? "candidate_revisit with new evidence"
+          : "candidate_revisit without new evidence",
+      );
+    }
+    const conflicted = (ctx.conflicts ?? []).filter(
+      (conflict) =>
+        conflict.issueId === node.subjectId &&
+        conflict.source === "task_constraint",
+    );
+    if (conflicted.length > 0) {
+      const conflictNodeIds = new Set(conflicted.flatMap((conflict) => conflict.nodeIds));
+      const addressed = [...conflictNodeIds].some((id) =>
+        thisTurnAddresses(turnEvents, id),
+      );
+      if (!addressed) {
+        addEventDiagnostic(
+          event,
+          `unresolved conflict on ${node.subjectId}; prefer resolving conflicting live candidates before expanding unrelated alternatives`,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Apply model-authored intents through the deterministic rule engine.
  * Always materializes prior state from the event log first.
@@ -1305,7 +1892,7 @@ export function applyReasoningIntents(
 
   for (let i = 0; i < intents.length; i++) {
     const intent = intents[i]!;
-    if (i >= MAX_OPS_PER_TURN) {
+    if (i >= MAX_OPS_PER_TURN && ctx.actor !== "system") {
       applied.push(
         appendEvent(
           mutable,
@@ -1327,9 +1914,29 @@ export function applyReasoningIntents(
         result.stored,
         result.accepted,
         result.errors,
+        result.diagnostics,
       ),
     );
     refreshStatuses(mutable);
+  }
+
+  annotateTurnDiagnostics(ctx, applied);
+  if (ctx.extraDiagnostics && ctx.extraDiagnostics.length > 0) {
+    if (applied.length === 0) {
+      applied.push(
+        appendEvent(
+          mutable,
+          ctx,
+          { action: "invalid", raw: { diagnostics: ctx.extraDiagnostics } },
+          invalidOperation(ctx),
+          false,
+          [],
+          ctx.extraDiagnostics,
+        ),
+      );
+    } else {
+      for (const item of ctx.extraDiagnostics) addEventDiagnostic(applied[0]!, item);
+    }
   }
 
   const finalAnswerSupport = applyFinalAnswer(mutable, ctx);

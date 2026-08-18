@@ -225,6 +225,7 @@ function problemStatus(conversation: ProblemConversation): ProblemStatus {
   if (conversation.stoppedReason === "error") return "failed";
   if (conversation.stoppedReason === "cancelled") return "cancelled";
   if (conversation.stoppedReason === "max_turns") return "incomplete";
+  if (conversation.stoppedReason === "reasoning_protocol_stalled") return "incomplete";
   return "complete";
 }
 

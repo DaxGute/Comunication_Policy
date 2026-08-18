@@ -54,6 +54,7 @@ export type ConversationExportMessage = {
     history_characters: number;
   };
   raw_content?: string;
+  reasoning_moves?: unknown[];
   reasoning_intents?: ReasoningIntent[];
   reasoning_operations?: ReasoningOperation[];
 };
@@ -270,6 +271,9 @@ export function serializeConversation(
       }
       if (message.rawContent) {
         exported.raw_content = message.rawContent;
+      }
+      if (message.reasoningMoves && message.reasoningMoves.length > 0) {
+        exported.reasoning_moves = message.reasoningMoves;
       }
       if (message.reasoningIntents && message.reasoningIntents.length > 0) {
         exported.reasoning_intents = message.reasoningIntents;

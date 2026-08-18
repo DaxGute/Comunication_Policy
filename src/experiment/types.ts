@@ -11,6 +11,7 @@ import type {
   FinalAnswerSupport,
   ReasoningEvent,
   ReasoningIntent,
+  ReasoningMove,
   ReasoningNode,
   ReasoningOperation,
   ReasoningSubject,
@@ -88,6 +89,8 @@ export type ConversationMessage = {
    * `content` is always the natural-language utterance.
    */
   rawContent?: string;
+  /** Tiny semantic moves as parsed from the model (pre-engine). */
+  reasoningMoves?: ReasoningMove[];
   /** Model-emitted reasoning intents for this turn (pre-engine). */
   reasoningIntents?: ReasoningIntent[];
   /** Canonical applied operations produced from this turn's events. */
@@ -116,7 +119,12 @@ export type ProblemConversation = {
   reasoningSubjects?: ReasoningSubject[];
   /** Deterministic graph-quality measurements computed when the problem ends. */
   reasoningDiagnostics?: ReasoningGraphDiagnostics;
-  stoppedReason: "final_answer" | "max_turns" | "cancelled" | "error";
+  stoppedReason:
+    | "final_answer"
+    | "max_turns"
+    | "cancelled"
+    | "error"
+    | "reasoning_protocol_stalled";
   /**
    * Set while this problem is mid-run (streaming into the inspector).
    * Cleared once the problem finishes.
@@ -170,6 +178,10 @@ export type RunConfig = {
   provider: "mock" | "openai";
   maxTurns: number;
   temperature: number;
+  /** Consecutive substantive turns without accepted graph mutations before recovery feedback. */
+  stallRecoveryTurns?: number;
+  /** Consecutive stalled turns before failing the problem as reasoning_protocol_stalled. */
+  stallFailTurns?: number;
 };
 
 export type ExperimentRun = {

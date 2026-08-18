@@ -13,8 +13,14 @@ import { deriveConversationEfficiency } from "../experiment/conversationEfficien
 import type { ProblemConversation, RunConfig } from "../experiment/types";
 import { calculateModelCost } from "../models/cost";
 import { normalizeUsage, sumUsage } from "../models/usage";
+import { taskReasoningAdapterFor } from "../problems/adapters/registry";
 import type { Problem } from "../problems/types";
-import { computeReasoningGraphDiagnostics } from "../reasoning";
+import {
+  computeReasoningGraphDiagnostics,
+  deriveGenericReadiness,
+  deriveIssueConvergenceStates,
+  deriveReasoningProgress,
+} from "../reasoning";
 import {
   runInteractionLoop,
   type InteractionLoopCallbacks,
@@ -48,6 +54,8 @@ export async function runProblem(args: {
     model: config.runModel,
     temperature: config.temperature,
     maxTurns: config.maxTurns,
+    stallRecoveryTurns: config.stallRecoveryTurns,
+    stallFailTurns: config.stallFailTurns,
     reasoningEffort: config.runReasoningEffort,
     client,
     signal,
@@ -74,6 +82,25 @@ export async function runProblem(args: {
     }
     conversationCostUsd = anyPriced ? sum : null;
   }
+  const adapter = taskReasoningAdapterFor(problem);
+  const conflicts = adapter.deriveConflicts?.(problem, result.reasoning) ?? [];
+  const deterministicSignals =
+    adapter.deriveDeterministicEvidence?.(problem, result.reasoning) ?? [];
+  const issueStates = deriveIssueConvergenceStates(result.reasoning, {
+    conflicts,
+    deterministicSignals,
+    currentTurn: result.messages.length,
+  });
+  const genericReadiness = deriveGenericReadiness(issueStates);
+  const progress = deriveReasoningProgress(result.reasoning, issueStates, {
+    currentTurn: result.messages.length,
+  });
+  const taskReadiness = adapter.deriveProblemReadiness?.(
+    problem,
+    issueStates,
+    result.reasoning,
+    genericReadiness,
+  );
 
   const conversation: ProblemConversation = {
     problemId: problem.id,
@@ -88,7 +115,26 @@ export async function runProblem(args: {
     reasoningDiagnostics: computeReasoningGraphDiagnostics(result.reasoning, {
       turnCount: result.messages.length,
       finalAnswer: result.finalAnswer,
-      crosswordClues: problem.crossword?.clues,
+      issueStates,
+      genericReadiness,
+      progress,
+      task: taskReadiness
+        ? {
+            readiness: taskReadiness,
+            issueStates: issueStates.map((issue) =>
+              adapter.deriveIssueState?.(problem, issue, result.reasoning),
+            ),
+            ...(adapter.deriveTaskDiagnostics
+              ? {
+                  lineage: adapter.deriveTaskDiagnostics(
+                    problem,
+                    result.reasoning,
+                    issueStates,
+                  ),
+                }
+              : {}),
+          }
+        : undefined,
     }),
     stoppedReason: result.stoppedReason,
     error: result.error,

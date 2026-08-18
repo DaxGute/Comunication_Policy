@@ -1,4 +1,4 @@
-import type { ReasoningGraph, ReasoningNode } from "./types";
+import type { ReasoningEdge, ReasoningGraph, ReasoningNode } from "./types";
 
 export type LayoutEdgeKind =
   | "parent"
@@ -9,7 +9,9 @@ export type LayoutEdgeKind =
   | "supports"
   | "challenges"
   | "depends_on"
-  | "revises";
+  | "revises"
+  | "replaced_by"
+  | "grounds";
 
 export type GraphLayoutNode = {
   id: string;
@@ -53,6 +55,13 @@ const SUBJECT_GAP_Y = 104;
 const ROOT_CENTER_X = 220;
 const ROOT_LANE_STEP = NODE_W + GAP_X * 2;
 const MIN_CANVAS_W = 640;
+const LOCAL_OFFSET = 28;
+const ORPHAN_LANES = 2;
+
+export const LAYOUT_ROOT_CENTER_X = ROOT_CENTER_X;
+export const LAYOUT_LANE_STEP = ROOT_LANE_STEP;
+export const LAYOUT_ORPHAN_LANES = ORPHAN_LANES;
+export const UNASSIGNED_REGION_ID = "__unassigned__";
 
 export type LayoutOptions = {
   /** Include empty chronological bands through the current conversation turn. */
@@ -78,6 +87,7 @@ function uniqueEdges(edges: GraphLayoutEdge[]): GraphLayoutEdge[] {
 function structuralNeighbors(
   node: ReasoningNode,
   nodes: ReasoningNode[],
+  edges: ReasoningEdge[],
 ): string[] {
   const neighbors = new Set([
     ...node.parents,
@@ -100,6 +110,10 @@ function structuralNeighbors(
       neighbors.add(candidate.id);
     }
   }
+  for (const edge of edges) {
+    if (edge.sourceNodeId === node.id) neighbors.add(edge.targetNodeId);
+    if (edge.targetNodeId === node.id) neighbors.add(edge.sourceNodeId);
+  }
   return [...neighbors];
 }
 
@@ -107,22 +121,29 @@ function placeTurnRow(
   row: ReasoningNode[],
   allNodes: ReasoningNode[],
   positionedById: Map<string, GraphLayoutNode>,
-  nextRootCenter: { value: number },
+  orphanCursor: { index: number },
   subjectCenters: Map<string, number>,
+  orphanOrigin: number,
   y: number,
+  edges: ReasoningEdge[],
 ): GraphLayoutNode[] {
   const rowIds = new Set(row.map((node) => node.id));
   const desiredCenter = new Map<string, number>();
+  const attachedIds = new Set<string>();
 
   for (const node of row) {
     if (node.type !== "final_answer" && node.subjectId) {
       const subjectCenter = subjectCenters.get(node.subjectId);
       if (subjectCenter !== undefined) {
         desiredCenter.set(node.id, subjectCenter);
-        continue;
+        attachedIds.add(node.id);
       }
     }
-    const prior = structuralNeighbors(node, allNodes)
+  }
+
+  for (const node of row) {
+    if (desiredCenter.has(node.id)) continue;
+    const prior = structuralNeighbors(node, allNodes, edges)
       .map((id) => positionedById.get(id))
       .filter((item): item is GraphLayoutNode => Boolean(item));
     if (prior.length > 0) {
@@ -134,14 +155,12 @@ function placeTurnRow(
     }
   }
 
-  // Propagate a known semantic lane through relationships created in this
-  // same turn. Remaining components receive a stable new lane.
   let changed = true;
   while (changed) {
     changed = false;
     for (const node of row) {
-      if (desiredCenter.has(node.id)) continue;
-      const relatedCenters = structuralNeighbors(node, allNodes)
+      if (desiredCenter.has(node.id) || attachedIds.has(node.id)) continue;
+      const relatedCenters = structuralNeighbors(node, allNodes, edges)
         .filter((id) => rowIds.has(id))
         .map((id) => desiredCenter.get(id))
         .filter((value): value is number => value !== undefined);
@@ -164,14 +183,16 @@ function placeTurnRow(
       const current = queue.shift()!;
       const currentNode = row.find((candidate) => candidate.id === current);
       if (!currentNode) continue;
-      for (const neighbor of structuralNeighbors(currentNode, allNodes)) {
+      for (const neighbor of structuralNeighbors(currentNode, allNodes, edges)) {
         if (!rowIds.has(neighbor) || component.has(neighbor)) continue;
+        if (attachedIds.has(neighbor)) continue;
         component.add(neighbor);
         queue.push(neighbor);
       }
     }
-    const center = nextRootCenter.value;
-    nextRootCenter.value += ROOT_LANE_STEP;
+    const center =
+      orphanOrigin + (orphanCursor.index % ORPHAN_LANES) * ROOT_LANE_STEP;
+    orphanCursor.index += 1;
     for (const id of component) desiredCenter.set(id, center);
   }
 
@@ -181,15 +202,12 @@ function placeTurnRow(
     return centerDelta || a.id.localeCompare(b.id);
   });
 
-  // Start each equal-anchor group around its semantic center, then sweep once
-  // for collision avoidance. Y remains identical for the whole turn.
   const groupSizes = new Map<number, number>();
   for (const node of ordered) {
     const center = Math.round(desiredCenter.get(node.id) ?? 0);
     groupSizes.set(center, (groupSizes.get(center) ?? 0) + 1);
   }
   const groupIndexes = new Map<number, number>();
-  let rightEdge = PAD_X - GAP_X;
   const out: GraphLayoutNode[] = [];
   for (const node of ordered) {
     const width =
@@ -202,12 +220,8 @@ function placeTurnRow(
     const index = groupIndexes.get(center) ?? 0;
     const count = groupSizes.get(center) ?? 1;
     groupIndexes.set(center, index + 1);
-    const centeredOffset = (index - (count - 1) / 2) * (NODE_W + GAP_X);
-    const x = Math.max(
-      PAD_X,
-      rightEdge + GAP_X,
-      center + centeredOffset - width / 2,
-    );
+    const centeredOffset = (index - (count - 1) / 2) * LOCAL_OFFSET;
+    const x = Math.max(PAD_X, center + centeredOffset - width / 2);
     const item: GraphLayoutNode = {
       id: node.id,
       x,
@@ -220,7 +234,6 @@ function placeTurnRow(
     };
     out.push(item);
     positionedById.set(node.id, item);
-    rightEdge = x + width;
   }
   return out;
 }
@@ -294,12 +307,12 @@ export function layoutReasoningGraph(
     positioned.push(item);
     positionedById.set(item.id, item);
   }
-  const nextRootCenter = {
-    value:
-      subjects.length > 0
-        ? ROOT_CENTER_X + subjects.length * ROOT_LANE_STEP
-        : ROOT_CENTER_X,
-  };
+  const orphanOrigin =
+    subjects.length > 0
+      ? ROOT_CENTER_X + subjects.length * ROOT_LANE_STEP
+      : ROOT_CENTER_X;
+  const orphanCursor = { index: 0 };
+  const layoutEdges = graph.edges ?? [];
 
   for (let turn = minTurn; turn <= maxTurn; turn++) {
     const bandY =
@@ -313,11 +326,43 @@ export function layoutReasoningGraph(
         turns.get(turn) ?? [],
         nodes,
         positionedById,
-        nextRootCenter,
+        orphanCursor,
         subjectCenters,
+        orphanOrigin,
         nodeY,
+        layoutEdges,
       ),
     );
+  }
+
+  const hasOrphans = nodes.some(
+    (node) =>
+      node.type !== "final_answer" &&
+      !(node.subjectId && subjectCenters.has(node.subjectId)),
+  );
+  if (hasOrphans && subjects.length > 0) {
+    const item: GraphLayoutNode = {
+      id: UNASSIGNED_REGION_ID,
+      x: orphanOrigin - ISSUE_W / 2,
+      y: PAD_Y,
+      width: ISSUE_W,
+      height: NODE_H,
+      turnIndex: 0,
+      depth: 0,
+      node: {
+        id: UNASSIGNED_REGION_ID,
+        type: "issue",
+        text: "Unassigned / emergent reasoning",
+        createdBy: "agent_a",
+        createdAtTurn: 0,
+        status: "open",
+        parents: [],
+        dependencies: [],
+        metadata: { taskDefined: true, subjectLabel: "Unassigned" },
+      },
+    };
+    positioned.push(item);
+    positionedById.set(item.id, item);
   }
 
   const maxNodeRight = positioned.reduce(

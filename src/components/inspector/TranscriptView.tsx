@@ -225,7 +225,10 @@ export function TranscriptView({
           <strong>Incomplete</strong>
           <span>
             Maximum conversation length reached ({run.config.maxTurns} of{" "}
-            {run.config.maxTurns} turns) without a final answer.
+            {run.config.maxTurns} turns) without a final answer
+            {conversation.stoppedReason === "reasoning_protocol_stalled"
+              ? " because structured reasoning stalled."
+              : "."}
           </span>
         </div>
       ) : null}

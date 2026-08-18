@@ -6,9 +6,11 @@ import type {
   ProblemConversation,
   TranscriptRequestTelemetry,
 } from "../experiment/types";
+import type { TaskIssueLedger } from "../problems/adapters/types";
 import {
   emptyReasoningGraph,
   snapshotBeforeTurn,
+  type IssueConvergenceState,
   type ReasoningGraph,
 } from "../reasoning";
 import { reasoningStateUserMessage } from "../reasoning/renderState";
@@ -31,6 +33,11 @@ export type RenderModelRequestArgs = {
    * loop. Omit only when reconstructing a legacy request that never had one.
    */
   reasoningGraph?: ReasoningGraph;
+  /** Optional adapter-enriched view (for deterministic task conflicts). */
+  issueStates?: IssueConvergenceState[];
+  taskLedgers?: TaskIssueLedger[];
+  /** Injected when structured reasoning has stalled. */
+  protocolFeedback?: string;
 };
 
 export type AgentTurnRequest = {
@@ -49,7 +56,7 @@ export function turnCueUserMessage(
 ): string {
   return [
     `It is your turn (turn ${turn} of at most ${maxTurns}). Respond as ${agentLabel(speaker)}.`,
-    'Return a JSON object with keys "message" and "reasoningIntents" as specified in REASONING PROTOCOL.',
+    'Return a JSON object with keys "message" and "moves" as specified in REASONING PROTOCOL.',
   ].join(" ");
 }
 
@@ -135,9 +142,16 @@ export function renderModelRequest(
       ? [
           {
             role: "user" as const,
-            content: reasoningStateUserMessage(reasoningGraph),
+            content: reasoningStateUserMessage(
+              reasoningGraph,
+              args.issueStates,
+              args.taskLedgers,
+            ),
           },
         ]
+      : []),
+    ...(args.protocolFeedback
+      ? [{ role: "user" as const, content: args.protocolFeedback }]
       : []),
     {
       role: "user",
@@ -177,6 +191,9 @@ export function buildTurnRequestForAgent(args: {
   turn: number;
   maxTurns: number;
   reasoningGraph?: ReasoningGraph;
+  issueStates?: IssueConvergenceState[];
+  taskLedgers?: TaskIssueLedger[];
+  protocolFeedback?: string;
 }): AgentTurnRequest {
   const systemPrompt =
     args.agentId === "agent_a"
@@ -190,6 +207,9 @@ export function buildTurnRequestForAgent(args: {
     turn: args.turn,
     maxTurns: args.maxTurns,
     reasoningGraph: args.reasoningGraph,
+    issueStates: args.issueStates,
+    taskLedgers: args.taskLedgers,
+    protocolFeedback: args.protocolFeedback,
   });
 }
 

@@ -89,6 +89,8 @@ export function normalizeRunConfig(
     provider,
     maxTurns: parsed.maxTurns ?? defaults.maxTurns,
     temperature: parsed.temperature ?? defaults.temperature,
+    stallRecoveryTurns: parsed.stallRecoveryTurns ?? defaults.stallRecoveryTurns,
+    stallFailTurns: parsed.stallFailTurns ?? defaults.stallFailTurns,
   };
 }
 

@@ -7,20 +7,17 @@ import type {
   CrosswordClue,
   CrosswordDirection,
 } from "../../problems/crossword/types";
+import {
+  findCrosswordCrossings,
+  type CrosswordCrossing,
+} from "../../problems/crossword/geometry";
+
+export type { CrosswordCrossing } from "../../problems/crossword/geometry";
 
 export type ClueAssignment = {
   number: number;
   direction: CrosswordDirection;
   answer: string;
-};
-
-export type CrosswordCrossing = {
-  row: number;
-  col: number;
-  acrossNumber: number;
-  downNumber: number;
-  acrossIndex: number;
-  downIndex: number;
 };
 
 export type CrosswordPuzzleGrade = {
@@ -171,31 +168,7 @@ export function parseGridAnswer(
 }
 
 export function findClueCrossings(clues: CrosswordClue[]): CrosswordCrossing[] {
-  const across = clues.filter((c) => c.direction === "across");
-  const down = clues.filter((c) => c.direction === "down");
-  const crossings: CrosswordCrossing[] = [];
-
-  for (const a of across) {
-    for (let ai = 0; ai < a.length; ai++) {
-      const row = a.row;
-      const col = a.col + ai;
-      for (const d of down) {
-        for (let di = 0; di < d.length; di++) {
-          if (d.row + di === row && d.col === col) {
-            crossings.push({
-              row,
-              col,
-              acrossNumber: a.number,
-              downNumber: d.number,
-              acrossIndex: ai,
-              downIndex: di,
-            });
-          }
-        }
-      }
-    }
-  }
-  return crossings;
+  return findCrosswordCrossings(clues);
 }
 
 export function reconstructGridFromAssignments(args: {

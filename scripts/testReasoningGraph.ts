@@ -42,6 +42,9 @@ function apply(
   extras: {
     protocolFailure?: string;
     finalAnswer?: { text?: string; supportingNodeIds: string[] };
+    candidateIdentity?: Parameters<
+      typeof applyReasoningIntents
+    >[2]["candidateIdentity"];
   } = {},
 ) {
   return applyReasoningIntents(g, intents, {
@@ -50,6 +53,7 @@ function apply(
     messageId: `msg-${turn}-${actor}`,
     protocolFailure: extras.protocolFailure,
     finalAnswer: extras.finalAnswer,
+    candidateIdentity: extras.candidateIdentity,
   });
 }
 
@@ -153,6 +157,19 @@ function createProposal(
     second.graph.edges?.some((edge) => edge.type === "revises"),
     false,
   );
+  assert.equal(
+    second.graph.edges?.some(
+      (edge) =>
+        edge.type === "replaced_by" &&
+        edge.sourceNodeId === "C1" &&
+        edge.targetNodeId === "C2",
+    ),
+    true,
+  );
+  assert.match(
+    second.events.at(-1)?.diagnostics?.join(" ") ?? "",
+    /candidate transition without semantic lineage/,
+  );
   const layout = layoutReasoningGraph(second.graph);
   const c1 = layout.nodes.find((node) => node.id === "C1")!;
   const c2 = layout.nodes.find((node) => node.id === "C2")!;
@@ -168,7 +185,11 @@ function createProposal(
   );
   const state = formatReasoningState(second.graph);
   assert.match(state, /AVAILABLE ISSUES/);
-  assert.match(state, /crossword:across:1 — Across 1/);
+  assert.match(state, /Refer to issues by their labels/);
+  assert.match(state, /ID: crossword:across:1/);
+  assert.match(state, /Across 1/);
+  assert.match(state, /CLUE: Top of a suit\?/);
+  assert.doesNotMatch(state, /crossword:across:1 — Across 1/);
   assert.match(state, /C1 \[Agent A\] claim/);
   assert.match(state, /C2 \[Agent B\] claim/);
 
@@ -852,7 +873,9 @@ function createProposal(
   assert.equal(diagnostics.atomicityWarningCount, 1);
   assert.equal(diagnostics.relationshipCount, 1);
   assert.equal(diagnostics.finalSupportingNodeCount, 1);
-  assert.equal(diagnostics.finalSupportCoverage, 0.5);
+  // Generic diagnostics only compute coverage from explicit issue attachment;
+  // parsing Across/Down answer blocks belongs to the crossword adapter.
+  assert.equal(diagnostics.finalSupportCoverage, undefined);
 
   const layout = layoutReasoningGraph(finalized.graph, { throughTurn: 3 });
   const final = layout.nodes.find((node) => node.id === "__final_answer__");
@@ -906,13 +929,13 @@ function createProposal(
     ).agentA,
   );
   assert.equal(low.reasoning, high.reasoning);
-  assert.match(low.reasoning, /reasoningIntents/);
-  assert.match(low.reasoning, /ATOMICITY IS REQUIRED/);
-  assert.match(low.reasoning, /Crossword — BAD/);
-  assert.match(low.reasoning, /Moral reasoning — BAD/);
-  assert.match(low.reasoning, /Proof — BAD/);
-  assert.match(low.reasoning, /challenge` node type exists only for old stored data/);
+  assert.match(low.reasoning, /"moves"/);
+  assert.match(low.reasoning, /small atomic claims/);
+  assert.match(low.reasoning, /human-readable issue names/);
+  assert.match(low.reasoning, /kind":"claim"/);
+  assert.match(low.reasoning, /kind":"revise"/);
   assert.doesNotMatch(low.reasoning, /One agent's accept does not globally settle/);
+  assert.doesNotMatch(low.reasoning, /nodeType/);
   assert.notEqual(low.trust, high.trust);
 }
 
@@ -1049,12 +1072,13 @@ const [left, right] = await Promise.all([
 
 assert.ok(hasStructuredReasoning(left));
 assert.ok(hasStructuredReasoning(right));
-assert.equal(left.reasoningNodes?.[0]?.text.includes("g-a"), true);
-assert.equal(right.reasoningNodes?.[0]?.text.includes("g-b"), true);
-assert.equal(left.reasoningNodes?.[0]?.text.includes("g-b"), false);
-assert.equal(right.reasoningNodes?.[0]?.text.includes("g-a"), false);
-assert.equal(left.reasoningNodes?.[0]?.id, "P1");
-assert.equal(left.reasoningNodes?.[0]?.createdBy, "agent_a");
+const leftProposal = left.reasoningNodes?.find((node) => node.id === "P1");
+const rightProposal = right.reasoningNodes?.find((node) => node.id === "P1");
+assert.equal(leftProposal?.text.includes("g-a"), true);
+assert.equal(rightProposal?.text.includes("g-b"), true);
+assert.equal(leftProposal?.text.includes("g-b"), false);
+assert.equal(rightProposal?.text.includes("g-a"), false);
+assert.equal(leftProposal?.createdBy, "agent_a");
 assert.deepEqual(left.finalAnswerSupport?.supportingNodeIds, ["P1"]);
 assert.deepEqual(left.finalAnswerSupport?.errors, []);
 assert.match(left.messages[0]?.content ?? "", /Proposal for g-a/);
@@ -1077,7 +1101,7 @@ const request = buildTurnRequestForAgent({
 assert.ok(
   request.messages.some((m) => m.content.startsWith("CURRENT REASONING STATE")),
 );
-assert.match(request.messages.at(-1)?.content ?? "", /reasoningIntents/);
+assert.match(request.messages.at(-1)?.content ?? "", /"moves"/);
 
 const run: ExperimentRun = {
   id: "run-r",
@@ -1093,7 +1117,7 @@ const exported = serializeConversation(left, run);
 assert.equal(exported.schema_version, "1.5");
 assert.ok(exported.reasoning);
 assert.equal(exported.reasoning.nodes.length, left.reasoningNodes?.length);
-assert.equal(exported.reasoning.edges.length, 1);
+assert.ok((exported.reasoning.edges.length ?? 0) >= 1);
 assert.ok(exported.reasoning.diagnostics);
 assert.ok(exported.messages[0]?.raw_content);
 assert.deepEqual(exported.result.supporting_node_ids, ["P1"]);

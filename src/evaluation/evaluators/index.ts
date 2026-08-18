@@ -206,7 +206,8 @@ export function isIncompleteConversation(
 ): boolean {
   return (
     conversation.status !== "running" &&
-    conversation.stoppedReason === "max_turns"
+    conversation.stoppedReason === "max_turns" ||
+    conversation.stoppedReason === "reasoning_protocol_stalled"
   );
 }
 

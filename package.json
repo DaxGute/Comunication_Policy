@@ -24,6 +24,9 @@
     "test:policy-prompts": "vite-node scripts/testPolicyPromptArchitecture.ts",
     "test:transcript": "vite-node scripts/testTranscriptArchitecture.ts",
     "test:reasoning": "vite-node scripts/testReasoningGraph.ts",
+    "test:convergence": "vite-node scripts/testConvergence.ts",
+    "test:lineage": "vite-node scripts/testLineageRecovery.ts",
+    "test:reasoning-moves": "vite-node scripts/testReasoningMoves.ts",
     "verify:crossword": "vite-node scripts/verifyCrosswordIntegration.ts",
     "verify:crossword-live": "vite-node scripts/verifyCrosswordLive.ts"
   },

@@ -1,4 +1,5 @@
 import type { CrosswordClue, CrosswordPuzzle } from "./types";
+import { findCrosswordCrossings } from "./geometry";
 
 function formatClueLine(clue: CrosswordClue): string {
   const row = clue.row + 1;
@@ -19,34 +20,6 @@ function formatGridBlock(grid: string[]): string {
 }
 
 /**
- * Every Across/Down letter pair that occupies the same cell.
- * Agent-facing only — no gold letters.
- */
-function formatCrossingLines(clues: CrosswordClue[]): string[] {
-  const across = clues.filter((c) => c.direction === "across");
-  const down = clues.filter((c) => c.direction === "down");
-  const lines: string[] = [];
-
-  for (const a of across) {
-    for (let ai = 0; ai < a.length; ai++) {
-      const row = a.row;
-      const col = a.col + ai;
-      for (const d of down) {
-        for (let di = 0; di < d.length; di++) {
-          if (d.row + di === row && d.col === col) {
-            lines.push(
-              `- Across ${a.number} letter ${ai + 1} = Down ${d.number} letter ${di + 1} (row ${row + 1}, col ${col + 1})`,
-            );
-          }
-        }
-      }
-    }
-  }
-
-  return lines;
-}
-
-/**
  * Agent-facing serialization of a complete crossword.
  * Gold answers / solution letters are intentionally omitted.
  */
@@ -57,7 +30,12 @@ export function formatCrosswordProblemText(puzzle: CrosswordPuzzle): string {
   const down = puzzle.clues
     .filter((c) => c.direction === "down")
     .sort((a, b) => a.number - b.number);
-  const crossings = formatCrossingLines(puzzle.clues);
+  const crossings = findCrosswordCrossings(puzzle.clues).map(
+    (crossing) =>
+      `- Across ${crossing.acrossNumber} letter ${crossing.acrossIndex + 1} = ` +
+      `Down ${crossing.downNumber} letter ${crossing.downIndex + 1} ` +
+      `(row ${crossing.row + 1}, col ${crossing.col + 1})`,
+  );
 
   return [
     "CROSSWORD",

@@ -1,5 +1,17 @@
-import type { CrosswordClue } from "../problems/crossword/types";
-import type { ReasoningEdge, ReasoningGraph, ReasoningNode } from "./types";
+import type {
+  GenericReadiness,
+  IssueConvergenceState,
+  ReasoningEdge,
+  ReasoningGraph,
+  ReasoningNode,
+  ReasoningProgressState,
+} from "./types";
+import {
+  LAYOUT_LANE_STEP,
+  LAYOUT_ORPHAN_LANES,
+  LAYOUT_ROOT_CENTER_X,
+  layoutReasoningGraph,
+} from "./layout";
 
 export type AtomicityWarning = {
   nodeId: string;
@@ -28,44 +40,62 @@ export type ReasoningGraphDiagnostics = {
    * cited graph nodes. Undefined when the answer has no parseable part keys.
    */
   finalSupportCoverage?: number;
-  crossword?: {
-    clueSlotCount: number;
-    distinctClueSpecificHypothesisCount: number;
-  };
+  issueStates?: IssueConvergenceState[];
+  genericReadiness?: GenericReadiness;
+  progress?: ReasoningProgressState;
+  task?: Record<string, unknown>;
+  subjectAttachmentRate?: number;
+  candidateTransitions?: number;
+  candidateTransitionsWithSemanticLineage?: number;
+  candidateTransitionsWithReplacedBy?: number;
+  candidateRevisits?: number;
+  revisitsWithNewEvidence?: number;
+  revisitsWithoutNewEvidence?: number;
+  crossingConflicts?: number;
+  conflictsResolved?: number;
+  conflictsRemainingLive?: number;
+  liveCandidates?: number;
+  incompatibleLiveCandidates?: number;
+  issueSettlementRate?: number;
+  issueReopenRate?: number;
+  crossTurnEdgeRate?: number;
+  degree0ClaimRate?: number;
+  meanSameIssueXSpread?: number;
+  graphWidth?: number;
+  graphOverhang?: number;
+  orphanNodeCount?: number;
+  groundedClaimRate?: number;
+  taskEvidenceCount?: number;
+  agentEvidenceCount?: number;
+  deterministicEvidenceCount?: number;
+  ungroundedClaimCount?: number;
+  structuredReasoningMissingCount?: number;
+  protocolStallStreak?: number;
 };
 
 type DiagnosticOptions = {
   turnCount: number;
   finalAnswer?: string;
-  crosswordClues?: CrosswordClue[];
+  issueStates?: IssueConvergenceState[];
+  genericReadiness?: GenericReadiness;
+  progress?: ReasoningProgressState;
+  task?: Record<string, unknown>;
 };
-
-const CLUE_REF = /\b(?:(\d+)\s*[- ]?\s*(across|down)|(\d+)\s*([ad]))\b/gi;
-const ASSIGNMENT = /\b(?:\d+\s*[- ]?\s*(?:across|down)|\d+\s*[ad])\s*(?:=|is|:)\s*[A-Za-z][A-Za-z -]{0,24}/gi;
-
-function clueKeys(text: string): Set<string> {
-  const keys = new Set<string>();
-  for (const match of text.matchAll(CLUE_REF)) {
-    const number = match[1] ?? match[3];
-    const direction = (match[2] ?? match[4] ?? "").toLowerCase();
-    if (!number || !direction) continue;
-    keys.add(`${direction.startsWith("a") ? "across" : "down"}:${number}`);
-  }
-  return keys;
-}
 
 function warningFor(node: ReasoningNode): AtomicityWarning | undefined {
   if (node.type === "final_answer") return undefined;
   const reasons: string[] = [];
-  const refs = clueKeys(node.text);
-  const assignments = node.text.match(ASSIGNMENT)?.length ?? 0;
   const listSeparators = (node.text.match(/[;,]/g) ?? []).length;
   const enumeratedItems = (node.text.match(/(?:^|\s)(?:\d+[.)]|[-•])\s+/g) ?? []).length;
+  const assignmentClauses = (
+    node.text.match(/(?:^|[;,])\s*[^;,=]{1,40}\s*=/g) ?? []
+  ).length;
 
-  if (refs.size >= 3) reasons.push(`mentions ${refs.size} distinct clue slots`);
-  if (assignments >= 3) reasons.push(`contains ${assignments} answer-like assignments`);
   if (listSeparators >= 4) reasons.push("contains a long enumeration");
   if (enumeratedItems >= 3) reasons.push("contains multiple enumerated propositions");
+  if (assignmentClauses >= 3) {
+    reasons.push(`contains ${assignmentClauses} assignment-like propositions`);
+  }
   return reasons.length > 0 ? { nodeId: node.id, reasons } : undefined;
 }
 
@@ -76,26 +106,6 @@ function incidentNodeIds(edges: ReasoningEdge[]): Set<string> {
     ids.add(edge.targetNodeId);
   }
   return ids;
-}
-
-function finalPartKeys(finalAnswer: string | undefined): Set<string> {
-  const keys = finalAnswer ? clueKeys(finalAnswer) : new Set<string>();
-  if (!finalAnswer) return keys;
-  let direction: "across" | "down" | undefined;
-  for (const line of finalAnswer.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (/^across$/i.test(trimmed)) {
-      direction = "across";
-      continue;
-    }
-    if (/^down$/i.test(trimmed)) {
-      direction = "down";
-      continue;
-    }
-    const assignment = trimmed.match(/^(\d+)\s*:\s*\S+/);
-    if (direction && assignment) keys.add(`${direction}:${assignment[1]}`);
-  }
-  return keys;
 }
 
 export function computeReasoningGraphDiagnostics(
@@ -113,7 +123,9 @@ export function computeReasoningGraphDiagnostics(
     edges
       .filter(
         (edge) =>
-          edge.type === "supports" || edge.type === "challenges",
+          edge.type === "supports" ||
+          edge.type === "challenges" ||
+          edge.type === "grounds",
       )
       .map((edge) => edge.sourceNodeId),
   );
@@ -130,19 +142,115 @@ export function computeReasoningGraphDiagnostics(
           ),
         )
       : [];
-  const finalKeys = finalPartKeys(options.finalAnswer ?? finalNode?.text);
-  const citedKeys = new Set<string>();
+  const requiredIssueIds = new Set((graph.subjects ?? []).map((subject) => subject.id));
+  const citedIssueIds = new Set<string>();
   for (const id of validFinalSupports) {
     const node = graph.nodes.find((candidate) => candidate.id === id);
-    if (!node) continue;
-    for (const key of clueKeys(node.text)) citedKeys.add(key);
+    if (node?.type !== "final_answer" && node?.subjectId) {
+      citedIssueIds.add(node.subjectId);
+    }
   }
 
-  const distinctHypotheses = new Set<string>();
-  for (const node of nodes) {
-    if (!node.text.match(ASSIGNMENT)) continue;
-    for (const key of clueKeys(node.text)) distinctHypotheses.add(`${key}:${node.text}`);
+  const claims = nodes.filter(
+    (node) => node.type === "claim" || node.type === "proposal",
+  );
+  const knownSubjects = new Set((graph.subjects ?? []).map((subject) => subject.id));
+  const attachedClaims = claims.filter(
+    (node) => node.subjectId && knownSubjects.has(node.subjectId),
+  );
+  const replacedBy = edges.filter((edge) => edge.type === "replaced_by");
+  const lineageTypes = new Set(["revises", "supports", "challenges", "grounds"]);
+  const pairKey = (a: string, b: string) => [a, b].sort().join("::");
+  const semanticPairs = new Set(
+    edges
+      .filter((edge) => lineageTypes.has(edge.type))
+      .map((edge) => pairKey(edge.sourceNodeId, edge.targetNodeId)),
+  );
+  const candidateTransitionsWithSemanticLineage = replacedBy.filter((edge) =>
+    semanticPairs.has(pairKey(edge.sourceNodeId, edge.targetNodeId)),
+  ).length;
+  const diagnosticItems = graph.events.flatMap((event) => event.diagnostics ?? []);
+  const candidateRevisits = diagnosticItems.filter((item) =>
+    item.startsWith("candidate_revisit"),
+  ).length;
+  const revisitsWithNewEvidence = diagnosticItems.filter((item) =>
+    item.includes("with new evidence"),
+  ).length;
+  const revisitsWithoutNewEvidence = diagnosticItems.filter((item) =>
+    item.includes("without new evidence"),
+  ).length;
+  const issueStates = options.issueStates ?? [];
+  const crossingConflicts = issueStates.reduce(
+    (sum, state) =>
+      sum +
+      state.conflicts.filter((conflict) => conflict.source === "task_constraint")
+        .length,
+    0,
+  );
+  const liveCandidates = issueStates.reduce(
+    (sum, state) => sum + state.liveClaimIds.length,
+    0,
+  );
+  const incompatibleLiveCandidates = issueStates.reduce((sum, state) => {
+    const compatibility = state.claimCompatibility ?? {};
+    return (
+      sum +
+      state.liveClaimIds.filter((id) => compatibility[id] === "incompatible").length
+    );
+  }, 0);
+  const settledCount = issueStates.filter((state) => state.settledClaimId).length;
+  const reopenedCount = issueStates.filter((state) => state.reopened).length;
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const typedEdges = edges.filter((edge) => edge.targetNodeId !== "__final_answer__");
+  const crossTurnEdges = typedEdges.filter((edge) => {
+    const source = nodeById.get(edge.sourceNodeId);
+    const target = nodeById.get(edge.targetNodeId);
+    return (
+      source &&
+      target &&
+      source.createdAtTurn !== target.createdAtTurn
+    );
+  });
+  const groundedIds = new Set(
+    edges
+      .filter((edge) => edge.type === "grounds" || edge.type === "supports")
+      .map((edge) => edge.targetNodeId),
+  );
+  const evidenceByOrigin = {
+    task: evidence.filter((node) => node.evidenceOrigin === "task").length,
+    deterministic: evidence.filter((node) => node.evidenceOrigin === "deterministic")
+      .length,
+    agent: evidence.filter(
+      (node) => node.evidenceOrigin === "agent" || !node.evidenceOrigin,
+    ).length,
+  };
+  const structuredReasoningMissingCount = graph.events.filter((event) =>
+    event.diagnostics?.some((item) => item === "structured_reasoning_missing"),
+  ).length;
+  const layout = layoutReasoningGraph(graph);
+  const spreads: number[] = [];
+  for (const subject of graph.subjects ?? []) {
+    const xs = layout.nodes
+      .filter(
+        (item) =>
+          item.node.type !== "final_answer" &&
+          item.node.subjectId === subject.id,
+      )
+      .map((item) => item.x + item.width / 2);
+    if (xs.length >= 2) {
+      spreads.push(Math.max(...xs) - Math.min(...xs));
+    } else if (xs.length === 1) {
+      spreads.push(0);
+    }
   }
+  const subjectLaneRight =
+    LAYOUT_ROOT_CENTER_X +
+    Math.max(0, (graph.subjects?.length ?? 0) - 1) * LAYOUT_LANE_STEP +
+    LAYOUT_LANE_STEP;
+  const orphanCap =
+    LAYOUT_ROOT_CENTER_X +
+    (graph.subjects?.length ?? 0) * LAYOUT_LANE_STEP +
+    LAYOUT_ORPHAN_LANES * LAYOUT_LANE_STEP;
 
   return {
     nodeCount: nodes.length,
@@ -150,7 +258,9 @@ export function computeReasoningGraphDiagnostics(
     proposalCount: nodes.filter((node) => node.type === "proposal").length,
     claimCount: nodes.filter((node) => node.type === "claim").length,
     evidenceCount: evidence.length,
-    issueCount: nodes.filter((node) => node.type === "issue").length,
+    issueCount:
+      (graph.subjects?.length ?? 0) +
+      nodes.filter((node) => node.type === "issue").length,
     atomicityWarningCount: warnings.length,
     atomicityWarnings: warnings,
     unlinkedNodeCount: nodes.filter((node) => !incident.has(node.id)).length,
@@ -169,20 +279,54 @@ export function computeReasoningGraphDiagnostics(
     finalSupportingNodeCount: validFinalSupports.length,
     invalidFinalSupportCount:
       finalNode?.type === "final_answer" ? finalNode.supportErrors.length : 0,
-    ...(finalKeys.size > 0
+    ...(requiredIssueIds.size > 0
       ? {
           finalSupportCoverage:
-            [...finalKeys].filter((key) => citedKeys.has(key)).length /
-            finalKeys.size,
+            [...requiredIssueIds].filter((id) => citedIssueIds.has(id)).length /
+            requiredIssueIds.size,
         }
       : {}),
-    ...(options.crosswordClues
-      ? {
-          crossword: {
-            clueSlotCount: options.crosswordClues.length,
-            distinctClueSpecificHypothesisCount: distinctHypotheses.size,
-          },
-        }
-      : {}),
+    issueStates: options.issueStates,
+    genericReadiness: options.genericReadiness,
+    progress: options.progress,
+    task: options.task,
+    subjectAttachmentRate:
+      claims.length > 0 ? attachedClaims.length / claims.length : 0,
+    candidateTransitions: replacedBy.length,
+    candidateTransitionsWithSemanticLineage,
+    candidateTransitionsWithReplacedBy: replacedBy.length,
+    candidateRevisits,
+    revisitsWithNewEvidence,
+    revisitsWithoutNewEvidence,
+    crossingConflicts,
+    conflictsResolved: Math.max(0, crossingConflicts === 0 && liveCandidates > 0 ? 1 : 0),
+    conflictsRemainingLive: crossingConflicts,
+    liveCandidates,
+    incompatibleLiveCandidates,
+    issueSettlementRate:
+      issueStates.length > 0 ? settledCount / issueStates.length : 0,
+    issueReopenRate: issueStates.length > 0 ? reopenedCount / issueStates.length : 0,
+    crossTurnEdgeRate:
+      typedEdges.length > 0 ? crossTurnEdges.length / typedEdges.length : 0,
+    degree0ClaimRate:
+      claims.length > 0
+        ? claims.filter((claim) => !incident.has(claim.id)).length / claims.length
+        : 0,
+    meanSameIssueXSpread:
+      spreads.length > 0
+        ? spreads.reduce((sum, value) => sum + value, 0) / spreads.length
+        : 0,
+    graphWidth: layout.width,
+    graphOverhang: Math.max(0, layout.width - Math.max(subjectLaneRight, orphanCap)),
+    orphanNodeCount: claims.length - attachedClaims.length,
+    groundedClaimRate:
+      claims.length > 0
+        ? claims.filter((claim) => groundedIds.has(claim.id)).length / claims.length
+        : 0,
+    taskEvidenceCount: evidenceByOrigin.task,
+    agentEvidenceCount: evidenceByOrigin.agent,
+    deterministicEvidenceCount: evidenceByOrigin.deterministic,
+    ungroundedClaimCount: claims.filter((claim) => !groundedIds.has(claim.id)).length,
+    structuredReasoningMissingCount,
   };
 }

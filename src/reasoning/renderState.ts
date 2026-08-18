@@ -1,6 +1,12 @@
 import { agentLabel } from "../agents/identity";
+import type { TaskIssueLedger } from "../problems/adapters/types";
 import { stancesForNode } from "./graph";
-import type { ReasoningGraph, ReasoningNode } from "./types";
+import { deriveIssueConvergenceStates, reasoningIssues } from "./convergence";
+import type {
+  IssueConvergenceState,
+  ReasoningGraph,
+  ReasoningNode,
+} from "./types";
 
 const MAX_NODES = 64;
 const MAX_TEXT = 320;
@@ -69,11 +75,102 @@ function selectRelevantNodes(graph: ReasoningGraph): ReasoningNode[] {
   return sortNodes(ranked.slice(0, MAX_NODES));
 }
 
+function formatIssueIdentity(id: string, label: string, prompt?: string): string[] {
+  const lines = [`${label}`, `ID: ${id}`];
+  if (prompt) lines.push(`CLUE: ${prompt}`);
+  return lines;
+}
+
+function agentStatusLine(graph: ReasoningGraph, nodeId: string): string {
+  const stances = stancesForNode(graph, nodeId);
+  if (stances.length === 0) return "Agent status: unresolved";
+  const parts = stances.map((stance) => {
+    const who = agentLabel(stance.actor);
+    if (stance.kind === "accept") return `accepted by ${who}`;
+    if (stance.kind === "reject") return `rejected by ${who}`;
+    if (stance.kind === "challenge") return `challenged by ${who}`;
+    if (stance.kind === "support") return `supported by ${who}`;
+    return `${stance.kind} by ${who}`;
+  });
+  return `Agent status: ${parts.join("; ")}`;
+}
+
+function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] {
+  const lines: string[] = [];
+  if (ledger.conflicts.length > 0) {
+    lines.push("UNRESOLVED CONFLICT");
+    for (const conflict of ledger.conflicts) {
+      const [left, right] = conflict.nodeIds;
+      const leftNode = graph.nodes.find((node) => node.id === left);
+      const rightNode = graph.nodes.find((node) => node.id === right);
+      const leftAnswer =
+        ledger.liveCandidates.find((candidate) => candidate.nodeId === left)
+          ?.normalizedAnswer ?? left;
+      const rightAnswer =
+        ledger.liveCandidates.find((candidate) => candidate.nodeId === right)
+          ?.normalizedAnswer ?? right;
+      if (left && right && left !== right) {
+        lines.push(`${left}: ${leftAnswer}`);
+        lines.push("conflicts with");
+        lines.push(`${right}: ${rightAnswer}`);
+      } else {
+        lines.push(conflict.description ?? conflict.nodeIds.join(" vs "));
+      }
+      if (leftNode && rightNode) {
+        lines.push(truncate(conflict.description ?? "", 160));
+      }
+    }
+    lines.push(
+      "Resolve this contradiction through challenge, rejection, revision,",
+    );
+    lines.push(
+      "or new evidence before expanding unrelated alternatives.",
+    );
+    lines.push("");
+  }
+  lines.push("CURRENT LIVE CANDIDATES");
+  if (ledger.liveCandidates.length === 0) {
+    lines.push("(none)");
+  } else {
+    for (const candidate of ledger.liveCandidates) {
+      lines.push(`${candidate.nodeId}: ${candidate.normalizedAnswer ?? "(unparsed)"}`);
+      lines.push(`  status: ${candidate.live ? "live" : candidate.status}`);
+      lines.push(`  proposed turn: ${candidate.createdAtTurn}`);
+      lines.push(`  ${agentStatusLine(graph, candidate.nodeId)}`);
+      lines.push(`  TASK COMPATIBILITY: ${candidate.compatibility}`);
+      if (candidate.crossingDescription) {
+        lines.push(`  crossing: ${truncate(candidate.crossingDescription, 140)}`);
+      }
+      if (candidate.priorTurns && candidate.priorTurns.length > 0) {
+        lines.push(
+          `  ${candidate.normalizedAnswer} was previously tried on turns ${candidate.priorTurns.join(" and ")}.`,
+        );
+      }
+    }
+  }
+  if (ledger.previousCandidates.length > 0) {
+    lines.push("PREVIOUS CANDIDATES");
+    for (const candidate of ledger.previousCandidates) {
+      const outcome = candidate.priorOutcome ?? candidate.status;
+      lines.push(
+        `${candidate.nodeId}: ${candidate.normalizedAnswer ?? "(unparsed)"}`,
+      );
+      lines.push(`  ${outcome} turn ${candidate.createdAtTurn}`);
+    }
+  }
+  if (ledger.triedAnswers.length > 0) {
+    lines.push("TRIED ANSWERS");
+    for (const answer of ledger.triedAnswers) lines.push(answer);
+  }
+  return lines;
+}
+
 function formatNodeBlock(
   graph: ReasoningGraph,
   node: ReasoningNode,
 ): string[] {
-  const owner = agentLabel(node.createdBy);
+  const owner =
+    node.createdBy === "system" ? "Task" : agentLabel(node.createdBy as "agent_a" | "agent_b");
   const lines = [
     `${node.id} [${owner}] ${node.type}`,
     `  "${truncate(node.text)}"`,
@@ -87,6 +184,9 @@ function formatNodeBlock(
     return lines;
   }
 
+    if (node.evidenceOrigin) {
+      lines.push(`  origin: ${node.evidenceOrigin}`);
+    }
   const stances = stancesForNode(graph, node.id);
   if (stances.length === 0) {
     lines.push(`  ${owner} proposed`);
@@ -127,7 +227,11 @@ function formatNodeBlock(
  * Compact, policy-invariant snapshot injected into each agent turn.
  * IDs are the handle agents should cite instead of recreating claims.
  */
-export function formatReasoningState(graph: ReasoningGraph): string {
+export function formatReasoningState(
+  graph: ReasoningGraph,
+  suppliedIssueStates?: IssueConvergenceState[],
+  taskLedgers?: TaskIssueLedger[],
+): string {
   const header = "CURRENT REASONING STATE";
   const subjects = graph.subjects ?? [];
   if (graph.nodes.length === 0 && subjects.length === 0) {
@@ -140,15 +244,63 @@ export function formatReasoningState(graph: ReasoningGraph): string {
   const ordered = [...live, ...superseded];
 
   const sections: string[] = [header, ""];
+  const issueStates =
+    suppliedIssueStates ?? deriveIssueConvergenceStates(graph);
+  const issuesById = new Map(reasoningIssues(graph).map((issue) => [issue.id, issue]));
+  const ledgersById = new Map((taskLedgers ?? []).map((ledger) => [ledger.issueId, ledger]));
+  if (issueStates.length > 0) {
+    sections.push("CURRENT ISSUE STATE");
+    for (const state of issueStates) {
+      const issue = issuesById.get(state.issueId);
+      sections.push(
+        ...formatIssueIdentity(
+          state.issueId,
+          issue?.label ?? state.issueId,
+          issue?.prompt,
+        ),
+      );
+      sections.push(
+        `  STATUS: ${
+          state.settledClaimId
+            ? "settled"
+            : state.reopened
+              ? "reopened"
+              : "unresolved"
+        }`,
+      );
+      const ledger = ledgersById.get(state.issueId);
+      if (ledger) {
+        sections.push(...formatLedger(graph, ledger).map((line) => `  ${line}`));
+      } else if (state.settledClaimId) {
+        const claim = graph.nodes.find((node) => node.id === state.settledClaimId);
+        sections.push(`  CURRENT CLAIM: ${state.settledClaimId}: ${truncate(claim?.text ?? "")}`);
+      } else if (state.liveClaimIds.length > 0) {
+        sections.push(`  LIVE CLAIMS: ${state.liveClaimIds.join(", ")}`);
+      }
+      for (const conflict of state.conflicts) {
+        sections.push(
+          `  CONFLICT (${conflict.source}): ${truncate(conflict.description ?? conflict.nodeIds.join(" vs "))}`,
+        );
+      }
+    }
+    sections.push("");
+  }
   const visible = ordered;
   const groupedIds = new Set<string>();
   if (subjects.length > 0) {
     sections.push("AVAILABLE ISSUES");
+    sections.push(
+      "Refer to issues by their labels (for example \"Across 5\" or \"5A\"). The application maps these to graph ids.",
+    );
+    sections.push("");
     for (const subject of subjects) {
-      const description = subject.description
-        ? `: ${truncate(subject.description, 120)}`
-        : "";
-      sections.push(`${subject.id} — ${subject.label}${description}`);
+      sections.push(
+        ...formatIssueIdentity(
+          subject.id,
+          subject.label,
+          subject.prompt ?? subject.description,
+        ),
+      );
       const attached = visible.filter(
         (node) =>
           node.type !== "final_answer" && node.subjectId === subject.id,
@@ -224,6 +376,10 @@ export function formatReasoningState(graph: ReasoningGraph): string {
   return sections.join("\n").trimEnd();
 }
 
-export function reasoningStateUserMessage(graph: ReasoningGraph): string {
-  return formatReasoningState(graph);
+export function reasoningStateUserMessage(
+  graph: ReasoningGraph,
+  issueStates?: IssueConvergenceState[],
+  taskLedgers?: TaskIssueLedger[],
+): string {
+  return formatReasoningState(graph, issueStates, taskLedgers);
 }
