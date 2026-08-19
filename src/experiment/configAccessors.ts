@@ -12,6 +12,7 @@ import {
   type ReasoningEffort,
 } from "../models/modelRegistry";
 import type { MultiAgentEvaluation } from "../evaluation/types";
+import { postHocProfileFor } from "../evaluation/posthoc/registry";
 import type { ExperimentRun, RunConfig } from "./types";
 
 /** Legacy persisted shape may include `model` instead of `runModel`. */
@@ -106,16 +107,42 @@ export function latestEvaluationForProblem(
   return list[0];
 }
 
-/** Both MARBLE and belief finished without failure. */
+/** Required post-hoc components finished without failure. */
 export function isSuccessfulMultiAgentEvaluation(
   evaluation: MultiAgentEvaluation | undefined,
 ): boolean {
-  if (!evaluation) return false;
-  return (
-    evaluation.status === "completed" &&
-    evaluation.componentStatus.marble === "completed" &&
-    evaluation.componentStatus.belief === "completed"
-  );
+  if (!evaluation || evaluation.status !== "completed") return false;
+  const explicit = evaluation.metadata.postHocComponents;
+  const components =
+    explicit ?? postHocProfileFor(evaluation.metadata.problemSet).components;
+  return components.every((component) => {
+    if (component === "marble") {
+      return evaluation.componentStatus.marble === "completed";
+    }
+    if (component === "interaction") {
+      if (evaluation.componentStatus.interaction === "completed") return true;
+      // Legacy records predate the universal evaluator.
+      return (
+        !explicit &&
+        (evaluation.componentStatus.belief === "completed" ||
+          evaluation.componentStatus.moralDynamics === "completed")
+      );
+    }
+    if (component === "belief") {
+      return evaluation.componentStatus.belief === "completed";
+    }
+    if (component === "moral_dynamics") {
+      if (evaluation.componentStatus.moralDynamics === "completed") return true;
+      // Legacy moral MAE used belief extraction; keep those records successful.
+      return (
+        !explicit &&
+        evaluation.componentStatus.belief === "completed" &&
+        (evaluation.componentStatus.moralDynamics == null ||
+          evaluation.componentStatus.moralDynamics === "skipped")
+      );
+    }
+    return true;
+  });
 }
 
 export function hasSuccessfulEvaluationForProblem(

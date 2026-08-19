@@ -11,6 +11,7 @@ import type {
 } from "../../evaluation/types";
 import { totalTokens, type ModelUsage } from "../../models/usage";
 import { displayRunTitle } from "../../experiment/runTitle";
+import { displayRunStatus } from "../../experiment/evaluationUi";
 import type {
   ExperimentRun,
   ProblemConversation,
@@ -117,7 +118,7 @@ export type RunSummary = {
   runId: string;
   displayIndex: number;
   title: string;
-  status: ExperimentRun["status"];
+  status: ExperimentRun["status"] | "evaluating";
   createdAt: string;
   finishedAt?: string;
   trustA: number;
@@ -611,7 +612,7 @@ export function getRunSummary(
     runId: run.id,
     displayIndex,
     title: displayRunTitle(run),
-    status: run.status,
+    status: displayRunStatus(run),
     createdAt: run.createdAt,
     finishedAt: run.finishedAt,
     trustA: run.policy.trustA,

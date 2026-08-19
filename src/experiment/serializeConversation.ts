@@ -173,7 +173,33 @@ function serializeEvaluations(
       cost_usd: e.costUsd,
       metrics: {
         marble: e.marble?.normalized,
+        interaction: e.interaction
+          ? {
+              families: e.interaction.normalized.interaction,
+              mechanisms: e.interaction.normalized.mechanisms,
+              policy_relevant_outcomes:
+                e.interaction.normalized.policyRelevantOutcomes,
+              events: e.interaction.normalized.events,
+              trajectory: e.interaction.normalized.trajectory,
+              objects: e.interaction.normalized.objects,
+              semantic_annotations:
+                e.interaction.normalized.semanticAnnotations,
+              patterns: e.interaction.normalized.patterns,
+              metadata: e.interaction.normalized.metadata,
+            }
+          : undefined,
         belief_dynamics: e.beliefDynamics?.normalized.metrics,
+        moral_dynamics: e.moralDynamics
+          ? {
+              deterministic: e.moralDynamics.normalized.deterministic,
+              events: e.moralDynamics.normalized.events,
+              trajectories: e.moralDynamics.normalized.trajectories,
+              semantic_annotations:
+                e.moralDynamics.normalized.semanticAnnotations,
+              judge_scores: e.moralDynamics.normalized.judgeScores,
+              metadata: e.moralDynamics.normalized.metadata,
+            }
+          : undefined,
       },
     }));
   }

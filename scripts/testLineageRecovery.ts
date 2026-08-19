@@ -186,13 +186,13 @@ const empty = emptyReasoningGraph(issues);
   );
   assert.equal(
     second.graph.edges?.some((edge) => edge.type === "revises"),
-    false,
+    true,
   );
   const ledger = deriveCrosswordCandidateLedger(crosswordProblem, second.graph);
   const across = ledger.find((item) => item.issueId === "crossword:across:1")!;
   assert.deepEqual(
     across.liveCandidates.map((candidate) => candidate.normalizedAnswer),
-    ["AB", "CB"],
+    ["CB"],
   );
   assert.deepEqual(across.triedAnswers, ["AB", "CB"]);
   const state = formatReasoningState(
@@ -200,10 +200,11 @@ const empty = emptyReasoningGraph(issues);
     undefined,
     ledger,
   );
-  assert.match(state, /CURRENT LIVE CANDIDATES/);
+  assert.match(state, /CURRENT HYPOTHESIS/);
   assert.match(state, /currentCandidate: CB/);
-  assert.match(state, /AB:/);
   assert.match(state, /CB:/);
+  assert.match(state, /REPLACED/);
+  assert.match(state, /AB —/);
   assert.match(state, /TRIED ANSWERS/);
   assert.match(state, /TASK COMPATIBILITY/);
   assert.doesNotMatch(
@@ -340,7 +341,7 @@ const empty = emptyReasoningGraph(issues);
     true,
   );
   const state = formatReasoningState(revisited.graph, undefined, ledger);
-  assert.match(state, /PREVIOUSLY ATTEMPTED/);
+  assert.match(state, /REPLACED/);
 }
 
 {
@@ -399,7 +400,11 @@ const empty = emptyReasoningGraph(issues);
   assert.equal(extra.events.at(-1)?.accepted, true);
   assert.match(
     extra.events.at(-1)?.diagnostics?.join(" ") ?? "",
-    /unresolved conflict/,
+    /promoted_create_to_revise/,
+  );
+  assert.equal(
+    extra.graph.nodes.find((node) => node.id === "C1")?.status,
+    "superseded",
   );
 }
 

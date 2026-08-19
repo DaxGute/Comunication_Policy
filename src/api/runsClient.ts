@@ -36,6 +36,8 @@ export async function getRun(runId: string): Promise<ExperimentRun> {
 export async function createRun(args: {
   policy: CommunicationPolicy;
   config: RunConfig;
+  /** Client-generated id so the optimistic row matches the server record. */
+  id?: string;
 }): Promise<ExperimentRun> {
   const response = await fetch("/api/runs", {
     method: "POST",
@@ -151,5 +153,7 @@ export async function importRuns(
 
 export function runNeedsPolling(run: ExperimentRun): boolean {
   if (run.status === "queued" || run.status === "running") return true;
-  return (run.multiAgentEvaluations ?? []).some((e) => e.status === "running");
+  return (run.multiAgentEvaluations ?? []).some(
+    (e) => e.status === "running" || e.status === "pending",
+  );
 }

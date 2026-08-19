@@ -1,7 +1,7 @@
 /**
  * Task graders for a completed run (crossword / moral / proof).
  *
- * Post-hoc MARBLE + belief evaluation is orchestrator.ts, not this module.
+ * Post-hoc MARBLE + universal interaction evaluation is orchestrator.ts, not this module.
  */
 import type { ExperimentRun } from "../experiment/types";
 import { getProblemsForCategory } from "../problems/registry";

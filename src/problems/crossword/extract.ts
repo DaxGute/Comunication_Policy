@@ -7,16 +7,19 @@ const FILL_ASSIGNMENT =
 const FILL_BARE =
   /(?:^|[.\n,;])\s*(\d+)\s*([AD])\s+([A-Z]{2,20})\b/g;
 
-const SUBSTANTIVE_SIGNAL =
-  /(?:across|down)\s+\d+\s*(?:=|:|is)\s*[A-Za-z]{2,}|\d+\s*[- ]?(?:across|down|[ad])\b|\b[ad]\d+\b|\bcannot be\b|\bmust be\b|\bcrossing requires\b|\bchange\s+\w+\s+to\s+\w+/i;
+const ALTERNATIVE_LIST =
+  /\b(?:could be|either|or|\/)\b.+\b(?:or|\/|,)\b/i;
+
+/** Committed assignment only — discussion without a fill is not a graph event. */
+const COMMITTED_ASSIGNMENT =
+  /(?:across|down)\s+\d+\s*(?:=|:|is)\s*[A-Za-z]{2,}|\d+\s*[- ]?(?:across|down|[ad])\s*(?:=|:|is)\s*[A-Za-z]{2,}|\b[ad]\d+\s*(?:=|:)\s*[A-Za-z]{2,}/i;
 
 function clueLabel(direction: string, number: number): string {
   return `${direction === "down" ? "Down" : "Across"} ${number}`;
 }
 
 function pushFill(
-  out: ReasoningMove[],
-  seen: Set<string>,
+  latestBySubject: Map<string, ReasoningMove>,
   direction: string,
   number: number,
   value: string,
@@ -28,12 +31,10 @@ function pushFill(
   if (!parsed) return;
   const answer = value.replace(/[^A-Za-z]/g, "").toUpperCase();
   if (answer.length < 2) return;
-  const key = `${parsed.direction}:${parsed.number}:${answer}`;
-  if (seen.has(key)) return;
-  seen.add(key);
-  out.push({
+  const subject = clueLabel(parsed.direction, parsed.number);
+  latestBySubject.set(`${parsed.direction}:${parsed.number}`, {
     kind: "claim",
-    subject: clueLabel(parsed.direction, parsed.number),
+    subject,
     value: answer,
     basis: ["clue"],
   });
@@ -42,10 +43,13 @@ function pushFill(
 /**
  * Recover simple crossword fill statements from natural language.
  * Conservative: only assignment-like patterns, never nuanced argument.
+ * At most one committed fill per clue.
  */
 export function extractCrosswordFillMoves(message: string): ReasoningMove[] {
-  const out: ReasoningMove[] = [];
-  const seen = new Set<string>();
+  if (ALTERNATIVE_LIST.test(message) && (message.match(/\b[A-Z]{2,20}\b/g) ?? []).length >= 3) {
+    return [];
+  }
+  const latestBySubject = new Map<string, ReasoningMove>();
 
   for (const match of message.matchAll(FILL_ASSIGNMENT)) {
     const namedDir = match[1];
@@ -56,21 +60,21 @@ export function extractCrosswordFillMoves(message: string): ReasoningMove[] {
     const prefixNum = match[6];
     const value = match[7] ?? "";
     if (namedDir && namedNum) {
-      pushFill(out, seen, namedDir, Number(namedNum), value);
+      pushFill(latestBySubject, namedDir, Number(namedNum), value);
     } else if (compactNum && compactDir) {
-      pushFill(out, seen, compactDir, Number(compactNum), value);
+      pushFill(latestBySubject, compactDir, Number(compactNum), value);
     } else if (prefixDir && prefixNum) {
-      pushFill(out, seen, prefixDir, Number(prefixNum), value);
+      pushFill(latestBySubject, prefixDir, Number(prefixNum), value);
     }
   }
 
   for (const match of message.matchAll(FILL_BARE)) {
-    pushFill(out, seen, match[2]!, Number(match[1]), match[3]!);
+    pushFill(latestBySubject, match[2]!, Number(match[1]), match[3]!);
   }
 
-  return out;
+  return [...latestBySubject.values()];
 }
 
 export function crosswordMessageLooksSubstantive(message: string): boolean {
-  return SUBSTANTIVE_SIGNAL.test(message);
+  return COMMITTED_ASSIGNMENT.test(message);
 }

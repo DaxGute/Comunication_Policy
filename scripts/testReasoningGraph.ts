@@ -45,6 +45,9 @@ function apply(
     candidateIdentity?: Parameters<
       typeof applyReasoningIntents
     >[2]["candidateIdentity"];
+    validateCandidate?: Parameters<
+      typeof applyReasoningIntents
+    >[2]["validateCandidate"];
   } = {},
 ) {
   return applyReasoningIntents(g, intents, {
@@ -54,6 +57,7 @@ function apply(
     protocolFailure: extras.protocolFailure,
     finalAnswer: extras.finalAnswer,
     candidateIdentity: extras.candidateIdentity,
+    validateCandidate: extras.validateCandidate,
   });
 }
 
@@ -117,6 +121,10 @@ function createProposal(
       source: "task" as const,
     },
   ];
+  const identityOf = (node: { text: string; subjectId?: string }) =>
+    node.subjectId
+      ? `${node.subjectId}:${node.text.replace(/[^A-Za-z]/g, "").toUpperCase()}`
+      : undefined;
   const first = apply(
     emptyReasoningGraph(subjects),
     [
@@ -129,6 +137,7 @@ function createProposal(
     ],
     "agent_a",
     1,
+    { candidateIdentity: identityOf },
   );
   const second = apply(
     first.graph,
@@ -142,20 +151,20 @@ function createProposal(
     ],
     "agent_b",
     3,
+    { candidateIdentity: identityOf },
   );
-  assert.deepEqual(
-    second.graph.nodes.map((node) =>
-      node.type === "final_answer" ? undefined : node.subjectId,
+  const c1 = second.graph.nodes.find((node) => node.id === "C1");
+  const c2 = second.graph.nodes.find((node) => node.id === "C2");
+  assert.equal(c1?.status, "superseded");
+  assert.equal(c2?.supersedes, "C1");
+  assert.equal(
+    second.graph.edges?.some(
+      (edge) =>
+        edge.type === "revises" &&
+        edge.sourceNodeId === "C2" &&
+        edge.targetNodeId === "C1",
     ),
-    ["crossword:across:1", "crossword:across:1"],
-  );
-  assert.equal(
-    second.graph.edges?.filter((edge) => edge.type === "answers").length,
-    2,
-  );
-  assert.equal(
-    second.graph.edges?.some((edge) => edge.type === "revises"),
-    false,
+    true,
   );
   assert.equal(
     second.graph.edges?.some(
@@ -168,13 +177,13 @@ function createProposal(
   );
   assert.match(
     second.events.at(-1)?.diagnostics?.join(" ") ?? "",
-    /candidate transition without semantic lineage/,
+    /promoted_create_to_revise/,
   );
   const layout = layoutReasoningGraph(second.graph);
-  const c1 = layout.nodes.find((node) => node.id === "C1")!;
-  const c2 = layout.nodes.find((node) => node.id === "C2")!;
-  assert.equal(c1.x + c1.width / 2, c2.x + c2.width / 2);
-  assert.ok(c1.y < c2.y);
+  const layoutC1 = layout.nodes.find((node) => node.id === "C1")!;
+  const layoutC2 = layout.nodes.find((node) => node.id === "C2")!;
+  assert.equal(layoutC1.x + layoutC1.width / 2, layoutC2.x + layoutC2.width / 2);
+  assert.ok(layoutC1.y < layoutC2.y);
   assert.equal(
     layout.nodes.some(
       (node) =>
@@ -860,6 +869,14 @@ function createProposal(
       targetNodeId: "oneAcross",
     },
   ]);
+  assert.equal(
+    atomic.events.some(
+      (event) =>
+        !event.accepted &&
+        event.errors.some((error) => /alternatives/.test(error)),
+    ),
+    true,
+  );
   const finalized = apply(atomic.graph, [], "agent_a", 3, {
     finalAnswer: {
       text: "ACROSS\n1: HUT\n3: MARC",
@@ -871,7 +888,7 @@ function createProposal(
     finalAnswer: "ACROSS\n1: HUT\n3: MARC",
   });
   assert.equal(diagnostics.evidenceCount, 1);
-  assert.equal(diagnostics.atomicityWarningCount, 1);
+  assert.equal(diagnostics.atomicityWarningCount, 0);
   assert.equal(diagnostics.relationshipCount, 1);
   assert.equal(diagnostics.finalSupportingNodeCount, 1);
   // Generic diagnostics only compute coverage from explicit issue attachment;
@@ -931,10 +948,11 @@ function createProposal(
   );
   assert.equal(low.reasoning, high.reasoning);
   assert.match(low.reasoning, /"moves"/);
-  assert.match(low.reasoning, /small atomic claims/);
+  assert.match(low.reasoning, /committed idea/);
   assert.match(low.reasoning, /human-readable issue names/);
   assert.match(low.reasoning, /kind":"claim"/);
   assert.match(low.reasoning, /kind":"revise"/);
+  assert.match(low.reasoning, /Empty moves are a valid outcome/);
   assert.doesNotMatch(low.reasoning, /One agent's accept does not globally settle/);
   assert.doesNotMatch(low.reasoning, /nodeType/);
   assert.notEqual(low.trust, high.trust);

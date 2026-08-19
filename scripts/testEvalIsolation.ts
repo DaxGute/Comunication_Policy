@@ -1,5 +1,5 @@
 /**
- * Orchestrator failure isolation: MARBLE failure must not block belief success.
+ * Orchestrator failure isolation: MARBLE failure must not block interaction success.
  * Run: npm run test:eval-isolation
  */
 import assert from "node:assert/strict";
@@ -89,16 +89,17 @@ try {
   });
 
   assert.equal(result.componentStatus.marble, "failed");
-  assert.equal(result.componentStatus.belief, "completed");
+  assert.equal(result.componentStatus.interaction, "completed");
+  assert.equal(result.componentStatus.belief, "skipped");
   assert.equal(result.marble, undefined);
-  assert.ok(result.beliefDynamics);
+  assert.ok(result.interaction);
   assert.ok(
     result.errors.some((e) => e.component === "marble" && e.retryable),
   );
   // Transcript untouched
   assert.equal(conversation.messages.length, 3);
   assert.equal(conversation.finalAnswer, "1");
-  console.log("✓ MARBLE failure isolated; belief still complete");
+  console.log("✓ MARBLE failure isolated; interaction still complete");
 } finally {
   globalThis.fetch = originalFetch;
 }

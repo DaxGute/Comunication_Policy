@@ -1,8 +1,9 @@
 /**
- * Coordinates post-hoc multi-agent evaluation (MARBLE + belief dynamics).
+ * Coordinates post-hoc multi-agent evaluation.
  *
- * Owns stage sequencing and the persisted MultiAgentEvaluation record. Task
- * graders (crossword/moral/proof) are evaluateRun, not this module.
+ * Every task type uses MARBLE + the universal interaction evaluator.
+ * Belief/moral records on retryFrom are preserved for legacy loads; they are
+ * not recomputed. Task graders (crossword/moral/proof) live in evaluateRun.
  */
 import { resolveRunModel } from "../experiment/configAccessors";
 import type { ExperimentRun, ProblemConversation } from "../experiment/types";
@@ -10,8 +11,14 @@ import { calculateModelCost } from "../models/cost";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import { emptyUsage, normalizeUsage, sumUsage } from "../models/usage";
 import { getProblemById } from "../problems/registry";
-import { evaluateBeliefDynamics } from "./belief/evaluator";
 import { evaluateMarblePosthoc } from "./marble/evaluator";
+import { deriveCrossSourcePatterns } from "./interaction/patterns";
+import { evaluateConversation } from "./posthoc/evaluateConversation";
+import {
+  postHocProfileFor,
+  profileIncludes,
+  type PostHocProfile,
+} from "./posthoc/registry";
 import type {
   EvaluationStageState,
   MultiAgentEvaluation,
@@ -20,9 +27,14 @@ import {
   BELIEF_GRADER_SCHEMA_VERSION,
   BELIEF_GRADER_VERSION,
   EVALUATION_SCHEMA_VERSION,
+  INTERACTION_EVALUATOR_VERSION,
+  INTERACTION_SCHEMA_VERSION,
   MARBLE_ADAPTER_VERSION,
   MARBLE_COMMIT,
   MARBLE_VERSION,
+  MORAL_DYNAMICS_SCHEMA_VERSION,
+  MORAL_DYNAMICS_VERSION,
+  MORAL_JUDGE_VERSION,
 } from "./versions";
 
 export type OrchestratorProgress = {
@@ -55,18 +67,22 @@ function newId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
-function initialStages(): EvaluationStageState[] {
-  return [
+function initialStages(profile: PostHocProfile): EvaluationStageState[] {
+  const stages: EvaluationStageState[] = [
     { id: "preparing", label: "Preparing conversation", status: "pending" },
-    { id: "marble", label: "MARBLE evaluation", status: "pending" },
-    { id: "belief_extraction", label: "Belief extraction", status: "pending" },
-    {
-      id: "metric_computation",
-      label: "Metric computation",
-      status: "pending",
-    },
-    { id: "saving", label: "Saving", status: "pending" },
   ];
+  if (profileIncludes(profile, "marble")) {
+    stages.push({ id: "marble", label: "MARBLE evaluation", status: "pending" });
+  }
+  if (profileIncludes(profile, "interaction")) {
+    stages.push({
+      id: "interaction",
+      label: "Interaction dynamics",
+      status: "pending",
+    });
+  }
+  stages.push({ id: "saving", label: "Saving", status: "pending" });
+  return stages;
 }
 
 function setStage(
@@ -75,6 +91,7 @@ function setStage(
   status: EvaluationStageState["status"],
   detail?: string,
 ): EvaluationStageState[] {
+  if (!stages.some((stage) => stage.id === id)) return stages;
   return stages.map((stage) =>
     stage.id === id ? { ...stage, status, detail } : stage,
   );
@@ -99,7 +116,6 @@ function finalizeEvaluationUsage(record: MultiAgentEvaluation): void {
   );
   record.usage = hasTokens ? usage : emptyUsage();
 
-  // Price each call with its own model — never assume one model for the whole eval.
   let pricedTotal: number | null = null;
   for (const cost of record.costs) {
     let callCost =
@@ -131,6 +147,24 @@ function finalizeEvaluationUsage(record: MultiAgentEvaluation): void {
   record.costUsd = pricedTotal;
 }
 
+function priceCost(cost: MultiAgentEvaluation["costs"][number]): void {
+  if (
+    cost.estimatedCostUsd == null &&
+    (typeof cost.inputTokens === "number" ||
+      typeof cost.outputTokens === "number")
+  ) {
+    cost.estimatedCostUsd = calculateModelCost(
+      cost.model,
+      normalizeUsage({
+        inputTokens: cost.inputTokens,
+        cachedInputTokens: cost.cachedInputTokens,
+        outputTokens: cost.outputTokens,
+        totalTokens: cost.totalTokens,
+      }) ?? emptyUsage(),
+    );
+  }
+}
+
 /**
  * Post-hoc multi-agent evaluation orchestrator.
  * Never mutates the conversation transcript.
@@ -145,7 +179,10 @@ export async function runMultiAgentEvaluation(
     options.retryFrom?.reasoningEffort ??
     run.config.evaluationReasoningEffort;
   const evaluationId = options.retryFrom?.id ?? newId("mae");
-  let stages = initialStages();
+  const profile = postHocProfileFor(run.config.problemCategory);
+  const wantsMarble = profileIncludes(profile, "marble");
+  const wantsInteraction = profileIncludes(profile, "interaction");
+  let stages = initialStages(profile);
 
   const conversationId = `${run.id}:${conversation.problemId}`;
   const priorTask = run.evaluation?.problems.find(
@@ -168,8 +205,10 @@ export async function runMultiAgentEvaluation(
     status: "running",
     stages,
     componentStatus: {
-      marble: "pending",
-      belief: "pending",
+      marble: wantsMarble ? "pending" : "skipped",
+      belief: "skipped",
+      moralDynamics: "skipped",
+      interaction: wantsInteraction ? "pending" : "skipped",
     },
     errors: [],
     costs: options.retryFrom ? [...options.retryFrom.costs] : [],
@@ -189,6 +228,12 @@ export async function runMultiAgentEvaluation(
       evaluationSchemaVersion: EVALUATION_SCHEMA_VERSION,
       beliefGraderVersion: BELIEF_GRADER_VERSION,
       beliefGraderSchemaVersion: BELIEF_GRADER_SCHEMA_VERSION,
+      moralDynamicsVersion: MORAL_DYNAMICS_VERSION,
+      moralDynamicsSchemaVersion: MORAL_DYNAMICS_SCHEMA_VERSION,
+      moralJudgeVersion: MORAL_JUDGE_VERSION,
+      interactionEvaluatorVersion: INTERACTION_EVALUATOR_VERSION,
+      interactionSchemaVersion: INTERACTION_SCHEMA_VERSION,
+      postHocComponents: [...profile.components],
       problemSet: run.config.problemCategory,
       problemId: conversation.problemId,
       problemTitle: conversation.problemTitle,
@@ -197,6 +242,8 @@ export async function runMultiAgentEvaluation(
     },
     marble: options.retryFrom?.marble,
     beliefDynamics: options.retryFrom?.beliefDynamics,
+    moralDynamics: options.retryFrom?.moralDynamics,
+    interaction: options.retryFrom?.interaction,
   };
 
   const emit = () => {
@@ -216,11 +263,13 @@ export async function runMultiAgentEvaluation(
   };
 
   const skipMarble =
-    options.retryFrom?.componentStatus.marble === "completed" &&
-    Boolean(options.retryFrom.marble);
-  const skipBelief =
-    options.retryFrom?.componentStatus.belief === "completed" &&
-    Boolean(options.retryFrom.beliefDynamics);
+    !wantsMarble ||
+    (options.retryFrom?.componentStatus.marble === "completed" &&
+      Boolean(options.retryFrom.marble));
+  const skipInteraction =
+    !wantsInteraction ||
+    (options.retryFrom?.componentStatus.interaction === "completed" &&
+      Boolean(options.retryFrom.interaction));
 
   try {
     stages = setStage(stages, "preparing", "running");
@@ -229,30 +278,28 @@ export async function runMultiAgentEvaluation(
     stages = setStage(stages, "preparing", "completed");
     emit();
 
-    // MARBLE and belief are independent of each other; run them together so
-    // post-hoc evaluation is not serialized on a single conversation.
-    if (skipMarble) {
+    if (!wantsMarble) {
+      stages = setStage(stages, "marble", "skipped");
+      record.componentStatus.marble = "skipped";
+    } else if (skipMarble) {
       stages = setStage(stages, "marble", "skipped", "Reused prior result");
       record.componentStatus.marble = "completed";
     } else {
       stages = setStage(stages, "marble", "running");
     }
-    if (skipBelief) {
+
+    if (!wantsInteraction) {
+      record.componentStatus.interaction = "skipped";
+    } else if (skipInteraction) {
       stages = setStage(
         stages,
-        "belief_extraction",
+        "interaction",
         "skipped",
         "Reused prior result",
       );
-      stages = setStage(
-        stages,
-        "metric_computation",
-        "skipped",
-        "Reused prior result",
-      );
-      record.componentStatus.belief = "completed";
+      record.componentStatus.interaction = "completed";
     } else {
-      stages = setStage(stages, "belief_extraction", "running");
+      stages = setStage(stages, "interaction", "running");
     }
     emit();
 
@@ -267,21 +314,7 @@ export async function runMultiAgentEvaluation(
               signal: options.signal,
               invoke: options.invokeMarble,
             });
-            if (
-              result.cost.estimatedCostUsd == null &&
-              (typeof result.cost.inputTokens === "number" ||
-                typeof result.cost.outputTokens === "number")
-            ) {
-              result.cost.estimatedCostUsd = calculateModelCost(
-                result.cost.model,
-                normalizeUsage({
-                  inputTokens: result.cost.inputTokens,
-                  cachedInputTokens: result.cost.cachedInputTokens,
-                  outputTokens: result.cost.outputTokens,
-                  totalTokens: result.cost.totalTokens,
-                }) ?? emptyUsage(),
-              );
-            }
+            priceCost(result.cost);
             record.marble = result.artifact;
             record.costs.push(result.cost);
             record.componentStatus.marble = "completed";
@@ -303,13 +336,14 @@ export async function runMultiAgentEvaluation(
           }
         })();
 
-    const beliefTask = skipBelief
+    const interactionTask = skipInteraction
       ? Promise.resolve()
       : (async () => {
           try {
-            const result = await evaluateBeliefDynamics({
-              run,
+            const result = await evaluateConversation({
+              problemType: run.config.problemCategory,
               conversation,
+              run,
               problem,
               priorTaskLabel: priorTask?.label,
               priorTaskNotes: priorTask?.notes,
@@ -318,48 +352,38 @@ export async function runMultiAgentEvaluation(
               client: options.client,
               signal: options.signal,
             });
-            stages = setStage(stages, "belief_extraction", "completed");
-            stages = setStage(stages, "metric_computation", "running");
-            emit();
-            record.beliefDynamics = result.artifact;
-            record.costs.push(result.cost);
-            record.componentStatus.belief =
-              result.artifact.normalized.validationErrors &&
-              result.artifact.normalized.validationErrors.length > 0 &&
-              result.artifact.normalized.claims.length === 0
-                ? "failed"
-                : "completed";
-            stages = setStage(stages, "metric_computation", "completed");
-            if (record.componentStatus.belief === "failed") {
-              record.errors.push({
-                component: "belief",
-                message:
-                  result.artifact.normalized.validationErrors?.join("; ") ??
-                  "Belief schema validation failed",
-                at: new Date().toISOString(),
-                retryable: true,
-              });
-              stages = setStage(stages, "belief_extraction", "failed");
+            if (result.interaction) {
+              priceCost(result.interaction.cost);
+              record.interaction = result.interaction.artifact;
+              record.costs.push(result.interaction.cost);
+              record.componentStatus.interaction = "completed";
+              stages = setStage(stages, "interaction", "completed");
             }
           } catch (error) {
-            record.componentStatus.belief = "failed";
+            record.componentStatus.interaction = "failed";
+            stages = setStage(
+              stages,
+              "interaction",
+              "failed",
+              error instanceof Error ? error.message : String(error),
+            );
             record.errors.push({
-              component: "belief",
+              component: "interaction",
               message: error instanceof Error ? error.message : String(error),
               at: new Date().toISOString(),
               retryable: true,
             });
-            stages = setStage(
-              stages,
-              "belief_extraction",
-              "failed",
-              record.errors.at(-1)?.message,
-            );
-            stages = setStage(stages, "metric_computation", "failed");
           }
         })();
 
-    await Promise.all([marbleTask, beliefTask]);
+    await Promise.all([marbleTask, interactionTask]);
+
+    if (record.interaction?.normalized) {
+      record.interaction.normalized.patterns = deriveCrossSourcePatterns(
+        record.interaction.normalized,
+        record.marble?.normalized,
+      );
+    }
     emit();
 
     stages = setStage(stages, "saving", "running");
@@ -368,10 +392,10 @@ export async function runMultiAgentEvaluation(
     finalizeEvaluationUsage(record);
     const anyCompleted =
       record.componentStatus.marble === "completed" ||
-      record.componentStatus.belief === "completed";
+      record.componentStatus.interaction === "completed";
     const anyFailed =
       record.componentStatus.marble === "failed" ||
-      record.componentStatus.belief === "failed";
+      record.componentStatus.interaction === "failed";
     record.status = anyCompleted ? "completed" : anyFailed ? "failed" : "failed";
     stages = setStage(stages, "saving", "completed");
     record.stages = stages;
@@ -382,7 +406,7 @@ export async function runMultiAgentEvaluation(
     record.finishedAt = new Date().toISOString();
     finalizeEvaluationUsage(record);
     record.errors.push({
-      component: "belief",
+      component: "interaction",
       message: error instanceof Error ? error.message : String(error),
       at: new Date().toISOString(),
       retryable: true,

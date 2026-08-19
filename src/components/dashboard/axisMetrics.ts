@@ -10,13 +10,14 @@ import {
   TRUST_DIRECTIONAL,
 } from "../../evaluation/belief/metricCatalog";
 import type {
-  BeliefAuthorityMetrics,
   BeliefDirectionalFraction,
-  BeliefFamiliarityMetrics,
   BeliefFraction,
-  BeliefTrustMetrics,
   MultiAgentEvaluation,
 } from "../../evaluation/types";
+import type {
+  DirectionalOpportunity,
+  OpportunityRate,
+} from "../../evaluation/interaction/types";
 
 export type AxisMetricKind = "policy" | "task" | "evaluation";
 
@@ -506,6 +507,70 @@ function dirRate(
   return fracRate(value?.overall);
 }
 
+function oppRate(value: OpportunityRate | undefined): number | undefined {
+  if (!value || value.rate === null || value.opportunities <= 0) return undefined;
+  return value.rate;
+}
+
+function dirOpp(
+  value: DirectionalOpportunity | undefined,
+): number | undefined {
+  return oppRate(value?.overall);
+}
+
+function trustRate(evaluation: MultiAgentEvaluation, label: string): number | undefined {
+  const trust = evaluation.interaction?.normalized.policyRelevantOutcomes.trust;
+  if (trust) {
+    if (label === "Proposal acceptance") return dirOpp(trust.adoption);
+    if (label === "Unsupported acceptance") return dirOpp(trust.unsupportedAdoption);
+    if (label === "Independent verification") return dirOpp(trust.verification);
+    if (label === "Challenge before acceptance") return dirOpp(trust.challengeBeforeAdoption);
+    if (label === "Error propagation") return oppRate(trust.claimPropagation);
+    return undefined;
+  }
+  const metrics = evaluation.beliefDynamics?.normalized.metrics?.trust;
+  const spec = TRUST_DIRECTIONAL.find((item) => item.label === label);
+  return metrics && spec ? dirRate(spec.pick(metrics)) : undefined;
+}
+
+function authorityRate(
+  evaluation: MultiAgentEvaluation,
+  label: string,
+): number | undefined {
+  const authority = evaluation.interaction?.normalized.policyRelevantOutcomes.authority;
+  const families = evaluation.interaction?.normalized.interaction;
+  if (authority && families) {
+    if (label === "Proposal survival after disagreement") {
+      return dirOpp(authority.disagreementSurvival);
+    }
+    if (label === "Directional deference") return dirOpp(authority.directionalDeference);
+    if (label === "Challenge rate") return dirOpp(authority.challengeAsymmetry);
+    if (label === "Disagreement win rate") return dirOpp(authority.disagreementSurvival);
+    return undefined;
+  }
+  const metrics = evaluation.beliefDynamics?.normalized.metrics?.authority;
+  const spec = AUTHORITY_DIRECTIONAL.find((item) => item.label === label);
+  return metrics && spec ? dirRate(spec.pick(metrics)) : undefined;
+}
+
+function familiarityRate(
+  evaluation: MultiAgentEvaluation,
+  label: string,
+): number | undefined {
+  const familiarity = evaluation.interaction?.normalized.policyRelevantOutcomes.familiarity;
+  if (familiarity) {
+    if (label === "Repeated information") return oppRate(familiarity.repeatedInformation);
+    if (label === "Explicit reference") return oppRate(familiarity.explicitReferences);
+    if (label === "Clarification frequency") return oppRate(familiarity.clarificationRequests);
+    if (label === "Misunderstanding frequency") return oppRate(familiarity.misunderstanding);
+    if (label === "Common-ground reuse") return oppRate(familiarity.establishedReuse);
+    return undefined;
+  }
+  const metrics = evaluation.beliefDynamics?.normalized.metrics?.familiarity;
+  const spec = FAMILIARITY_FRACTIONS.find((item) => item.label === label);
+  return metrics && spec ? fracRate(spec.pick(metrics)) : undefined;
+}
+
 export function collectEvalAxisMetrics(
   evals: MultiAgentEvaluation[],
 ): { means: Record<string, number>; sds: Record<string, number> } {
@@ -532,24 +597,18 @@ export function collectEvalAxisMetrics(
 
   const belief = evals.map((e) => e.beliefDynamics?.normalized.metrics);
 
-  const pickTrust = (pick: (t: BeliefTrustMetrics) => BeliefDirectionalFraction) =>
-    belief.map((m) => {
-      const t = m?.trust;
-      return t ? dirRate(pick(t)) : undefined;
-    });
   for (const spec of TRUST_DIRECTIONAL) {
-    set(evalMetricId("trust", spec.label), pickTrust(spec.pick));
+    set(
+      evalMetricId("trust", spec.label),
+      evals.map((e) => trustRate(e, spec.label)),
+    );
   }
 
-  const pickAuth = (
-    pick: (a: BeliefAuthorityMetrics) => BeliefDirectionalFraction,
-  ) =>
-    belief.map((m) => {
-      const a = m?.authority;
-      return a ? dirRate(pick(a)) : undefined;
-    });
   for (const spec of AUTHORITY_DIRECTIONAL) {
-    set(evalMetricId("authority", spec.label), pickAuth(spec.pick));
+    set(
+      evalMetricId("authority", spec.label),
+      evals.map((e) => authorityRate(e, spec.label)),
+    );
   }
   set(
     evalMetricId("authority", "Incorrect high-influence persistence"),
@@ -561,24 +620,45 @@ export function collectEvalAxisMetrics(
   );
   set(
     evalMetricId("authority", "Decision concentration"),
-    belief.map((m) => m?.authority?.decisionConcentration.herfindahl),
+    evals.map((e) => {
+      const interaction = e.interaction?.normalized.policyRelevantOutcomes.authority
+        .decisionConcentration.herfindahl;
+      if (typeof interaction === "number") return interaction;
+      return e.beliefDynamics?.normalized.metrics?.authority?.decisionConcentration
+        .herfindahl;
+    }),
   );
   set(
     evalMetricId("authority", "A token share"),
-    belief.map((m) => m?.authority?.speakingDominance.tokenShareA),
+    evals.map((e) => {
+      const tokens = e.interaction?.normalized.interaction.efficiency.tokensPerAgent;
+      if (tokens) {
+        const a = tokens.agent_a;
+        const b = tokens.agent_b;
+        if (typeof a === "number" && typeof b === "number" && a + b > 0) {
+          return a / (a + b);
+        }
+        return undefined;
+      }
+      return e.beliefDynamics?.normalized.metrics?.authority?.speakingDominance
+        .tokenShareA;
+    }),
   );
 
-  const pickFam = (pick: (f: BeliefFamiliarityMetrics) => BeliefFraction) =>
-    belief.map((m) => {
-      const f = m?.familiarity;
-      return f ? fracRate(pick(f)) : undefined;
-    });
   for (const spec of FAMILIARITY_FRACTIONS) {
-    set(evalMetricId("familiarity", spec.label), pickFam(spec.pick));
+    set(
+      evalMetricId("familiarity", spec.label),
+      evals.map((e) => familiarityRate(e, spec.label)),
+    );
   }
   set(
     evalMetricId("familiarity", "Repair turns"),
-    belief.map((m) => m?.familiarity?.repairCost.meanTurns),
+    evals.map((e) => {
+      const turns = e.interaction?.normalized.policyRelevantOutcomes.familiarity
+        .turnsToSharedContext;
+      if (typeof turns === "number") return turns;
+      return e.beliefDynamics?.normalized.metrics?.familiarity?.repairCost.meanTurns;
+    }),
   );
 
   return { means, sds };

@@ -1,11 +1,15 @@
 /**
  * Inspector left-nav: nested folders + runs, with HTML5 drag-and-drop.
  */
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { memo, useEffect, useRef, useState, type DragEvent } from "react";
 import { formatPolicyValue } from "../../communication";
 import { isIncompleteConversation } from "../../evaluation/evaluators";
 import { resolveRunModel } from "../../experiment/configAccessors";
-import { isProblemAnalysisRunning } from "../../experiment/evaluationUi";
+import {
+  displayRunStatus,
+  isProblemAnalysisRunning,
+  isRunAnalysisRunning,
+} from "../../experiment/evaluationUi";
 import {
   loadExpandedFolderIds,
   saveExpandedFolderIds,
@@ -109,7 +113,7 @@ export type RunTreeNavProps = {
   onMoveTreeItem: (dragged: DraggedTreeItem, target: DropTarget) => void;
 };
 
-export function RunTreeNav({
+export const RunTreeNav = memo(function RunTreeNav({
   runs,
   runTree,
   selectedRun,
@@ -305,7 +309,7 @@ export function RunTreeNav({
       )}
     </>
   );
-}
+});
 
 type TreeListProps = {
   nodes: RunTreeNode[];
@@ -721,25 +725,20 @@ function RunItem({
               className={
                 run.status === "failed"
                   ? "conv-tree__run-status conv-tree__run-status--failed"
-                  : "conv-tree__run-status"
+                  : displayRunStatus(run, evaluationUi) === "evaluating"
+                    ? "conv-tree__run-status conv-tree__run-status--evaluating"
+                    : "conv-tree__run-status"
               }
               title={
                 run.status === "failed" && run.error ? run.error : undefined
               }
             >
-              {!multiProblem &&
-              (run.status === "running" || run.status === "queued") ? (
+              {run.status === "running" || run.status === "queued" ? (
                 <InspectorBusySpinner kind="run" />
-              ) : !multiProblem &&
-                run.conversations[0] &&
-                isProblemAnalysisRunning(
-                  run,
-                  run.conversations[0].problemId,
-                  evaluationUi,
-                ) ? (
+              ) : isRunAnalysisRunning(run, evaluationUi) ? (
                 <InspectorBusySpinner kind="analysis" />
               ) : null}
-              {run.status}
+              {displayRunStatus(run, evaluationUi)}
             </span>
           </span>
           <span className="muted conv-tree__run-meta">

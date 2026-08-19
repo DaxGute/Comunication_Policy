@@ -8,6 +8,10 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function asStringArray(value: unknown): string[] | undefined {
   if (typeof value === "string") return [value];
   if (!Array.isArray(value)) return undefined;
@@ -128,6 +132,7 @@ export function normalizeReasoningMove(raw: unknown): NormalizedMove {
         value,
         text: asString(raw.text),
         basis: asStringArray(raw.basis),
+        confidence: asNumber(raw.confidence),
       },
       normalizedFromMalformedShape: malformed,
     };
@@ -149,6 +154,7 @@ export function normalizeReasoningMove(raw: unknown): NormalizedMove {
           selectorRaw === "previous" || selectorRaw === "current"
             ? selectorRaw
             : undefined,
+        confidence: asNumber(raw.confidence),
       },
       normalizedFromMalformedShape: malformed,
     };

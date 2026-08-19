@@ -27,6 +27,12 @@ import {
   type ReasoningOperation,
   type ReasoningSubject,
 } from "./types";
+import {
+  findParaphraseId,
+  isCandidateType,
+  validateCommitConfidence,
+  validateCommittedProposition,
+} from "./validateProposition";
 
 const MAX_OPS_PER_TURN = 64;
 const MAX_TEXT_CHARS = 2000;
@@ -61,6 +67,15 @@ export type ApplyIntentsContext = {
   ) => { id?: string; relation?: "grounds" | "supports"; error?: string };
   autoGround?: (subjectId: string) => { nodeId: string; relation: "grounds" | "supports" } | undefined;
   extraDiagnostics?: string[];
+  /**
+   * Task-specific reconstruction of final-answer ancestry from surviving
+   * graph ideas. Generic fallback cites live claims when the model omits ids.
+   */
+  reconcileFinalAnswer?: (
+    text: string | undefined,
+    supportingNodeIds: string[],
+    graph: ReasoningGraph,
+  ) => { supportingNodeIds: string[]; errors: string[] };
 };
 
 export type ApplyIntentsResult = {
@@ -84,6 +99,8 @@ type LocalScope = {
   byLocalId: Map<string, string>;
   byIndex: Map<number, string>;
   createReviseCount: number;
+  /** Subjects that already received a committed idea create this turn. */
+  committedSubjects: Set<string>;
 };
 
 export function cloneReasoningGraph(graph: ReasoningGraph): ReasoningGraph {
@@ -285,26 +302,6 @@ function findDuplicateId(
 
 function isCandidateNode(node: ReasoningNode): node is AtomicReasoningNode {
   return node.type === "claim" || node.type === "proposal";
-}
-
-function previousActiveCandidate(
-  nodes: Iterable<ReasoningNode>,
-  subjectId: string,
-  exceptId?: string,
-): AtomicReasoningNode | undefined {
-  return [...nodes]
-    .filter(
-      (node): node is AtomicReasoningNode =>
-        isCandidateNode(node) &&
-        node.subjectId === subjectId &&
-        node.status !== "rejected" &&
-        node.status !== "superseded" &&
-        node.id !== exceptId,
-    )
-    .sort(
-      (a, b) =>
-        b.createdAtTurn - a.createdAtTurn || b.id.localeCompare(a.id),
-    )[0];
 }
 
 function candidateIdentityOf(
@@ -876,6 +873,7 @@ function emptyScope(): LocalScope {
     byLocalId: new Map(),
     byIndex: new Map(),
     createReviseCount: 0,
+    committedSubjects: new Set(),
   };
 }
 
@@ -1246,6 +1244,13 @@ function prepareNewNode(
           ignoreDuplicateId,
           identity,
           (node) => candidateIdentityOf(ctx, node),
+        ) ??
+        findParaphraseId(
+          mutable.nodes.values(),
+          args.type,
+          args.text,
+          args.subjectId,
+          ignoreDuplicateId,
         )
       : undefined;
   if (duplicateOf) {
@@ -1347,6 +1352,13 @@ function applyCreate(
     };
   }
 
+  if (ctx.actor !== "system" && (type === "claim" || type === "proposal" || type === "evidence")) {
+    const proposition = validateCommittedProposition(text, type);
+    if (!proposition.ok) errors.push(...proposition.reasons);
+    const confidence = validateCommitConfidence(intent.confidence);
+    if (!confidence.ok) errors.push(...confidence.reasons);
+  }
+
   const deps = resolveIdList(intent.dependencies, mutable, scope, "dependencies");
   const subject = resolveSubjectRef(intent.subjectId, mutable, scope, ctx);
   errors.push(...deps.errors);
@@ -1445,6 +1457,60 @@ function applyCreate(
       );
     }
   }
+
+  if (errors.length > 0) {
+    return {
+      accepted: false,
+      errors,
+      stored: invalidOperation(ctx),
+      diagnostics,
+    };
+  }
+
+  if (isCandidateType(type) && subject.id) {
+    if (scope.committedSubjects.has(subject.id)) {
+      return {
+        accepted: false,
+        errors: [
+          `already committed a candidate for ${subject.id} this turn; externalize only the most plausible one`,
+        ],
+        stored: invalidOperation(ctx),
+        diagnostics,
+      };
+    }
+    const live = liveClaims(mutable.nodes.values(), subject.id);
+    if (live.length > 0 && identity) {
+      diagnostics.push(`promoted_create_to_revise:${live[0]!.id}`);
+      const revised = applyRevise(
+        {
+          action: "revise",
+          targetId: live[0]!.id,
+          nodeType: type,
+          text,
+          confidence: intent.confidence,
+          dependencies: intent.dependencies,
+          subjectId: subject.id,
+          groundsNodeIds: intent.groundsNodeIds,
+          supportsNodeIds: intent.supportsNodeIds,
+          basis: intent.basis,
+          localId: intent.localId,
+          metadata: intent.metadata,
+          reason: "supersedes the prior live candidate for the same issue",
+        },
+        ctx,
+        mutable,
+        scope,
+      );
+      if (revised.accepted) {
+        scope.committedSubjects.add(subject.id);
+      }
+      return {
+        ...revised,
+        diagnostics: [...diagnostics, ...(revised.diagnostics ?? [])],
+      };
+    }
+  }
+
   const metadata = {
     ...(intent.metadata ?? {}),
     ...(identity ? { candidateIdentity: identity } : {}),
@@ -1511,15 +1577,9 @@ function applyCreate(
   }
 
   mutable.nodes.set(prepared.node.id, prepared.node);
-  const previous =
-    prepared.node.subjectId && isCandidateNode(prepared.node)
-      ? previousActiveCandidate(
-          [...mutable.nodes.values()].filter((node) => node.id !== prepared.node!.id),
-          prepared.node.subjectId,
-        )
-      : undefined;
-  const replacedActiveNodeId =
-    previous && previous.id !== prepared.node.id ? previous.id : undefined;
+  if (isCandidateType(prepared.node.type) && prepared.node.subjectId) {
+    scope.committedSubjects.add(prepared.node.subjectId);
+  }
   return {
     accepted: true,
     errors: [],
@@ -1527,7 +1587,6 @@ function applyCreate(
     stored: {
       type: "create",
       node: prepared.node,
-      ...(replacedActiveNodeId ? { replacedActiveNodeId } : {}),
       ...(grounding.links.length > 0 ? { grounding: grounding.links } : {}),
     },
   };
@@ -1585,6 +1644,25 @@ function applyRevise(
       errors: ["revise is missing replacement text"],
       stored: invalidOperation(ctx, resolved.id),
     };
+  }
+
+  if (ctx.actor !== "system" && (type === "claim" || type === "proposal" || type === "evidence")) {
+    const proposition = validateCommittedProposition(text, type);
+    if (!proposition.ok) {
+      return {
+        accepted: false,
+        errors: proposition.reasons,
+        stored: invalidOperation(ctx, resolved.id),
+      };
+    }
+    const confidence = validateCommitConfidence(intent.confidence);
+    if (!confidence.ok) {
+      return {
+        accepted: false,
+        errors: confidence.reasons,
+        stored: invalidOperation(ctx, resolved.id),
+      };
+    }
   }
 
   const deps = resolveIdList(intent.dependencies, mutable, scope, "dependencies");
@@ -1750,6 +1828,9 @@ function applyRevise(
   };
   mutable.nodes.set(replacement.id, replacement);
   mutable.nodes.set(target.id, { ...target, status: "superseded" });
+  if (isCandidateType(replacement.type) && replacement.subjectId) {
+    scope.committedSubjects.add(replacement.subjectId);
+  }
   return {
     accepted: true,
     errors: [],
@@ -1971,14 +2052,47 @@ export function validateFinalAnswerSupport(
   };
 }
 
+function liveIdeaIds(graph: ReasoningGraph): string[] {
+  return graph.nodes
+    .filter(
+      (node) =>
+        isCandidateNode(node) &&
+        node.status !== "rejected" &&
+        node.status !== "superseded",
+    )
+    .map((node) => node.id);
+}
+
 function applyFinalAnswer(
   mutable: MutableGraph,
   ctx: ApplyIntentsContext,
 ): FinalAnswerSupport | undefined {
   if (!ctx.finalAnswer) return undefined;
   refreshStatuses(mutable);
-  const support = validateFinalAnswerSupport(toGraph(mutable), ctx.finalAnswer);
+  const snapshot = toGraph(mutable);
+  const cited = uniqueIds(ctx.finalAnswer.supportingNodeIds);
+  let supportingNodeIds = cited;
+  const extraErrors: string[] = [];
+  if (ctx.reconcileFinalAnswer) {
+    const reconciled = ctx.reconcileFinalAnswer(
+      ctx.finalAnswer.text,
+      cited,
+      snapshot,
+    );
+    supportingNodeIds = uniqueIds(reconciled.supportingNodeIds);
+    extraErrors.push(...reconciled.errors);
+  } else if (cited.length === 0) {
+    supportingNodeIds = liveIdeaIds(snapshot);
+    if (supportingNodeIds.length === 0 && ctx.finalAnswer.text?.trim()) {
+      extraErrors.push("final answer has no graph ancestry");
+    }
+  }
+  const support = validateFinalAnswerSupport(snapshot, {
+    text: ctx.finalAnswer.text,
+    supportingNodeIds,
+  });
   if (!support) return undefined;
+  support.errors.push(...extraErrors);
   appendEvent(
     mutable,
     ctx,
@@ -1995,7 +2109,11 @@ function applyFinalAnswer(
     },
     support.errors.length === 0,
     support.errors.length > 0
-      ? support.errors.map((error) => `Supporting-node linkage invalid: ${error}`)
+      ? support.errors.map((error) =>
+          error.startsWith("Supporting-node linkage invalid:")
+            ? error
+            : `Supporting-node linkage invalid: ${error}`,
+        )
       : [],
   );
   return support;
@@ -2039,6 +2157,63 @@ function thisTurnHasEvidence(events: ReasoningEvent[]): boolean {
     }
     return false;
   });
+}
+
+function autoAttachTurnEvidence(
+  mutable: MutableGraph,
+  applied: ReasoningEvent[],
+  ctx: ApplyIntentsContext,
+): void {
+  if (ctx.actor === "system") return;
+  const turnEvents = applied.filter((event) => event.turnIndex === ctx.turnIndex);
+  const used = new Set<string>();
+  for (const event of turnEvents) {
+    if (!event.accepted) continue;
+    const op = event.operation;
+    if (op.type === "create" || op.type === "revise") {
+      for (const link of op.grounding ?? []) used.add(link.sourceNodeId);
+    }
+    if ((op.type === "support" || op.type === "challenge") && op.sourceNodeId) {
+      used.add(op.sourceNodeId);
+    }
+  }
+  for (const event of turnEvents) {
+    if (!event.accepted || event.operation.type !== "create") continue;
+    const node = event.operation.node;
+    if (node.type !== "evidence") continue;
+    if (node.evidenceOrigin === "task") continue;
+    if (used.has(node.id) || !node.subjectId) continue;
+    const live = liveClaims(mutable.nodes.values(), node.subjectId);
+    if (live.length !== 1) continue;
+    const support = applyStance(
+      {
+        action: "support",
+        sourceNodeId: node.id,
+        targetId: live[0]!.id,
+        subjectId: node.subjectId,
+      },
+      ctx,
+      mutable,
+      emptyScope(),
+    );
+    applied.push(
+      appendEvent(
+        mutable,
+        ctx,
+        {
+          action: "support",
+          sourceNodeId: node.id,
+          targetId: live[0]!.id,
+          subjectId: node.subjectId,
+        },
+        support.stored,
+        support.accepted,
+        support.errors,
+        ["auto_attached_evidence_to_live_idea", ...(support.diagnostics ?? [])],
+        support.stateChanged,
+      ),
+    );
+  }
 }
 
 function annotateTurnDiagnostics(
@@ -2169,6 +2344,7 @@ export function applyReasoningIntents(
     refreshStatuses(mutable);
   }
 
+  autoAttachTurnEvidence(mutable, applied, ctx);
   annotateTurnDiagnostics(ctx, applied);
   if (ctx.extraDiagnostics && ctx.extraDiagnostics.length > 0) {
     if (applied.length === 0) {

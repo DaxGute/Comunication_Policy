@@ -11,6 +11,11 @@ import {
   latestEvaluationForProblem,
   resolveRunModel,
 } from "../../experiment/configAccessors";
+import {
+  analysisStagesForProblem,
+  isProblemAnalysisRunning,
+  isRunAnalysisRunning,
+} from "../../experiment/evaluationUi";
 import type { EvaluationUiState } from "../../experiment/store";
 import type { ExperimentRun, ProblemConversation } from "../../experiment/types";
 import {
@@ -22,7 +27,7 @@ import {
   formatReasoningEffort,
 } from "../../models/modelRegistry";
 import { ModelSelect } from "../ui/ModelSelect";
-import { BeliefSection, CurrentStep, MarbleSection } from "./maeSections";
+import { BeliefSection, CurrentStep, InteractionSection, MarbleSection, MoralSection } from "./maeSections";
 import { OverrideEvaluationConfirm } from "./OverrideEvaluationConfirm";
 
 type Props = {
@@ -63,17 +68,42 @@ function EvaluationResults({
       ) : evaluation.marble ? (
         <MarbleSection data={evaluation.marble.normalized} />
       ) : null}
-      {evaluation.componentStatus.belief === "failed" ? (
+      {evaluation.componentStatus.interaction === "failed" ? (
         <section className="mae-section mae-section--error">
-          <h4>Belief Dynamics</h4>
+          <h4>Interaction Dynamics</h4>
           <p>
-            {evaluation.errors.find((e) => e.component === "belief")?.message ??
-              "Belief evaluation failed."}
+            {evaluation.errors.find((e) => e.component === "interaction")
+              ?.message ?? "Interaction evaluation failed."}
           </p>
         </section>
-      ) : evaluation.beliefDynamics ? (
-        <BeliefSection data={evaluation.beliefDynamics.normalized} />
-      ) : null}
+      ) : evaluation.interaction ? (
+        <InteractionSection data={evaluation.interaction.normalized} />
+      ) : (
+        <>
+          {evaluation.componentStatus.belief === "failed" ? (
+            <section className="mae-section mae-section--error">
+              <h4>Belief Dynamics</h4>
+              <p>
+                {evaluation.errors.find((e) => e.component === "belief")?.message ??
+                  "Belief evaluation failed."}
+              </p>
+            </section>
+          ) : evaluation.beliefDynamics ? (
+            <BeliefSection data={evaluation.beliefDynamics.normalized} />
+          ) : null}
+          {evaluation.componentStatus.moralDynamics === "failed" ? (
+            <section className="mae-section mae-section--error">
+              <h4>Moral / Philosophical Dynamics</h4>
+              <p>
+                {evaluation.errors.find((e) => e.component === "moral_dynamics")
+                  ?.message ?? "Moral dynamics evaluation failed."}
+              </p>
+            </section>
+          ) : evaluation.moralDynamics ? (
+            <MoralSection data={evaluation.moralDynamics.normalized} />
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -110,25 +140,34 @@ export function MultiAgentEvaluationPanel({
   useEffect(() => {
     setConfirmingOverride(false);
   }, [run.id, conversation.problemId]);
-  const isThisRunning =
-    evaluationUi?.status === "running" &&
-    evaluationUi.runId === run.id &&
-    evaluationUi.problemId === conversation.problemId;
+  const isThisRunning = isProblemAnalysisRunning(
+    run,
+    conversation.problemId,
+    evaluationUi,
+  );
   const isBatchElsewhere =
-    evaluationUi?.status === "running" &&
-    evaluationUi.runId === run.id &&
-    Boolean(evaluationUi.batch) &&
-    evaluationUi.problemId !== conversation.problemId;
+    isRunAnalysisRunning(run, evaluationUi) &&
+    !isThisRunning &&
+    Boolean(evaluationUi?.batch && evaluationUi.runId === run.id);
 
   const canEvaluate =
     (run.status === "completed" ||
       run.status === "cancelled" ||
       run.status === "failed") &&
+    !isRunAnalysisRunning(run, evaluationUi) &&
     evaluationUi?.status !== "running";
 
+  const focusedOnThis =
+    evaluationUi?.runId === run.id &&
+    evaluationUi?.problemId === conversation.problemId;
   const displayEvaluation = isThisRunning
-    ? evaluationUi?.partial
+    ? (focusedOnThis ? (evaluationUi?.partial ?? latest) : latest)
     : latest;
+  const runningStages = analysisStagesForProblem(
+    run,
+    conversation.problemId,
+    evaluationUi,
+  );
 
   return (
     <div className="mae-panel">
@@ -176,7 +215,10 @@ export function MultiAgentEvaluationPanel({
                   {alreadySucceeded ? "Re-run Evaluation" : "Run Evaluation"}
                 </button>
               )}
-              {latest?.componentStatus.marble === "failed" ? (
+              {latest?.componentStatus.marble === "failed" ||
+              latest?.componentStatus.interaction === "failed" ||
+              latest?.componentStatus.belief === "failed" ||
+              latest?.componentStatus.moralDynamics === "failed" ? (
                 <button
                   type="button"
                   className="mae-panel__retry"
@@ -197,7 +239,12 @@ export function MultiAgentEvaluationPanel({
           ) : null}
         </div>
         {isThisRunning ? (
-          <p className="muted">Running with {evaluationUi?.evaluatorModel}</p>
+          <p className="muted">
+            Running with{" "}
+            {evaluationUi?.runId === run.id
+              ? evaluationUi.evaluatorModel
+              : latest?.evaluatorModel ?? evaluatorModel}
+          </p>
         ) : isBatchElsewhere ? (
           <p className="muted">Waiting for batch evaluation…</p>
         ) : confirmingOverride ? (
@@ -218,13 +265,17 @@ export function MultiAgentEvaluationPanel({
         ) : null}
       </header>
 
-      {isThisRunning ? <CurrentStep stages={evaluationUi?.stages ?? []} /> : null}
+      {isThisRunning ? <CurrentStep stages={runningStages} /> : null}
 
       {displayEvaluation &&
       (displayEvaluation.marble ||
+        displayEvaluation.interaction ||
         displayEvaluation.beliefDynamics ||
+        displayEvaluation.moralDynamics ||
         displayEvaluation.componentStatus.marble === "failed" ||
-        displayEvaluation.componentStatus.belief === "failed") ? (
+        displayEvaluation.componentStatus.interaction === "failed" ||
+        displayEvaluation.componentStatus.belief === "failed" ||
+        displayEvaluation.componentStatus.moralDynamics === "failed") ? (
         <EvaluationResults evaluation={displayEvaluation} />
       ) : !isThisRunning && !isBatchElsewhere ? (
         <p className="muted">

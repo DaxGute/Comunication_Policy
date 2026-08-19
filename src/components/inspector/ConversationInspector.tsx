@@ -6,6 +6,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getProblemById } from "../../problems/registry";
+import { isProblemAnalysisRunning } from "../../experiment/evaluationUi";
 import { ResizableSplit } from "../ui/ResizableSplit";
 import { TextPreviewModal } from "../ui/TextPreviewModal";
 import { serializeRun } from "../../experiment/serializeConversation";
@@ -57,8 +58,20 @@ export const ConversationInspector = memo(function ConversationInspector({
     : `${selectedRun?.id ?? ""}:${selectedProblemId ?? ""}`;
 
   useEffect(() => {
-    setProblemTab("conversation");
     setLinkSelection({});
+    const analyzing =
+      selectedRun &&
+      selectedConversation &&
+      isProblemAnalysisRunning(
+        selectedRun,
+        selectedConversation.problemId,
+        evaluationUi,
+      );
+    setProblemTab(analyzing ? "analysis" : "conversation");
+    // Restore analysis progress when navigating back to an in-flight eval.
+    // Do not depend on evaluationUi — finishing an eval in place should keep
+    // the current tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedProblemKey
   }, [selectedProblemKey]);
 
   // Scroll the selected run (and problem, if visible) into view. Expansion is

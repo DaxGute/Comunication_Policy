@@ -19,6 +19,12 @@ import type {
   BeliefFraction,
   MarbleEvaluation,
 } from "../../evaluation/types";
+import type { MoralDeterministicMetrics } from "../../evaluation/moral/types";
+import type {
+  DirectionalOpportunity,
+  InteractionEvaluation,
+  OpportunityRate,
+} from "../../evaluation/interaction/types";
 
 export type MaeMetricRow = {
   label: string;
@@ -79,21 +85,76 @@ function formatNumMeanSd(stats: MeanSd, digits = 1): string {
   return sd === "—" ? mean : `${mean} ± ${sd}`;
 }
 
+function definedOpp(value: OpportunityRate | undefined): number | null {
+  if (!value || value.rate === null || value.opportunities === 0) return null;
+  return value.rate;
+}
+
 function definedRate(value: BeliefFraction | undefined): number | null {
   if (!value || value.rate === null || value.denominator === 0) return null;
   return value.rate;
 }
 
-function fracStats(
-  items: BeliefDynamicsMetrics[],
-  pick: (metrics: BeliefDynamicsMetrics) => BeliefFraction | undefined,
+function oppStats(
+  items: InteractionEvaluation[],
+  pick: (metrics: InteractionEvaluation) => OpportunityRate | undefined,
+): MeanSd {
+  return meanSd(items.map((m) => definedOpp(pick(m))));
+}
+
+function dirOppStats(
+  items: InteractionEvaluation[],
+  pick: (metrics: InteractionEvaluation) => DirectionalOpportunity | undefined,
+): MeanSd {
+  return meanSd(items.map((m) => definedOpp(pick(m)?.overall)));
+}
+
+function dirOppSub(
+  items: InteractionEvaluation[],
+  pick: (metrics: InteractionEvaluation) => DirectionalOpportunity | undefined,
+): string | undefined {
+  const aToB = meanSd(items.map((m) => definedOpp(pick(m)?.aToB)));
+  const bToA = meanSd(items.map((m) => definedOpp(pick(m)?.bToA)));
+  if (aToB.mean === null && bToA.mean === null) return undefined;
+  return `A→B ${formatPctMeanSd(aToB)}  B→A ${formatPctMeanSd(bToA)}`;
+}
+
+function pushOpp(
+  rows: MaeMetricRow[],
+  items: InteractionEvaluation[],
+  label: string,
+  pick: (metrics: InteractionEvaluation) => OpportunityRate | undefined,
+): void {
+  pushPct(rows, label, oppStats(items, pick));
+}
+
+function pushDirOpp(
+  rows: MaeMetricRow[],
+  items: InteractionEvaluation[],
+  label: string,
+  pick: (metrics: InteractionEvaluation) => DirectionalOpportunity | undefined,
+): void {
+  const overall = dirOppStats(items, pick);
+  const sub = dirOppSub(items, pick);
+  if (overall.mean === null && !sub) return;
+  rows.push({
+    label,
+    sub,
+    mean: formatPct(overall.mean),
+    sd: formatPct(overall.sd),
+  });
+}
+
+function fracStats<T>(
+  items: T[],
+  pick: (metrics: T) => BeliefFraction | undefined,
 ): MeanSd {
   return meanSd(items.map((m) => definedRate(pick(m))));
 }
 
-function numStats(
-  items: BeliefDynamicsMetrics[],
-  pick: (metrics: BeliefDynamicsMetrics) => number | null | undefined,
+function numStats<T>(
+  items: T[],
+  pick: (metrics: T) => number | null | undefined,
 ): MeanSd {
   return meanSd(items.map(pick));
 }
@@ -223,9 +284,16 @@ const LEGACY_SUMMARY: Array<{
 
 export function buildAggregatedMaeSections(options: {
   marbleEvals: MarbleEvaluation[];
+  interactionEvals?: InteractionEvaluation[];
   beliefEvals: BeliefDynamicsMetrics[];
+  moralEvals?: MoralDeterministicMetrics[];
 }): MaeMetricSection[] {
-  const { marbleEvals, beliefEvals } = options;
+  const {
+    marbleEvals,
+    interactionEvals = [],
+    beliefEvals,
+    moralEvals = [],
+  } = options;
   const sections: MaeMetricSection[] = [];
   const hasStructured = beliefEvals.some(
     (m) => m.trust && m.authority && m.familiarity && m.crossPolicy,
@@ -257,6 +325,102 @@ export function buildAggregatedMaeSections(options: {
     });
   }
 
+  if (interactionEvals.length > 0) {
+    const contributionRows: MaeMetricRow[] = [];
+    pushNum(
+      contributionRows,
+      "Introduced A",
+      numStats(interactionEvals, (m) => m.interaction.contributions.introducedByAgent.agent_a),
+    );
+    pushNum(
+      contributionRows,
+      "Introduced B",
+      numStats(interactionEvals, (m) => m.interaction.contributions.introducedByAgent.agent_b),
+    );
+    const contributions = maybeSection("Contributions", contributionRows);
+    if (contributions) sections.push(contributions);
+
+    const adoptionRows: MaeMetricRow[] = [];
+    pushDirOpp(adoptionRows, interactionEvals, "Adoption", (m) => m.interaction.adoption.adoption);
+    pushDirOpp(
+      adoptionRows,
+      interactionEvals,
+      "Unsupported adoption",
+      (m) => m.interaction.adoption.unsupportedAdoption,
+    );
+    pushDirOpp(
+      adoptionRows,
+      interactionEvals,
+      "Independent verification",
+      (m) => m.interaction.verification.independentVerification,
+    );
+    const adoption = maybeSection("Adoption & verification", adoptionRows);
+    if (adoption) sections.push(adoption);
+
+    const challengeRows: MaeMetricRow[] = [];
+    pushOpp(challengeRows, interactionEvals, "Challenge frequency", (m) => m.interaction.challenges.frequency);
+    pushOpp(challengeRows, interactionEvals, "Successful challenges", (m) => m.interaction.challenges.successful);
+    pushOpp(challengeRows, interactionEvals, "Correction", (m) => m.interaction.corrections.corrected);
+    const challenge = maybeSection("Challenge & correction", challengeRows);
+    if (challenge) sections.push(challenge);
+
+    const influenceRows: MaeMetricRow[] = [];
+    pushDirOpp(
+      influenceRows,
+      interactionEvals,
+      "Proposal survival",
+      (m) => m.interaction.influence.proposalSurvival,
+    );
+    pushDirOpp(
+      influenceRows,
+      interactionEvals,
+      "Disagreement survival",
+      (m) => m.interaction.influence.disagreementSurvival,
+    );
+    pushNum(
+      influenceRows,
+      "Decision concentration",
+      numStats(interactionEvals, (m) => m.interaction.influence.finalAncestry.herfindahl),
+      2,
+    );
+    const influence = maybeSection("Influence / deference", influenceRows);
+    if (influence) sections.push(influence);
+
+    const disagreementRows: MaeMetricRow[] = [];
+    pushOpp(disagreementRows, interactionEvals, "Disagreements", (m) => m.interaction.disagreement.disagreements);
+    pushOpp(disagreementRows, interactionEvals, "Resolved", (m) => m.interaction.disagreement.resolved);
+    pushOpp(disagreementRows, interactionEvals, "Synthesis", (m) => m.interaction.disagreement.synthesis);
+    const disagreement = maybeSection("Disagreement & resolution", disagreementRows);
+    if (disagreement) sections.push(disagreement);
+
+    const developmentRows: MaeMetricRow[] = [];
+    pushNum(
+      developmentRows,
+      "Graph depth (max)",
+      numStats(interactionEvals, (m) => m.interaction.reasoningDevelopment.graphDepth.maximum),
+    );
+    pushOpp(developmentRows, interactionEvals, "Mutation rate", (m) => m.interaction.reasoningDevelopment.mutationRate);
+    const development = maybeSection("Reasoning development", developmentRows);
+    if (development) sections.push(development);
+
+    const efficiencyRows: MaeMetricRow[] = [];
+    pushOpp(efficiencyRows, interactionEvals, "Repetition", (m) => m.interaction.efficiency.repetition);
+    pushNum(
+      efficiencyRows,
+      "Zero-mutation turns",
+      numStats(interactionEvals, (m) => m.interaction.efficiency.zeroMutationTurns),
+    );
+    pushNum(
+      efficiencyRows,
+      "Productive events / turn",
+      numStats(interactionEvals, (m) => m.interaction.efficiency.productiveEventsPerTurn),
+    );
+    const efficiency = maybeSection("Communication efficiency", efficiencyRows);
+    if (efficiency) sections.push(efficiency);
+
+    return sections;
+  }
+
   if (!hasStructured) {
     const rows: MaeMetricRow[] = [];
     for (const spec of LEGACY_SUMMARY) {
@@ -266,8 +430,7 @@ export function buildAggregatedMaeSections(options: {
     }
     const legacy = maybeSection("Belief Dynamics", rows);
     if (legacy) sections.push(legacy);
-    return sections;
-  }
+  } else {
 
   const trustRows: MaeMetricRow[] = [];
   for (const spec of TRUST_DIRECTIONAL) {
@@ -513,6 +676,65 @@ export function buildAggregatedMaeSections(options: {
     );
     const truth = maybeSection("Truth-conditioned splits", truthRows);
     if (truth) sections.push(truth);
+  }
+  }
+
+  if (moralEvals.length > 0) {
+    const moralRows: MaeMetricRow[] = [];
+    pushPct(
+      moralRows,
+      "Adoption overall",
+      fracStats(moralEvals, (m) => m.adoption.adoption.overall),
+    );
+    pushPct(
+      moralRows,
+      "A adopts B",
+      fracStats(moralEvals, (m) => m.adoption.adoption.aToB),
+    );
+    pushPct(
+      moralRows,
+      "B adopts A",
+      fracStats(moralEvals, (m) => m.adoption.adoption.bToA),
+    );
+    pushPct(
+      moralRows,
+      "Disagreement resolution",
+      fracStats(moralEvals, (m) => m.disagreement.resolutionRate),
+    );
+    pushPct(
+      moralRows,
+      "Mutual synthesis",
+      fracStats(moralEvals, (m) => m.disagreement.mutualSynthesisRate),
+    );
+    pushNum(
+      moralRows,
+      "Challenge count",
+      numStats(moralEvals, (m) => m.disagreement.challengeCount),
+      1,
+    );
+    pushPct(
+      moralRows,
+      "Unsupported acceptance",
+      fracStats(moralEvals, (m) => m.trust.unsupportedAcceptance.overall),
+    );
+    pushPct(
+      moralRows,
+      "Independent justification",
+      fracStats(moralEvals, (m) => m.trust.independentJustification.overall),
+    );
+    pushPct(
+      moralRows,
+      "Graph mutation rate",
+      fracStats(moralEvals, (m) => m.development.repeatingVsModifying.mutationRate),
+    );
+    pushNum(
+      moralRows,
+      "Zero-mutation turns",
+      numStats(moralEvals, (m) => m.efficiency.zeroMutationTurns),
+      1,
+    );
+    const moral = maybeSection("Moral / Philosophical Dynamics", moralRows);
+    if (moral) sections.push(moral);
   }
 
   return sections;

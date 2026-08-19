@@ -128,6 +128,14 @@ export type {
   AtomicityWarning,
   ReasoningGraphDiagnostics,
 } from "./diagnostics";
+export { checkGraphInvariants, ideasCreatedPerTurn, maxIdeasCreatedOnOneSubjectInOneTurn } from "./invariants";
+export type { GraphInvariantCode, GraphInvariantViolation } from "./invariants";
+export {
+  validateCommittedProposition,
+  validateCommitConfidence,
+  isParaphrase,
+  MIN_COMMIT_CONFIDENCE,
+} from "./validateProposition";
 export { layoutReasoningGraph } from "./layout";
 export type {
   GraphLayout,

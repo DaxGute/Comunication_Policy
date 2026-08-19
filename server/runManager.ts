@@ -4,7 +4,6 @@
  * Owns live run handles, cancel/delete, and evaluation jobs. Browser reload
  * has no effect; OpenAI scheduling is openaiScheduler.ts.
  */
-import { buildAgentPromptPair } from "../src/agents/buildAgentPrompt.ts";
 import { createCommunicationPolicy } from "../src/communication/policy.ts";
 import type { CommunicationPolicy } from "../src/communication/types.ts";
 import { runMultiAgentEvaluation } from "../src/evaluation/orchestrator.ts";
@@ -19,9 +18,8 @@ import type {
   RunProgress,
 } from "../src/experiment/types.ts";
 import { createId } from "../src/lib/id.ts";
-import { emptyUsage } from "../src/models/usage.ts";
+import { createQueuedRun, isClientRunId } from "../src/experiment/queuedRun.ts";
 import type { ReasoningGraph } from "../src/reasoning/types.ts";
-import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../src/experiment/transcriptProtocol.ts";
 import type { ReasoningEffort } from "../src/models/modelRegistry.ts";
 import {
   createModelClient,
@@ -121,7 +119,7 @@ export class RunManager {
             e.status = "failed";
             e.finishedAt = e.finishedAt ?? new Date().toISOString();
             e.errors.push({
-              component: "belief",
+              component: "interaction",
               message: "Interrupted (server restart)",
               at: new Date().toISOString(),
               retryable: true,
@@ -152,7 +150,7 @@ export class RunManager {
             e.status = "failed";
             e.finishedAt = e.finishedAt ?? new Date().toISOString();
             e.errors.push({
-              component: "belief",
+              component: "interaction",
               message: "Interrupted (server restart)",
               at: new Date().toISOString(),
               retryable: true,
@@ -191,32 +189,23 @@ export class RunManager {
   createRun(args: {
     policy: CommunicationPolicy;
     config: RunConfig;
+    id?: string;
   }): ExperimentRun {
     this.reconcileAfterRestart();
     const policy = createCommunicationPolicy(args.policy);
     const config: RunConfig = { ...args.config };
-    const runId = createId("run");
-    const createdAt = new Date().toISOString();
-    const placeholder: ExperimentRun = {
-      id: runId,
-      createdAt,
-      status: "queued",
-      policy,
-      agentPrompts: buildAgentPromptPair(policy),
-      transcriptProtocol: { ...FULL_HISTORY_TRANSCRIPT_PROTOCOL },
-      config,
-      conversations: [],
-      conversationUsage: emptyUsage(),
-      conversationCostUsd: null,
-      evaluationUsage: emptyUsage(),
-      evaluationCostUsd: null,
-      totalCostUsd: null,
-      progress: {
-        fraction: 0,
-        completedProblems: 0,
-        totalProblems: Math.max(1, config.problemCount),
-      },
-    };
+    const requestedId = args.id?.trim();
+    if (requestedId && !isClientRunId(requestedId)) {
+      throw new RunsApiError(400, "Invalid run id.");
+    }
+    if (
+      requestedId &&
+      (this.deletedIds.has(requestedId) || this.getRun(requestedId))
+    ) {
+      throw new RunsApiError(409, `Run "${requestedId}" already exists.`);
+    }
+    const runId = requestedId || createId("run");
+    const placeholder = createQueuedRun({ id: runId, policy, config });
 
     this.live.set(runId, placeholder);
     this.persistLive(runId);

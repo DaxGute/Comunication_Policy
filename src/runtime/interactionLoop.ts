@@ -283,6 +283,21 @@ export async function runInteractionLoop(args: {
         return node ? { nodeId: node.id, relation: "grounds" } : undefined;
       },
       extraDiagnostics,
+      ...(taskAdapter.reconcileFinalAnswer
+        ? {
+            reconcileFinalAnswer: (
+              text: string | undefined,
+              supportingNodeIds: string[],
+              liveGraph: typeof graph,
+            ) =>
+              taskAdapter.reconcileFinalAnswer!(
+                problem,
+                liveGraph,
+                text,
+                supportingNodeIds,
+              ),
+          }
+        : {}),
     });
     graph = applied.graph;
     callbacks?.onReasoning?.(graph);

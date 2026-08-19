@@ -128,7 +128,11 @@ function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] 
     );
     lines.push("");
   }
-  lines.push("CURRENT LIVE CANDIDATES");
+  lines.push(
+    ledger.liveCandidates.length === 1
+      ? "CURRENT HYPOTHESIS"
+      : "CURRENT LIVE CANDIDATES",
+  );
   if (ledger.liveCandidates.length === 0) {
     lines.push("(none)");
   } else {
@@ -138,7 +142,7 @@ function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] 
     for (const candidate of ledger.liveCandidates) {
       const answer = candidate.normalizedAnswer ?? "(unparsed)";
       lines.push(`${answer}:`);
-      lines.push(`  status: ${candidate.live ? "live" : candidate.status}`);
+      lines.push(`  status: ${candidate.live ? "active" : candidate.status}`);
       lines.push(`  node: ${candidate.nodeId}`);
       lines.push(
         `  firstProposed: turn ${candidate.firstProposedTurn ?? candidate.createdAtTurn}`,
@@ -168,7 +172,7 @@ function formatLedger(graph: ReasoningGraph, ledger: TaskIssueLedger): string[] 
     }
   }
   if (ledger.previousCandidates.length > 0) {
-    lines.push("PREVIOUSLY ATTEMPTED");
+    lines.push("REPLACED");
     for (const candidate of ledger.previousCandidates) {
       const outcome = candidate.priorOutcome ?? candidate.status;
       const reason = candidate.rejectionReason

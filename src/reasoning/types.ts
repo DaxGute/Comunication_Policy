@@ -84,6 +84,7 @@ export type ReasoningMove =
       value?: string;
       text?: string;
       basis?: string[];
+      confidence?: number;
     }
   | {
       kind: "evidence";
@@ -99,6 +100,7 @@ export type ReasoningMove =
       text?: string;
       basis?: string[];
       selector?: ClaimSelector;
+      confidence?: number;
     }
   | {
       kind: "agree";

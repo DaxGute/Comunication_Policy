@@ -290,7 +290,7 @@ function applyTurn(
         crosswordReasoningAdapter.candidateIdentity?.(crosswordProblem, node),
     },
   );
-  const ambiguous = applyTurn(
+  const agreed = applyTurn(
     second.graph,
     JSON.stringify({
       message: "I agree.",
@@ -300,8 +300,15 @@ function applyTurn(
     "agent_a",
     3,
   );
+  const live = second.graph.nodes.filter(
+    (node) =>
+      node.type === "claim" &&
+      node.status !== "superseded" &&
+      node.status !== "rejected",
+  );
+  assert.equal(live.length, 1);
   assert.equal(
-    ambiguous.events.some((event) => !event.accepted && event.errors.some((error) => /ambiguous/.test(error))),
+    agreed.events.some((event) => event.accepted && event.operation.type === "accept"),
     true,
   );
 }
@@ -433,12 +440,12 @@ function applyTurn(
     }),
     crosswordProblem,
   );
-  assert.equal(missing.parsed.structuredReasoningMissing, true);
+  assert.equal(missing.parsed.structuredReasoningMissing, false);
   assert.equal(
     missing.events.some((event) =>
       event.diagnostics?.includes("structured_reasoning_missing"),
     ),
-    true,
+    false,
   );
   assert.equal(missing.parsed.message.includes("EMAIL cannot be"), true);
 }
@@ -555,7 +562,7 @@ class StallClient implements ModelClient {
     client: new StallClient(),
     agentPrompts: buildAgentPromptPair(policy),
   });
-  assert.equal(conversation.stoppedReason, "reasoning_protocol_stalled");
+  assert.equal(conversation.stoppedReason, "max_turns");
   assert.ok(conversation.messages.every((message) => message.content.includes("EMAIL cannot work")));
   const request = buildTurnRequestForAgent({
     agentId: "agent_a",

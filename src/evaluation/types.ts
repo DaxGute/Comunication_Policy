@@ -1,9 +1,11 @@
 /**
  * Shared TypeScript shapes for task grades and post-hoc multi-agent evaluation.
  *
- * Belief metric *arithmetic* is evaluation/belief/; MARBLE adaptation is
- * evaluation/marble/. This file is the persisted contract, not the evaluators.
+ * Belief / MARBLE / moral records remain for legacy runs. New evaluations
+ * persist `interaction` from the universal behavioral evaluator.
  */
+import type { InteractionEvaluation } from "./interaction/types";
+import type { MoralDynamicsEvaluation } from "./moral/types";
 export type ProblemEvaluation = {
   problemId: string;
   problemTitle: string;
@@ -37,7 +39,7 @@ export type EvaluationComponentStatus =
   | "skipped";
 
 export type EvaluationComponentError = {
-  component: "marble" | "belief";
+  component: "marble" | "belief" | "moral_dynamics" | "interaction";
   message: string;
   at: string;
   retryable: boolean;
@@ -64,6 +66,9 @@ export type EvaluationStageId =
   | "preparing"
   | "marble"
   | "belief_extraction"
+  | "moral_dynamics"
+  | "moral_judge"
+  | "interaction"
   | "metric_computation"
   | "saving";
 
@@ -406,6 +411,13 @@ export type EvaluationMetadata = {
   problemTitle: string;
   runId: string;
   conversationId: string;
+  /** Which post-hoc components this evaluation was composed of. */
+  postHocComponents?: Array<"marble" | "belief" | "moral_dynamics" | "interaction">;
+  moralDynamicsVersion?: string;
+  moralDynamicsSchemaVersion?: string;
+  moralJudgeVersion?: string;
+  interactionEvaluatorVersion?: string;
+  interactionSchemaVersion?: string;
 };
 
 export type MultiAgentEvaluation = {
@@ -421,9 +433,13 @@ export type MultiAgentEvaluation = {
   stages: EvaluationStageState[];
   marble?: EvaluationArtifact<MarbleEvaluation>;
   beliefDynamics?: EvaluationArtifact<BeliefDynamicsEvaluation>;
+  moralDynamics?: EvaluationArtifact<MoralDynamicsEvaluation>;
+  interaction?: EvaluationArtifact<InteractionEvaluation>;
   componentStatus: {
     marble: EvaluationComponentStatus;
     belief: EvaluationComponentStatus;
+    moralDynamics?: EvaluationComponentStatus;
+    interaction?: EvaluationComponentStatus;
   };
   errors: EvaluationComponentError[];
   costs: EvaluationCost[];

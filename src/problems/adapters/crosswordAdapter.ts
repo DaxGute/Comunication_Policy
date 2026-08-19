@@ -9,6 +9,7 @@ import {
   extractCrosswordFillMoves,
   crosswordMessageLooksSubstantive,
 } from "../crossword/extract";
+import { parseClueAssignments } from "../../evaluation/graders/crosswordParse";
 import { findCrosswordCrossings } from "../crossword/geometry";
 import { crosswordIssueId, parseCrosswordSubjectRef, resolveCrosswordSubject } from "../crossword/refs";
 import type { CrosswordClue } from "../crossword/types";
@@ -700,6 +701,11 @@ function crosswordBasis(
   if (crossing && otherRef && context?.subjectId) {
     const otherIssueId = crosswordIssueId(otherRef.direction, otherRef.number);
     const otherLabel = `${otherRef.direction === "across" ? "Across" : "Down"} ${otherRef.number}`;
+    const alias = `crossing:${context.subjectId}:${otherIssueId}`;
+    const existing = findEvidenceByAlias(graph, alias, context.subjectId);
+    if (existing.length === 1) {
+      return { id: existing[0]!.id, relation: "supports" };
+    }
     const otherLive = graph.nodes.find(
       (node) =>
         (node.type === "claim" || node.type === "proposal") &&
@@ -741,6 +747,57 @@ function crosswordBasis(
   return {};
 }
 
+function reconcileCrosswordFinalAnswer(
+  problem: Problem,
+  graph: ReasoningGraph,
+  text: string | undefined,
+  supportingNodeIds: string[],
+): { supportingNodeIds: string[]; errors: string[] } {
+  const errors: string[] = [];
+  const supporting: string[] = [];
+  const seen = new Set<string>();
+  const push = (id: string) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    supporting.push(id);
+  };
+  for (const id of supportingNodeIds) push(id);
+
+  const assignments = text ? parseClueAssignments(text) : [];
+  const byIssue = liveCandidates(problem, graph);
+
+  if (assignments.length === 0) {
+    for (const [, candidates] of byIssue) {
+      for (const candidate of candidates) push(candidate.nodeId);
+    }
+    if (supporting.length === 0 && text?.trim()) {
+      errors.push("final answer has no graph ancestry");
+    }
+    return { supportingNodeIds: supporting, errors };
+  }
+
+  for (const assignment of assignments) {
+    const issueId = crosswordIssueId(assignment.direction, assignment.number);
+    const label = `${assignment.direction === "across" ? "Across" : "Down"} ${assignment.number}`;
+    const live = byIssue.get(issueId) ?? [];
+    if (live.length === 0) {
+      errors.push(
+        `${label} is in the final answer but has no surviving graph idea`,
+      );
+      continue;
+    }
+    const match = live.find((candidate) => candidate.answer === assignment.answer);
+    if (!match) {
+      errors.push(
+        `${label} = ${assignment.answer} differs from surviving graph state ${live[0]!.answer}; revise the graph first`,
+      );
+      continue;
+    }
+    push(match.nodeId);
+  }
+  return { supportingNodeIds: supporting, errors };
+}
+
 export const crosswordReasoningAdapter: TaskReasoningAdapter = {
   category: "crossword",
   requireSubjectOnClaims: true,
@@ -775,6 +832,7 @@ export const crosswordReasoningAdapter: TaskReasoningAdapter = {
   solverStateFingerprint: crosswordSolverStateFingerprint,
   deriveCandidateLedger: deriveCrosswordCandidateLedger,
   deriveTaskDiagnostics: deriveCrosswordTaskDiagnostics,
+  reconcileFinalAnswer: reconcileCrosswordFinalAnswer,
   deriveDeterministicEvidence(problem, graph) {
     return [
       ...deriveCrosswordForcedLetters(problem, graph),

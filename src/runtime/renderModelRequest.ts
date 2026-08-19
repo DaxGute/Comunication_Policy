@@ -57,6 +57,7 @@ export function turnCueUserMessage(
   return [
     `It is your turn (turn ${turn} of at most ${maxTurns}). Respond as ${agentLabel(speaker)}.`,
     'Return a JSON object with keys "message" and "moves" as specified in REASONING PROTOCOL.',
+    "Empty moves are valid when you are not committing a new idea.",
   ].join(" ");
 }
 

@@ -7,6 +7,10 @@ import type {
   ReasoningProgressState,
 } from "./types";
 import {
+  checkGraphInvariants,
+  maxIdeasCreatedOnOneSubjectInOneTurn,
+} from "./invariants";
+import {
   LAYOUT_LANE_STEP,
   LAYOUT_ORPHAN_LANES,
   LAYOUT_ROOT_CENTER_X,
@@ -71,6 +75,10 @@ export type ReasoningGraphDiagnostics = {
   ungroundedClaimCount?: number;
   structuredReasoningMissingCount?: number;
   protocolStallStreak?: number;
+  maxIdeasPerSubjectPerTurn?: number;
+  competingLiveIdeaCount?: number;
+  invariantViolationCount?: number;
+  orphanedEvidenceCount?: number;
   solverProgress?: {
     rawMutationCount: number;
     meaningfulStateTransitionCount: number;
@@ -264,6 +272,7 @@ export function computeReasoningGraphDiagnostics(
   const structuredReasoningMissingCount = graph.events.filter((event) =>
     event.diagnostics?.some((item) => item === "structured_reasoning_missing"),
   ).length;
+  const invariantViolations = checkGraphInvariants(graph);
   const layout = layoutReasoningGraph(graph);
   const spreads: number[] = [];
   for (const subject of graph.subjects ?? []) {
@@ -366,6 +375,14 @@ export function computeReasoningGraphDiagnostics(
     ungroundedClaimCount: claims.filter((claim) => !groundedIds.has(claim.id)).length,
     structuredReasoningMissingCount,
     protocolStallStreak: options.protocolStallStreak,
+    maxIdeasPerSubjectPerTurn: maxIdeasCreatedOnOneSubjectInOneTurn(graph),
+    competingLiveIdeaCount: invariantViolations.filter(
+      (item) => item.code === "competing_live_ideas",
+    ).length,
+    invariantViolationCount: invariantViolations.length,
+    orphanedEvidenceCount: invariantViolations.filter(
+      (item) => item.code === "orphaned_evidence",
+    ).length,
     solverProgress: options.solverProgress,
   };
 }

@@ -25,19 +25,19 @@ export type ClosureWarningReason =
 export const NO_STATE_CHANGE_PREFIX = "no_state_change";
 
 export const STRUCTURED_REASONING_MISSING_FEEDBACK = [
-  "Your previous message contained substantive crossword reasoning but",
-  "no structured reasoning move was recorded. Record the claim/evidence",
-  "explicitly in this turn.",
+  "A prior turn looked like a committed conclusion but no graph move was recorded.",
+  "If you now have a sufficiently justified claim, record it. If you do not,",
+  "empty moves are valid — do not guess to keep the conversation moving.",
 ].join("\n");
 
 export const STRUCTURED_REASONING_STALL_FEEDBACK = [
   "STRUCTURED REASONING STALLED",
   "",
-  "Your recent messages contain substantive problem-solving, but no",
-  "structured reasoning updates have been accepted.",
+  "Recent turns have not improved the committed reasoning state.",
   "",
-  "On this turn, add a new claim/evidence/revision or explicitly resolve",
-  "an existing issue. Use simple issue references rather than graph ids.",
+  "Inspect the live graph. Revise or challenge an existing idea if you have",
+  "grounds to do so. If you do not yet have a sufficiently justified new",
+  "claim, say so and leave moves empty rather than adding a weak candidate.",
 ].join("\n");
 
 export function noStateChangeFeedback(detail: string): string {

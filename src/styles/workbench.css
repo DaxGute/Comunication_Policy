@@ -2354,9 +2354,8 @@ body.is-rotating-plot * {
   color: var(--accent);
 }
 
-.center-status--queued {
-  color: var(--accent);
-  opacity: 0.75;
+.center-status--evaluating {
+  color: var(--accent-2);
 }
 
 .center-status--completed,
@@ -3959,6 +3958,10 @@ body.is-rotating-plot * {
 
 .conv-tree__run-status--failed {
   color: var(--danger);
+}
+
+.conv-tree__run-status--evaluating {
+  color: var(--accent-2);
 }
 
 .conv-tree__problem-warn {

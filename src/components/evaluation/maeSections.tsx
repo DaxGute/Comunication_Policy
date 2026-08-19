@@ -1,7 +1,8 @@
 /**
- * MARBLE and belief-dynamics result sections for the multi-agent evaluation panel.
+ * MARBLE and interaction-dynamics result sections.
  *
- * The panel coordinator (run controls, override confirm) is MultiAgentEvaluationPanel.
+ * Task-specific graders stay in the inspector results pane. Legacy
+ * belief/moral records still render when a unified interaction record is absent.
  */
 import type {
   BeliefDirectionalFraction,
@@ -11,6 +12,12 @@ import type {
   EvaluationStageState,
   MarbleEvaluation,
 } from "../../evaluation/types";
+import type { MoralDynamicsEvaluation } from "../../evaluation/moral/types";
+import type {
+  DirectionalOpportunity,
+  InteractionEvaluation,
+  OpportunityRate,
+} from "../../evaluation/interaction/types";
 import {
   AUTHORITY_DIRECTIONAL,
   CROSS_POLICY_FRACTIONS,
@@ -460,6 +467,693 @@ export function BeliefSection({ data }: { data: BeliefDynamicsEvaluation }) {
             </div>
           ))}
         </div>
+      </details>
+    </section>
+  );
+}
+
+function formatDir(data: BeliefDirectionalFraction | undefined): string {
+  if (!data) return "N/A";
+  return `A adopts B ${formatFrac(data.aToB)} · B adopts A ${formatFrac(data.bToA)}`;
+}
+
+function CountRateRow({
+  label,
+  count,
+  rate,
+  hint,
+}: {
+  label: string;
+  count?: number;
+  rate?: BeliefFraction;
+  hint?: string;
+}) {
+  const countText = count === undefined ? undefined : formatCount(count);
+  const rateText = rate ? formatFrac(rate) : undefined;
+  const value =
+    countText && rateText
+      ? `${countText} · ${rateText}`
+      : countText ?? rateText;
+  return <MetricRow label={label} value={value} hint={hint} />;
+}
+
+export function MoralSection({ data }: { data: MoralDynamicsEvaluation }) {
+  const d = data.deterministic;
+  const judge = data.judgeScores;
+  const notes = [
+    data.metadata.graphMissing
+      ? "No idea/axiom graph on this conversation."
+      : null,
+    data.metadata.interrupted ? "Run was interrupted." : null,
+    data.metadata.noDisagreement ? "No disagreement events." : null,
+    data.metadata.noAdoption ? "No cross-agent adoption." : null,
+    data.metadata.noExplicitAxioms ? "No agent-introduced axioms." : null,
+    data.metadata.oneSidedContribution
+      ? "Only one agent contributed ideas."
+      : null,
+  ].filter(Boolean);
+
+  return (
+    <section className="mae-section">
+      <h4>Moral / Philosophical Dynamics</h4>
+      <p className="mae-canon-label">
+        Deterministic reductions over the idea/axiom graph — policy sliders were
+        not shown to the evaluator
+      </p>
+      {notes.length > 0 ? (
+        <p className="mae-notes muted">{notes.join(" ")}</p>
+      ) : null}
+
+      <div className="mae-metric-group">
+        <h5>Contributions</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Ideas originated"
+            value={`A ${d.contribution.ideaCountByAgent.agent_a} · B ${d.contribution.ideaCountByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Novel ideas"
+            value={`A ${d.contribution.novelIdeaCountByAgent.agent_a} · B ${d.contribution.novelIdeaCountByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Axioms originated"
+            value={`A ${d.contribution.axiomCountByAgent.agent_a} · B ${d.contribution.axiomCountByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Origin share"
+            value={`A ${formatFrac(d.contribution.originShare.agent_aShare)} · B ${formatFrac(d.contribution.originShare.agent_bShare)}`}
+          />
+          <MetricRow
+            label="Final-position share"
+            value={`A ${formatFrac(d.contribution.finalPositionShare.agent_aShare)} · B ${formatFrac(d.contribution.finalPositionShare.agent_bShare)}`}
+            sub={
+              d.contribution.finalPositionShare.herfindahl === null
+                ? undefined
+                : `HHI ${d.contribution.finalPositionShare.herfindahl.toFixed(2)}`
+            }
+          />
+          <MetricRow
+            label="Idea survival by origin"
+            value={`A ${formatFrac(d.contribution.survivalByOrigin.aToB)} · B ${formatFrac(d.contribution.survivalByOrigin.bToA)}`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Influence / Adoption</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Adoption"
+            value={formatFrac(d.adoption.adoption.overall)}
+            sub={formatDir(d.adoption.adoption)}
+            hint="A adopts B is flow B→A. B adopts A is flow A→B."
+          />
+          <MetricRow
+            label="Influence imbalance"
+            value={
+              d.adoption.influenceImbalance === null
+                ? "N/A"
+                : d.adoption.influenceImbalance.toFixed(2)
+            }
+            hint="A-adopts-B rate minus B-adopts-A rate. Positive means B's ideas are adopted more."
+          />
+          <MetricRow
+            label="Downstream descendants"
+            value={`A ${d.adoption.downstreamDescendants.agent_a} · B ${d.adoption.downstreamDescendants.agent_b}`}
+          />
+          <MetricRow
+            label="Influence centrality"
+            value={`A ${d.adoption.influenceCentrality.agent_a} · B ${d.adoption.influenceCentrality.agent_b}`}
+          />
+          <MetricRow
+            label="Final-trace share"
+            value={`A ${formatFrac(d.adoption.finalTraceShare.agent_aShare)} · B ${formatFrac(d.adoption.finalTraceShare.agent_bShare)}`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Disagreement / Resolution</h5>
+        <dl className="mae-metric-list">
+          <CountRateRow
+            label="Challenges"
+            count={d.disagreement.challengeCount}
+            rate={d.disagreement.challengeRate}
+          />
+          <CountRateRow
+            label="Disagreements resolved"
+            count={d.disagreement.disagreementsResolved}
+            rate={d.disagreement.resolutionRate}
+          />
+          <MetricRow
+            label="Unresolved"
+            value={formatCount(d.disagreement.disagreementsUnresolved)}
+          />
+          <MetricRow
+            label="Who survives"
+            value={`A ${d.disagreement.disagreementSurvivor.agent_a} · B ${d.disagreement.disagreementSurvivor.agent_b} · synthesis ${d.disagreement.disagreementSurvivor.synthesis}`}
+          />
+          <DirectionalRow
+            label="Concession"
+            data={d.disagreement.concession}
+            hint="A→B = A concedes to B"
+          />
+          <CountRateRow
+            label="Mutual synthesis"
+            count={d.disagreement.resolutions.synthesis}
+            rate={d.disagreement.mutualSynthesisRate}
+          />
+          <MetricRow
+            label="Resolution kinds"
+            value={`accept ${d.disagreement.resolutions.acceptance} · reject ${d.disagreement.resolutions.rejection} · revise ${d.disagreement.resolutions.revision} · synth ${d.disagreement.resolutions.synthesis} · open ${d.disagreement.resolutions.unresolved}`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Axioms / Justification</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Axioms"
+            value={`${d.axioms.axiomsIntroduced} introduced · ${d.axioms.axiomsSurviving} surviving · ${d.axioms.axiomsShared} shared`}
+            sub={`A ${d.axioms.axiomsByAgent.agent_a} · B ${d.axioms.axiomsByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Contested / abandoned"
+            value={`${d.axioms.axiomsContested} contested · ${d.axioms.axiomsAbandoned} abandoned`}
+          />
+          <DirectionalRow label="Axiom adoption" data={d.axioms.axiomAdoption} />
+          <MetricRow
+            label="Unsupported assertions"
+            value={formatCount(d.axioms.unsupportedAssertions)}
+          />
+          <MetricRow
+            label="Avg justification depth"
+            value={
+              d.axioms.averageJustificationDepth === null
+                ? "N/A"
+                : d.axioms.averageJustificationDepth.toFixed(2)
+            }
+          />
+          <MetricRow
+            label="Final claims with axiom support"
+            value={formatFrac(d.axioms.finalClaimsWithAxiomSupport)}
+          />
+          <MetricRow
+            label="Axiom dependence concentration"
+            value={
+              d.axioms.axiomDependenceConcentration === null
+                ? "N/A"
+                : d.axioms.axiomDependenceConcentration.toFixed(2)
+            }
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Reasoning Development</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Revisions / abandoned"
+            value={`${d.development.revisions} revised · ${d.development.abandonedIdeas} abandoned`}
+          />
+          <MetricRow
+            label="Strengthened / weakened"
+            value={`${d.development.strengthenedIdeas} supported later · ${d.development.weakenedIdeas} challenged`}
+          />
+          <MetricRow
+            label="Synthesis nodes"
+            value={formatCount(d.development.synthesisNodes)}
+          />
+          <MetricRow
+            label="Graph depth"
+            value={
+              d.development.maximumGraphDepth === null
+                ? "N/A"
+                : `avg ${d.development.averageGraphDepth?.toFixed(2) ?? "N/A"} · max ${d.development.maximumGraphDepth}`
+            }
+          />
+          <MetricRow
+            label="Branches"
+            value={`${d.development.independentBranches} independent · ${d.development.finalSurvivingBranchCount} surviving`}
+            sub={
+              d.development.branchingFactor === null
+                ? undefined
+                : `branching ${d.development.branchingFactor.toFixed(2)}`
+            }
+          />
+          <CountRateRow
+            label="Graph mutation turns"
+            count={d.development.repeatingVsModifying.mutationTurns}
+            rate={d.development.repeatingVsModifying.mutationRate}
+            hint={`${d.development.repeatingVsModifying.zeroMutationTurns} zero-mutation turns`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Communication Efficiency</h5>
+        <dl className="mae-metric-list">
+          <MetricRow label="Turns" value={formatCount(d.efficiency.turns)} />
+          <MetricRow
+            label="Words"
+            value={`A ${d.efficiency.wordsPerAgent.agent_a} · B ${d.efficiency.wordsPerAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Repeated ideas"
+            value={`${d.efficiency.repeatedIdeas} repeats · ${d.efficiency.redundantRestatements} restatements`}
+          />
+          <MetricRow
+            label="References / questions"
+            value={`${d.efficiency.explicitReferences} refs · ${d.efficiency.questions} questions · ${d.efficiency.clarificationRequests} clarifications`}
+          />
+          <MetricRow
+            label="Idea density / turn"
+            value={
+              d.efficiency.ideaDensityPerTurn === null
+                ? "N/A"
+                : d.efficiency.ideaDensityPerTurn.toFixed(2)
+            }
+          />
+          <MetricRow
+            label="Graph mutations / turn"
+            value={
+              d.efficiency.graphMutationsPerTurn === null
+                ? "N/A"
+                : d.efficiency.graphMutationsPerTurn.toFixed(2)
+            }
+            sub={`${d.efficiency.zeroMutationTurns} zero-mutation turns`}
+          />
+        </dl>
+      </div>
+
+      {judge ? (
+        <div className="mae-metric-group">
+          <h5>Optional LLM Judge</h5>
+          <dl className="mae-metric-list">
+            <MetricRow
+              label="Reasoning coherence"
+              value={formatPct(judge.reasoningCoherence)}
+            />
+            <MetricRow
+              label="Premise–conclusion consistency"
+              value={formatPct(judge.premiseConclusionConsistency)}
+            />
+            <MetricRow
+              label="Counterargument engagement"
+              value={formatPct(judge.counterargumentEngagement)}
+            />
+            <MetricRow
+              label="Synthesis quality"
+              value={formatPct(judge.synthesisQuality)}
+            />
+            <MetricRow
+              label="Final-position support"
+              value={formatPct(judge.finalPositionSupport)}
+            />
+          </dl>
+          {judge.notes ? <p className="mae-notes">{judge.notes}</p> : null}
+          {judge.unresolvedContradictions.length > 0 ? (
+            <ul className="mae-notes">
+              {judge.unresolvedContradictions.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mae-notes muted">
+          LLM judge was not run. Metrics above are graph/transcript reductions.
+        </p>
+      )}
+
+      <details className="mae-details">
+        <summary>
+          Events ({data.events.length}) · trajectory ({data.trajectories.length}{" "}
+          turns)
+        </summary>
+        <ul>
+          {data.events.slice(0, 40).map((event, idx) => (
+            <li key={`${event.type}-${event.turn}-${idx}`}>
+              <span className="mono">
+                t{event.turn} · {event.actor} · {event.type}
+                {event.ideaId ? ` · ${event.ideaId}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {data.events.length > 40 ? (
+          <p className="muted">
+            Showing first 40 events. Full list is in JSON export.
+          </p>
+        ) : null}
+      </details>
+    </section>
+  );
+}
+
+function formatOpp(value: OpportunityRate | undefined): string {
+  if (!value || value.opportunities === 0 || value.rate === null) return "N/A";
+  return `${formatPct(value.rate)} · ${value.events}/${value.opportunities}`;
+}
+
+function formatOppDir(data: DirectionalOpportunity | undefined): string {
+  if (!data) return "N/A";
+  return `A→B ${formatOpp(data.aToB)}  B→A ${formatOpp(data.bToA)}`;
+}
+
+function OppRow({
+  label,
+  data,
+  hint,
+}: {
+  label: string;
+  data: OpportunityRate | undefined;
+  hint?: string;
+}) {
+  return <MetricRow label={label} value={formatOpp(data)} hint={hint} />;
+}
+
+function OppDirRow({
+  label,
+  data,
+  hint,
+}: {
+  label: string;
+  data: DirectionalOpportunity | undefined;
+  hint?: string;
+}) {
+  if (!data) return null;
+  return (
+    <MetricRow
+      label={label}
+      value={formatOpp(data.overall)}
+      sub={formatOppDir(data)}
+      hint={hint}
+    />
+  );
+}
+
+export function InteractionSection({
+  data,
+}: {
+  data: InteractionEvaluation;
+}) {
+  const i = data.interaction;
+  const m = data.mechanisms;
+  const p = data.policyRelevantOutcomes;
+  const notes = [
+    data.metadata.graphMissing ? "No reasoning graph on this conversation." : null,
+    data.metadata.graphMalformed ? "Reasoning graph could not be parsed." : null,
+    data.metadata.interrupted ? "Run was interrupted." : null,
+    data.metadata.shortConversation ? "Short conversation." : null,
+    data.patterns.length > 0
+      ? `Patterns: ${data.patterns.join(", ").replaceAll("_", " ")}.`
+      : null,
+  ].filter(Boolean);
+
+  return (
+    <section className="mae-section">
+      <h4>Interaction Dynamics</h4>
+      <p className="mae-canon-label">
+        Universal behavioral metrics — same taxonomy for crossword, proof, and
+        philosophy. Task correctness is scored separately.
+      </p>
+      {notes.length > 0 ? (
+        <p className="mae-notes muted">{notes.join(" ")}</p>
+      ) : null}
+
+      <div className="mae-metric-group">
+        <h5>Contributions</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Introduced"
+            value={`A ${i.contributions.introducedByAgent.agent_a} · B ${i.contributions.introducedByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Novel"
+            value={`A ${i.contributions.novelByAgent.agent_a} · B ${i.contributions.novelByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Support introduced"
+            value={`A ${i.contributions.supportIntroducedByAgent.agent_a} · B ${i.contributions.supportIntroducedByAgent.agent_b}`}
+          />
+          <MetricRow
+            label="Origin share"
+            value={`A ${formatFrac(i.contributions.originShare.agent_aShare)} · B ${formatFrac(i.contributions.originShare.agent_bShare)}`}
+          />
+          <MetricRow
+            label="Surviving share"
+            value={`A ${formatFrac(i.contributions.survivingShare.agent_aShare)} · B ${formatFrac(i.contributions.survivingShare.agent_bShare)}`}
+            sub={
+              i.contributions.survivingShare.herfindahl === null
+                ? undefined
+                : `HHI ${i.contributions.survivingShare.herfindahl.toFixed(2)}`
+            }
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Adoption & verification</h5>
+        <dl className="mae-metric-list">
+          <OppDirRow
+            label="Adoption"
+            data={i.adoption.adoption}
+            hint="Denominator: partner-originated reasoning objects."
+          />
+          <OppDirRow label="Supported adoption" data={i.adoption.supportedAdoption} />
+          <OppDirRow
+            label="Unsupported adoption"
+            data={i.adoption.unsupportedAdoption}
+          />
+          <OppDirRow
+            label="Challenge before adoption"
+            data={i.adoption.challengeBeforeAdoption}
+          />
+          <OppDirRow
+            label="Independent verification"
+            data={i.verification.independentVerification}
+          />
+          <OppDirRow
+            label="Verification before acceptance"
+            data={i.verification.verificationBeforeAcceptance}
+          />
+          <OppDirRow
+            label="Unsupported acceptance"
+            data={i.verification.unsupportedAcceptance}
+          />
+          <MetricRow
+            label="Adoption latency"
+            value={
+              i.adoption.latencyTurns.mean === null
+                ? "N/A"
+                : `${i.adoption.latencyTurns.mean.toFixed(1)} turns`
+            }
+            sub={`${i.adoption.latencyTurns.samples} samples`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Challenge & correction</h5>
+        <dl className="mae-metric-list">
+          <OppRow label="Challenge frequency" data={i.challenges.frequency} />
+          <OppDirRow label="Directional challenge" data={i.challenges.directional} />
+          <OppRow label="Successful challenges" data={i.challenges.successful} />
+          <OppRow label="Unsuccessful challenges" data={i.challenges.unsuccessful} />
+          <OppRow
+            label="Revision after challenge"
+            data={i.challenges.revisionAfterChallenge}
+          />
+          <OppRow label="Correction" data={i.corrections.corrected} />
+          <OppRow label="Self-correction" data={i.corrections.selfCorrection} />
+          <OppRow
+            label="Cross-agent correction"
+            data={i.corrections.crossAgentCorrection}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Influence / deference</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Centrality"
+            value={`A ${i.influence.centrality.agent_a} · B ${i.influence.centrality.agent_b}`}
+          />
+          <OppDirRow label="Proposal survival" data={i.influence.proposalSurvival} />
+          <OppDirRow
+            label="Disagreement survival"
+            data={i.influence.disagreementSurvival}
+          />
+          <OppDirRow
+            label="Concession direction"
+            data={i.influence.concessionDirection}
+          />
+          <MetricRow
+            label="Final ancestry"
+            value={`A ${formatFrac(i.influence.finalAncestry.agent_aShare)} · B ${formatFrac(i.influence.finalAncestry.agent_bShare)}`}
+          />
+          <OppDirRow
+            label="Deference (unsupported acceptance)"
+            data={p.authority.directionalDeference}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Disagreement & resolution</h5>
+        <dl className="mae-metric-list">
+          <OppRow
+            label="Disagreements"
+            data={i.disagreement.disagreements}
+            hint="Denominator: partner-originated objects."
+          />
+          <OppRow label="Resolved" data={i.disagreement.resolved} />
+          <OppRow label="Unresolved" data={i.disagreement.unresolved} />
+          <OppDirRow label="Concession" data={i.disagreement.concession} />
+          <OppRow label="Revision" data={i.disagreement.revision} />
+          <OppRow label="Rejection" data={i.disagreement.rejection} />
+          <OppRow label="Synthesis" data={i.disagreement.synthesis} />
+          <MetricRow
+            label="Who survives"
+            value={`A ${i.disagreement.survivor.agent_a} · B ${i.disagreement.survivor.agent_b} · synth ${i.disagreement.survivor.synthesis} · open ${i.disagreement.survivor.unresolved}`}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Reasoning development</h5>
+        <dl className="mae-metric-list">
+          <MetricRow
+            label="Graph depth"
+            value={
+              i.reasoningDevelopment.graphDepth.maximum === null
+                ? "N/A"
+                : `avg ${i.reasoningDevelopment.graphDepth.average?.toFixed(2) ?? "N/A"} · max ${i.reasoningDevelopment.graphDepth.maximum}`
+            }
+          />
+          <MetricRow
+            label="Revisions / abandoned"
+            value={`${i.reasoningDevelopment.revisions} revised · ${i.reasoningDevelopment.abandonedBranches} abandoned`}
+          />
+          <MetricRow
+            label="Branches"
+            value={`${i.reasoningDevelopment.independentBranches} independent · ${i.reasoningDevelopment.survivingBranches} surviving`}
+          />
+          <MetricRow
+            label="Synthesis nodes"
+            value={formatCount(i.reasoningDevelopment.synthesisNodes)}
+          />
+          <OppRow label="Mutation rate" data={i.reasoningDevelopment.mutationRate} />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Communication efficiency</h5>
+        <dl className="mae-metric-list">
+          <MetricRow label="Turns" value={formatCount(i.efficiency.turns)} />
+          <MetricRow
+            label="Tokens"
+            value={`A ${formatCount(i.efficiency.tokensPerAgent.agent_a)} · B ${formatCount(i.efficiency.tokensPerAgent.agent_b)}`}
+          />
+          <MetricRow
+            label="Unique objects / turn"
+            value={
+              i.efficiency.uniqueObjectsPerTurn === null
+                ? "N/A"
+                : i.efficiency.uniqueObjectsPerTurn.toFixed(2)
+            }
+          />
+          <MetricRow
+            label="Mutations / turn"
+            value={
+              i.efficiency.graphMutationsPerTurn === null
+                ? "N/A"
+                : i.efficiency.graphMutationsPerTurn.toFixed(2)
+            }
+          />
+          <MetricRow
+            label="Productive events / turn"
+            value={
+              i.efficiency.productiveEventsPerTurn === null
+                ? "N/A"
+                : i.efficiency.productiveEventsPerTurn.toFixed(2)
+            }
+          />
+          <OppRow label="Repetition" data={i.efficiency.repetition} />
+          <MetricRow
+            label="Zero-mutation turns"
+            value={formatCount(i.efficiency.zeroMutationTurns)}
+          />
+          <OppRow
+            label="Clarification overhead"
+            data={i.efficiency.clarificationOverhead}
+          />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Mechanisms</h5>
+        <dl className="mae-metric-list">
+          <OppRow label="Persuasion" data={m.persuasion} />
+          <OppRow label="Deference" data={m.deference} />
+          <OppRow label="Independent convergence" data={m.independentConvergence} />
+          <OppRow label="Productive disagreement" data={m.productiveDisagreement} />
+          <OppRow
+            label="Unproductive disagreement"
+            data={m.unproductiveDisagreement}
+          />
+          <OppRow label="Synthesis" data={m.synthesis} />
+          <OppRow label="Error propagation" data={m.errorPropagation} />
+        </dl>
+      </div>
+
+      <div className="mae-metric-group">
+        <h5>Trust / Authority / Familiarity</h5>
+        <dl className="mae-metric-list">
+          <OppDirRow label="Trust: adoption" data={p.trust.adoption} />
+          <OppDirRow
+            label="Trust: unsupported adoption"
+            data={p.trust.unsupportedAdoption}
+          />
+          <OppDirRow label="Trust: verification" data={p.trust.verification} />
+          <OppRow
+            label="Familiarity: repeated information"
+            data={p.familiarity.repeatedInformation}
+          />
+          <OppRow
+            label="Familiarity: explicit references"
+            data={p.familiarity.explicitReferences}
+          />
+          <OppRow
+            label="Familiarity: clarification"
+            data={p.familiarity.clarificationRequests}
+          />
+        </dl>
+      </div>
+
+      <details className="mae-details">
+        <summary>
+          Timeline / events ({data.events.length}) · trajectory (
+          {data.trajectory.length} turns)
+        </summary>
+        <ul>
+          {data.events.slice(0, 40).map((event) => (
+            <li key={event.id}>
+              <span className="mono">
+                t{event.turn} · {event.actor} · {event.type}
+                {event.objectId ? ` · ${event.objectId}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {data.events.length > 40 ? (
+          <p className="muted">
+            Showing first 40 events. Full list is in JSON export.
+          </p>
+        ) : null}
       </details>
     </section>
   );

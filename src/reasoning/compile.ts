@@ -257,16 +257,27 @@ function compileMove(
       intents.push({ action: "invalid", raw: { ...move, error: subject.error } });
       return;
     }
+    const localId = `evidence_${intents.length + 1}`;
     intents.push({
       action: "create",
       nodeType: "evidence",
       text: move.text,
       subjectId: subject.id,
+      localId,
       metadata: {
         evidenceOrigin: "agent",
         source: move.source,
       },
     });
+    const live = subject.id ? liveClaimsFor(ctx.graph, subject.id) : [];
+    if (live.length === 1) {
+      intents.push({
+        action: "support",
+        sourceNodeId: localId,
+        targetId: live[0]!.id,
+        subjectId: subject.id,
+      });
+    }
     return;
   }
 
@@ -289,6 +300,12 @@ function compileMove(
       return;
     }
     const text = move.text?.trim() || claimText(subjectLabel(ctx, subject.id), value);
+    const identity = ctx.adapter.candidateIdentity?.(ctx.problem, {
+      type: "claim",
+      text,
+      subjectId: subject.id,
+      metadata: { answer: value },
+    });
     const basis = compileBasis(move.basis, ctx, subject.id, intents, diagnostics, intents.length);
     if (basis.errors.length > 0) {
       intents.push({
@@ -298,17 +315,19 @@ function compileMove(
       return;
     }
     const live = subject.id ? liveClaimsFor(ctx.graph, subject.id) : [];
-    if (live.length === 1) {
+    if (live.length > 0 && identity) {
       diagnostics.push(`promoted_claim_to_revise:${live[0]!.id}`);
       intents.push({
         action: "revise",
         targetId: live[0]!.id,
         nodeType: "claim",
         text,
+        confidence: move.confidence,
         subjectId: subject.id,
         groundsNodeIds: basis.grounds,
         supportsNodeIds: basis.supports,
         metadata: { answer: value },
+        reason: "supersedes the prior live candidate for the same issue",
       });
       return;
     }
@@ -316,6 +335,7 @@ function compileMove(
       action: "create",
       nodeType: "claim",
       text,
+      confidence: move.confidence,
       subjectId: subject.id,
       groundsNodeIds: basis.grounds,
       supportsNodeIds: basis.supports,
@@ -374,6 +394,7 @@ function compileMove(
       targetId: target.id,
       nodeType: "claim",
       text,
+      confidence: move.confidence,
       subjectId: target.subjectId,
       groundsNodeIds: basis.grounds,
       supportsNodeIds: basis.supports,

@@ -156,4 +156,14 @@ export type TaskReasoningAdapter = {
     reasoningGraph: ReasoningGraph,
     issueStates: IssueConvergenceState[],
   ): Record<string, unknown>;
+  /**
+   * Reconstruct final-answer ancestry from surviving graph ideas and detect
+   * conclusions that were not first committed on the graph.
+   */
+  reconcileFinalAnswer?(
+    problem: Problem,
+    reasoningGraph: ReasoningGraph,
+    text: string | undefined,
+    supportingNodeIds: string[],
+  ): { supportingNodeIds: string[]; errors: string[] };
 };

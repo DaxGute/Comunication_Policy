@@ -147,7 +147,8 @@ export async function handleRunsApiRequest(
       const body = (await readJsonBody(req)) as Record<string, unknown>;
       const policy = parsePolicy(body.policy);
       const config = parseConfig(body.config);
-      const run = manager.createRun({ policy, config });
+      const id = typeof body.id === "string" ? body.id : undefined;
+      const run = manager.createRun({ policy, config, id });
       sendJson(res, 202, { runId: run.id, status: run.status, run });
       return;
     }

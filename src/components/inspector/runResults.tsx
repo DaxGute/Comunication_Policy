@@ -17,6 +17,10 @@ import {
   isSuccessfulMultiAgentEvaluation,
   resolveRunModel,
 } from "../../experiment/configAccessors";
+import {
+  analysisStagesForProblem,
+  isRunAnalysisRunning,
+} from "../../experiment/evaluationUi";
 import type { EvaluationUiState } from "../../experiment/store";
 import { formatActualUsd, getRunCostSummary } from "../../experiment/runCost";
 import type { ExperimentRun } from "../../experiment/types";
@@ -29,6 +33,7 @@ import {
   displayNameForModel,
   formatReasoningEffort,
 } from "../../models/modelRegistry";
+import { CurrentStep } from "../evaluation/maeSections";
 import { OverrideEvaluationConfirm } from "../evaluation/OverrideEvaluationConfirm";
 import { ModelSelect } from "../ui/ModelSelect";
 import { TokenUsagePanel } from "../ui/TokenUsagePanel";
@@ -228,17 +233,13 @@ export function RunResultsMultiAgentEval({
     setConfirmingOverride(false);
   }, [run.id]);
 
-  const isBatchRunning =
-    evaluationUi?.status === "running" &&
-    evaluationUi.runId === run.id &&
-    Boolean(evaluationUi.batch);
-  const isAnyEvalRunning =
-    evaluationUi?.status === "running" && evaluationUi.runId === run.id;
+  const isEvalRunning = isRunAnalysisRunning(run, evaluationUi);
   const canEvaluate =
     (run.status === "completed" ||
       run.status === "cancelled" ||
       run.status === "failed") &&
-    !isAnyEvalRunning;
+    !isEvalRunning &&
+    evaluationUi?.status !== "running";
   const total = run.conversations.length;
   const evals = latestEvalsByProblem(run);
   const evaluatedCount = evals.length;
@@ -265,18 +266,46 @@ export function RunResultsMultiAgentEval({
     total,
     remainingCount,
   ]);
-  const currentProblem =
-    isBatchRunning && evaluationUi?.problemId
-      ? run.conversations.find((c) => c.problemId === evaluationUi.problemId)
-      : undefined;
+  const currentProblemId =
+    evaluationUi?.runId === run.id && evaluationUi.problemId
+      ? evaluationUi.problemId
+      : (run.multiAgentEvaluations ?? []).find(
+          (evaluation) =>
+            evaluation.status === "running" || evaluation.status === "pending",
+        )?.problemId;
+  const currentProblem = currentProblemId
+    ? run.conversations.find((c) => c.problemId === currentProblemId)
+    : undefined;
+  const currentIndex = Math.max(
+    0,
+    currentProblemId
+      ? run.conversations.findIndex((c) => c.problemId === currentProblemId)
+      : (evaluationUi?.runId === run.id ? (evaluationUi.batch?.currentIndex ?? 0) : 0),
+  );
+  const runningStages = currentProblemId
+    ? analysisStagesForProblem(run, currentProblemId, evaluationUi)
+    : evaluationUi?.runId === run.id
+      ? evaluationUi.stages
+      : [];
 
   const marbleEvals = evals
     .map((e) => e.marble?.normalized)
     .filter((m): m is NonNullable<typeof m> => Boolean(m));
+  const interactionEvals = evals
+    .map((e) => e.interaction?.normalized)
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
   const beliefEvals = evals
     .map((e) => e.beliefDynamics?.normalized.metrics)
     .filter((m): m is NonNullable<typeof m> => Boolean(m));
-  const sections = buildAggregatedMaeSections({ marbleEvals, beliefEvals });
+  const moralEvals = evals
+    .map((e) => e.moralDynamics?.normalized.deterministic)
+    .filter((m): m is NonNullable<typeof m> => Boolean(m));
+  const sections = buildAggregatedMaeSections({
+    marbleEvals,
+    interactionEvals,
+    beliefEvals,
+    moralEvals,
+  });
 
   function startBatch(overrideExisting?: boolean) {
     void onRunAllEvaluations({
@@ -296,7 +325,7 @@ export function RunResultsMultiAgentEval({
             Estimated evaluation cost{" "}
             <span className="mono">{evalCostEstimate}</span>
           </span>
-          {!isBatchRunning ? (
+          {!isEvalRunning ? (
             <>
               <div className="results-mae__model-wrap">
                 <ModelSelect
@@ -329,14 +358,13 @@ export function RunResultsMultiAgentEval({
             </>
           ) : (
             <span className="muted results-mae__status">
-              {(evaluationUi?.batch?.currentIndex ?? 0) + 1}/
-              {evaluationUi?.batch?.total ?? total}
+              {currentIndex + 1}/{evaluationUi?.batch?.total ?? total}
               {currentProblem?.problemTitle
                 ? ` · ${currentProblem.problemTitle}`
                 : ""}
             </span>
           )}
-          {!isBatchRunning && evaluatedCount > 0 ? (
+          {!isEvalRunning && evaluatedCount > 0 ? (
             <span className="muted results-mae__status">
               {evaluatedCount}/{total} avg
             </span>
@@ -357,7 +385,8 @@ export function RunResultsMultiAgentEval({
           onCancel={() => setConfirmingOverride(false)}
         />
       ) : null}
-      {!isBatchRunning &&
+      {isEvalRunning ? <CurrentStep stages={runningStages} /> : null}
+      {!isEvalRunning &&
       !confirmingOverride &&
       successfulCount > 0 &&
       remainingCount > 0 ? (
@@ -370,7 +399,7 @@ export function RunResultsMultiAgentEval({
 
       {sections.length > 0 ? (
         <MetricTable sections={sections} />
-      ) : !isBatchRunning ? (
+      ) : !isEvalRunning ? (
         <p className="muted results-mae__empty">No evaluations yet.</p>
       ) : null}
     </div>

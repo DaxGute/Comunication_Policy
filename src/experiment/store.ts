@@ -1,10 +1,11 @@
 /**
  * React store for the workbench: current policy/config, run list, and polling.
  *
- * Execution lives on the server (RunManager). Evaluation UI mapping is in
- * evaluationUi.ts. Persistence of picker state is in persistence.ts.
+ * Interaction-critical run/eval UI is in-memory first. Persistence and the
+ * server snapshot are asynchronous side effects; local overlays keep polls
+ * from resurrecting deleted runs or restoring cancelled ones as active.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { AgentId } from "../agents/types";
 import {
@@ -33,9 +34,19 @@ import { modelSupportsReasoningEffort } from "../models/modelRegistry";
 import { createInitialExperimentState, providerForModel } from "./defaults";
 import {
   evaluationUiFromRuns,
-  sameEvaluationUi,
+  retainRunningEvaluationUi,
+  shouldClearEvalFocus,
   type EvaluationUiState,
 } from "./evaluationUi";
+import {
+  applyLocalCancel,
+  createPendingLocalRuns,
+  mergeIncomingRuns,
+  pendingNeedsPolling,
+  prunePendingAgainstServer,
+} from "./localRunState";
+import { createId } from "../lib/id";
+import { createQueuedRun } from "./queuedRun";
 import { reuseUnchangedRuns, sameProgressMap } from "./runIdentity";
 import {
   loadLegacyRunsForMigration,
@@ -52,6 +63,7 @@ import type {
   RunProgress,
 } from "./types";
 import {
+  collectRunIds,
   deleteFolder as deleteFolderFromTree,
   emptyRunTree,
   insertFolder,
@@ -213,6 +225,13 @@ export function useExperimentStore(): ExperimentStore {
   evalFocusRef.current = evalFocus;
   const evaluationUiRef = useRef(evaluationUi);
   evaluationUiRef.current = evaluationUi;
+  const pendingRef = useRef(createPendingLocalRuns());
+  const [localOpsPending, setLocalOpsPending] = useState(false);
+
+  const syncLocalOpsPending = useCallback(() => {
+    const next = pendingNeedsPolling(pendingRef.current);
+    setLocalOpsPending((prev) => (prev === next ? prev : next));
+  }, []);
 
   useEffect(() => {
     saveSelection({
@@ -261,18 +280,15 @@ export function useExperimentStore(): ExperimentStore {
     };
   }, []);
 
-  // Key off in-flight run/eval presence — not `isRunning` alone.
-  // `startRun` sets `isRunning` before the queued run is merged; depending on
-  // that flag alone left polling never started, so status stayed "queued"
-  // until something else (e.g. rename → mergeRun) refreshed from the server.
+  // Poll while any run/evaluation is active, or local cancel/create still
+  // needs a confirming server snapshot.
   const runsNeedPolling = state.runs.some(runNeedsPolling);
   const evalNeedsPolling =
     evaluationUi?.status === "running" || Boolean(evalFocus);
 
-  // Poll while any run or evaluation is active.
   useEffect(() => {
     if (!hydrated) return;
-    if (!runsNeedPolling && !evalNeedsPolling) return;
+    if (!runsNeedPolling && !evalNeedsPolling && !localOpsPending) return;
 
     let cancelled = false;
     let intervalId: number | undefined;
@@ -280,7 +296,8 @@ export function useExperimentStore(): ExperimentStore {
     const needsPollNow = () =>
       stateRef.current.runs.some(runNeedsPolling) ||
       evaluationUiRef.current?.status === "running" ||
-      Boolean(evalFocusRef.current);
+      Boolean(evalFocusRef.current) ||
+      pendingNeedsPolling(pendingRef.current);
 
     const tick = async () => {
       if (!needsPollNow()) {
@@ -293,38 +310,29 @@ export function useExperimentStore(): ExperimentStore {
       try {
         const runs = await apiListRuns();
         if (cancelled) return;
-        setState((prev) => applyRunsToState(prev, runs));
-        const focus = evalFocusRef.current;
-        const nextUi = evaluationUiFromRuns(runs, focus);
-        setEvaluationUi((prev) =>
-          sameEvaluationUi(prev, nextUi) ? prev : nextUi,
-        );
-        if (
-          focus &&
-          nextUi &&
-          nextUi.status !== "running" &&
-          !focus.batch
-        ) {
-          setEvalFocus(undefined);
-        }
-        if (focus?.batch) {
-          const run = runs.find((r) => r.id === focus.runId);
-          const anyRunning = (run?.multiAgentEvaluations ?? []).some(
-            (e) => e.status === "running",
-          );
-          const allDone =
-            run &&
-            run.conversations.every((c) =>
-              (run.multiAgentEvaluations ?? []).some(
-                (e) =>
-                  e.problemId === c.problemId &&
-                  (e.status === "completed" || e.status === "failed"),
-              ),
-            );
-          if (!anyRunning && allDone) {
+        startTransition(() => {
+          prunePendingAgainstServer(pendingRef.current, runs);
+          const merged = mergeIncomingRuns(runs, pendingRef.current);
+          syncLocalOpsPending();
+          const focus = evalFocusRef.current;
+          setState((prev) => {
+            const latest = mergeIncomingRuns(runs, pendingRef.current);
+            return applyRunsToState(prev, latest);
+          });
+          setEvaluationUi((prev) => {
+            const latest = mergeIncomingRuns(runs, pendingRef.current);
+            const currentFocus = evalFocusRef.current;
+            const ui = evaluationUiFromRuns(latest, currentFocus);
+            const focusedRun = latest.find((r) => r.id === currentFocus?.runId);
+            return retainRunningEvaluationUi(prev, ui, currentFocus, focusedRun);
+          });
+          const focusedRun = merged.find((r) => r.id === focus?.runId);
+          if (
+            shouldClearEvalFocus(focus, focusedRun, evaluationUiRef.current)
+          ) {
             setEvalFocus(undefined);
           }
-        }
+        });
       } catch (error) {
         console.error("Failed to poll runs:", error);
       }
@@ -338,11 +346,23 @@ export function useExperimentStore(): ExperimentStore {
       cancelled = true;
       if (intervalId !== undefined) window.clearInterval(intervalId);
     };
-  }, [hydrated, runsNeedPolling, evalNeedsPolling, evalFocus]);
+  }, [
+    hydrated,
+    runsNeedPolling,
+    evalNeedsPolling,
+    evalFocus,
+    localOpsPending,
+    syncLocalOpsPending,
+  ]);
 
   useEffect(() => {
     const runIds = state.runs.map((run) => run.id);
     setRunTree((prev) => {
+      const inTree = collectRunIds(prev.root);
+      if (inTree.length === runIds.length) {
+        const idSet = new Set(runIds);
+        if (inTree.every((id) => idSet.has(id))) return prev;
+      }
       const next = reconcileRunTree(prev, runIds);
       return sameRunTree(prev, next) ? prev : next;
     });
@@ -446,23 +466,25 @@ export function useExperimentStore(): ExperimentStore {
   }, []);
 
   const mergeRun = useCallback((run: ExperimentRun) => {
-    setRunTree((tree) => prependRunToTree(tree, run.id));
+    if (pendingRef.current.deletedIds.has(run.id)) return;
+    const overlaid = mergeIncomingRuns([run], pendingRef.current)[0] ?? run;
+    setRunTree((tree) => prependRunToTree(tree, overlaid.id));
     setState((prev) => {
-      const exists = prev.runs.some((r) => r.id === run.id);
+      const exists = prev.runs.some((r) => r.id === overlaid.id);
       const runs = exists
-        ? prev.runs.map((r) => (r.id === run.id ? run : r))
-        : [run, ...prev.runs];
-      return applyRunsToState(
-        {
-          ...prev,
-          selectedRunId: run.id,
-          selectedProblemId:
-            prev.selectedRunId === run.id
-              ? prev.selectedProblemId
-              : (run.conversations[0]?.problemId ?? prev.selectedProblemId),
-        },
-        runs,
-      );
+        ? prev.runs.map((r) => (r.id === overlaid.id ? overlaid : r))
+        : [overlaid, ...prev.runs];
+      if (!exists) {
+        return applyRunsToState(
+          {
+            ...prev,
+            selectedRunId: overlaid.id,
+            selectedProblemId: overlaid.conversations[0]?.problemId,
+          },
+          runs,
+        );
+      }
+      return applyRunsToState(prev, runs);
     });
   }, []);
 
@@ -470,80 +492,131 @@ export function useExperimentStore(): ExperimentStore {
     const { currentPolicy, currentRunConfig } = stateRef.current;
     const policySnapshot = createCommunicationPolicy(currentPolicy);
     const configSnapshot: RunConfig = { ...currentRunConfig };
+    const runId = createId("run");
+    const placeholder = createQueuedRun({
+      id: runId,
+      policy: policySnapshot,
+      config: configSnapshot,
+    });
 
-    setState((prev) => ({ ...prev, isRunning: true }));
+    pendingRef.current.optimisticById.set(runId, placeholder);
+    syncLocalOpsPending();
+    setRunTree((tree) => prependRunToTree(tree, runId));
+    setState((prev) =>
+      applyRunsToState(
+        {
+          ...prev,
+          selectedRunId: runId,
+          selectedProblemId: placeholder.conversations[0]?.problemId,
+        },
+        [placeholder, ...prev.runs.filter((run) => run.id !== runId)],
+      ),
+    );
 
     try {
       const run = await apiCreateRun({
         policy: policySnapshot,
         config: configSnapshot,
+        id: runId,
       });
+      pendingRef.current.optimisticById.delete(runId);
+      if (pendingRef.current.deletedIds.has(runId)) {
+        void apiDeleteRun(runId).catch((error) => {
+          console.error("Failed to delete run after create:", error);
+        });
+        syncLocalOpsPending();
+        return;
+      }
       mergeRun(run);
+      syncLocalOpsPending();
     } catch (error) {
       console.error("Failed to start run:", error);
-      setState((prev) => ({
-        ...prev,
-        isRunning: isRunningFromRuns(prev.runs),
-      }));
+      pendingRef.current.optimisticById.delete(runId);
+      if (!pendingRef.current.deletedIds.has(runId)) {
+        setState((prev) =>
+          applyRunsToState(
+            prev,
+            prev.runs.filter((run) => run.id !== runId),
+          ),
+        );
+        setRunTree((tree) => removeRunFromTree(tree, runId));
+      }
+      syncLocalOpsPending();
     }
-  }, [mergeRun]);
+  }, [mergeRun, syncLocalOpsPending]);
 
-  const cancelRun = useCallback((runId: string) => {
-    // Select immediately so Run Results shows the cancelled banner when the
-    // server finishes unwinding the run.
-    setState((prev) => {
-      const runs = prev.runs.map((run) =>
-        run.id === runId
-          ? {
-              ...run,
-              progress: undefined,
-            }
-          : run,
-      );
-      return applyRunsToState(
-        {
-          ...prev,
-          selectedRunId: runId,
-          selectedProblemId:
-            prev.selectedRunId === runId
-              ? prev.selectedProblemId
-              : (runs.find((r) => r.id === runId)?.conversations[0]
-                  ?.problemId ?? prev.selectedProblemId),
-        },
-        runs,
-      );
-    });
-    void apiCancelRun(runId)
-      .then((run) => {
-        mergeRun(run);
-      })
-      .catch((error) => {
-        console.error("Failed to cancel run:", error);
+  const cancelRun = useCallback(
+    (runId: string) => {
+      pendingRef.current.cancelledIds.add(runId);
+      syncLocalOpsPending();
+      setState((prev) => {
+        const runs = prev.runs.map((run) =>
+          run.id === runId ? applyLocalCancel(run) : run,
+        );
+        return applyRunsToState(
+          {
+            ...prev,
+            selectedRunId: runId,
+            selectedProblemId:
+              prev.selectedRunId === runId
+                ? prev.selectedProblemId
+                : (runs.find((r) => r.id === runId)?.conversations[0]
+                    ?.problemId ?? prev.selectedProblemId),
+          },
+          runs,
+        );
       });
-  }, [mergeRun]);
-
-  const deleteRun = useCallback((runId: string) => {
-    // Optimistic: drop from UI immediately. Server delete is authoritative;
-    // on failure, re-list so a failed wipe does not leave a ghost gap.
-    setState((prev) => {
-      const runs = prev.runs.filter((r) => r.id !== runId);
-      return applyRunsToState(prev, runs);
-    });
-    setRunTree((tree) => removeRunFromTree(tree, runId));
-    setEvaluationUi((prev) => (prev?.runId === runId ? undefined : prev));
-    setEvalFocus((prev) => (prev?.runId === runId ? undefined : prev));
-
-    void apiDeleteRun(runId).catch((error) => {
-      console.error("Failed to delete run:", error);
-      void apiListRuns()
-        .then((runs) => {
-          setState((prev) => applyRunsToState(prev, runs));
+      void apiCancelRun(runId)
+        .then((run) => {
+          mergeRun(run);
         })
-        .catch(() => {
-          // Ignore secondary failure; original error already logged.
+        .catch((error) => {
+          console.error("Failed to cancel run:", error);
         });
-    });
-  }, []);
+    },
+    [mergeRun, syncLocalOpsPending],
+  );
+
+  const deleteRun = useCallback(
+    (runId: string) => {
+      pendingRef.current.deletedIds.add(runId);
+      pendingRef.current.optimisticById.delete(runId);
+      pendingRef.current.cancelledIds.delete(runId);
+      syncLocalOpsPending();
+      setState((prev) =>
+        applyRunsToState(
+          prev,
+          prev.runs.filter((r) => r.id !== runId),
+        ),
+      );
+      setRunTree((tree) => removeRunFromTree(tree, runId));
+      setEvaluationUi((prev) => (prev?.runId === runId ? undefined : prev));
+      setEvalFocus((prev) => (prev?.runId === runId ? undefined : prev));
+
+      void apiDeleteRun(runId).catch((error) => {
+        console.error("Failed to delete run:", error);
+        const message = error instanceof Error ? error.message : String(error);
+        const notFound = /not found|HTTP 404/i.test(message);
+        if (notFound) return;
+        pendingRef.current.deletedIds.delete(runId);
+        syncLocalOpsPending();
+        void apiListRuns()
+          .then((runs) => {
+            prunePendingAgainstServer(pendingRef.current, runs);
+            setState((prev) =>
+              applyRunsToState(
+                prev,
+                mergeIncomingRuns(runs, pendingRef.current),
+              ),
+            );
+          })
+          .catch(() => {
+            // Ignore secondary failure; original error already logged.
+          });
+      });
+    },
+    [syncLocalOpsPending],
+  );
 
   const renameRun = useCallback((runId: string, title: string) => {
     const next = title.trim();
@@ -642,12 +715,19 @@ export function useExperimentStore(): ExperimentStore {
         overrideExisting: options.overrideExisting,
       });
       mergeRun(result.run);
-      setEvaluationUi(
-        evaluationUiFromRuns([result.run], {
-          runId: options.runId,
-          problemId: options.problemId,
-        }),
-      );
+      const nextUi = evaluationUiFromRuns([result.run], {
+        runId: options.runId,
+        problemId: options.problemId,
+      });
+      // Prefer an in-flight snapshot. A start response that only contains a
+      // prior completed evaluation must not flip the UI to "finished".
+      setEvaluationUi((prev) => {
+        if (nextUi?.status === "running") return nextUi;
+        if (prev?.status === "running" && prev.runId === options.runId) {
+          return { ...prev, evaluationId: result.evaluationId };
+        }
+        return prev;
+      });
       return result.run.multiAgentEvaluations?.find(
         (e) => e.id === result.evaluationId,
       );

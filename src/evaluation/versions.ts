@@ -1,8 +1,13 @@
 /** Evaluation schema / grader versions for reproducibility. */
 
-export const EVALUATION_SCHEMA_VERSION = "1.2.0";
+export const EVALUATION_SCHEMA_VERSION = "1.4.0";
 export const BELIEF_GRADER_VERSION = "1.3.0";
 export const BELIEF_GRADER_SCHEMA_VERSION = "1.2.0";
+export const MORAL_DYNAMICS_VERSION = "1.0.0";
+export const MORAL_DYNAMICS_SCHEMA_VERSION = "1.0.0";
+export const MORAL_JUDGE_VERSION = "1.0.0";
+export const INTERACTION_EVALUATOR_VERSION = "1.0.0";
+export const INTERACTION_SCHEMA_VERSION = "1.0.0";
 export const MARBLE_ADAPTER_VERSION = "comm-policy-marble-posthoc-v1";
 
 /** Pinned to the Summer_CESTA / org-sim MARBLE checkout. */
