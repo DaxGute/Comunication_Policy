@@ -1,72 +1,62 @@
 export {
   emptyReasoningGraph,
   hasStructuredReasoning,
-  REASONING_INTENT_ACTIONS,
-  REASONING_NODE_STATUSES,
-  REASONING_NODE_TYPES,
-  REASONING_OPERATION_TYPES,
+  REASONING_SCHEMA_VERSION,
+  MUTATION_TYPES,
+  activeVersion,
+  versionsForSubject,
+  normalizePropositionContent,
+  isStateChangeMutation,
+  mutationSubjectId,
+  mutationBasis,
+  mutationSourceInformationIds,
 } from "./types";
 export type {
-  AtomicReasoningNode,
-  AtomicReasoningNodeType,
-  ClaimSelector,
-  EvidenceOrigin,
-  FinalAnswerSupport,
-  FinalAnswerNode,
-  GroundingLink,
   DeterministicReasoningSignal,
+  FinalAnswerSupport,
   GenericReadiness,
   IssueConflict,
   IssueConvergenceState,
   ParsedAgentTurn,
+  ParsedMutation,
+  PropositionVersion,
+  PropositionVersionStatus,
+  ProvenanceEdge,
+  ProvenanceEdgeKind,
   ReasoningActor,
   ReasoningEvent,
-  ReasoningEdge,
-  ReasoningEdgeType,
   ReasoningGraph,
   ReasoningIssue,
-  ReasoningIssueKind,
-  ReasoningIntent,
-  ReasoningIntentAction,
-  ReasoningMove,
-  ReasoningNode,
-  ReasoningNodeStatus,
-  ReasoningNodeType,
-  ReasoningOperation,
-  ReasoningOperationType,
-  ReasoningSubject,
-  ReasoningStance,
+  ReasoningMutation,
   ReasoningProgressState,
+  ReasoningSchemaVersion,
+  ReasoningSubject,
+  ReasoningSubjectSource,
+  StoredReasoningMutation,
   TaskCompatibility,
 } from "./types";
 export {
-  applyReasoningIntents,
-  applyReasoningOperations,
+  applyParsedTurn,
+  applyReasoningMutations,
   cloneReasoningGraph,
-  getNode,
+  currentValue,
   hydrateReasoningGraph,
   materializeGraph,
-  normalizeNodeText,
-  stancesForNode,
-  validateFinalAnswerSupport,
 } from "./graph";
-export type {
-  ApplyIntentsContext,
-  ApplyIntentsResult,
-  ApplyOperationsContext,
-  NodeStance,
-} from "./graph";
+export type { ApplyMutationsContext, ApplyMutationsResult } from "./graph";
 export {
   eventsForMessage,
   eventsForNode,
+  eventsForVersion,
   nodeIdsTouchedByMessage,
-  nodesCreatedInMessage,
   snapshotBeforeTurn,
+  snapshotThroughTurn,
+  versionIdsTouchedByMessage,
+  versionsCreatedInMessage,
+  acceptedStateChangeEvents,
 } from "./queries";
-export { parseAgentTurn, parseReasoningIntent, recoverParsedTurn } from "./parseTurn";
+export { parseAgentTurn, parseReasoningMutation, recoverParsedTurn } from "./parseTurn";
 export type { RecoverTurnContext } from "./parseTurn";
-export { compileReasoningMoves, resolveSubjectAlias, resolveClaimTarget } from "./compile";
-export { normalizeReasoningMove } from "./normalize";
 export { seedGraphForProblem, seedTaskReasoningGraph } from "./seed";
 export {
   DEFAULT_CLOSURE_STAGNANT_TURNS,
@@ -115,7 +105,30 @@ export type {
 } from "./solverProgress";
 export { auditReasoningProtocol } from "./protocolAudit";
 export type { ReasoningProtocolAudit } from "./protocolAudit";
-export { formatReasoningState, reasoningStateUserMessage } from "./renderState";
+export {
+  computeCollaborationDiagnostics,
+  computeTurnScopes,
+  describeRejectedAttempt,
+  persistentContributionByAgent,
+} from "./collaboration";
+export type {
+  CollaborationDiagnostics,
+  TurnScopeDiagnostics,
+} from "./collaboration";
+export { evaluateMoralFinalization, PERSISTENCE_REQUIRED_FEEDBACK, NOT_CONVERGED_FEEDBACK, finalizationPhaseCue } from "./finalizationGate";
+export {
+  emptyMoralConvergenceState,
+  moralConvergenceEligible,
+  reduceMoralConvergence,
+} from "./moralConvergence";
+export type { MoralConvergenceState, MoralInteractionPhase } from "./moralConvergence";
+export { formatReasoningState, graphUsesConsiderationLanes, reasoningStateUserMessage } from "./renderState";
+export { dilemmaExcerpt, isForbiddenMoralSubject, reservedMoralSubjectKey } from "./moralOntology";
+/** @deprecated Use isForbiddenMoralSubject. */
+export { isLegacyMoralSubject } from "./moralOntology";
+export { parseFinalBasisField, resolveFinalBasis } from "./finalBasis";
+export { computeMoralSynthesisDiagnostics } from "./moralDiagnostics";
+export type { MoralSynthesisDiagnostics } from "./moralDiagnostics";
 export { computeReasoningGraphDiagnostics } from "./diagnostics";
 export {
   deriveGenericReadiness,
@@ -128,21 +141,23 @@ export type {
   AtomicityWarning,
   ReasoningGraphDiagnostics,
 } from "./diagnostics";
-export { checkGraphInvariants, ideasCreatedPerTurn, maxIdeasCreatedOnOneSubjectInOneTurn } from "./invariants";
-export type { GraphInvariantCode, GraphInvariantViolation } from "./invariants";
 export {
-  validateCommittedProposition,
-  validateCommitConfidence,
-  isParaphrase,
-  MIN_COMMIT_CONFIDENCE,
-} from "./validateProposition";
+  checkGraphInvariants,
+  ideasCreatedPerTurn,
+  maxIdeasCreatedOnOneSubjectInOneTurn,
+} from "./invariants";
+export type { GraphInvariantCode, GraphInvariantViolation } from "./invariants";
 export { layoutReasoningGraph } from "./layout";
 export type {
   GraphLayout,
   GraphLayoutEdge,
+  GraphLayoutFinalSynthesis,
+  GraphLayoutLane,
   GraphLayoutNode,
   GraphLayoutTurnBand,
   LayoutEdgeKind,
+  LayoutTurnSpec,
+  ReasoningGraphLayoutOptions,
 } from "./layout";
 export {
   LAYOUT_LANE_STEP,
@@ -152,10 +167,47 @@ export {
 } from "./layout";
 export { resolveKnownSubjectId } from "./subjectRef";
 export {
+  detectReasoningSchema,
+  looksLikeCanonicalMutationEvent,
+  looksLikeLegacyDenseEvent,
   parseReasoningGraph,
   parseReasoningEvent,
-  parseReasoningNode,
-  parseReasoningOperation,
+  parsePropositionVersion,
   parseReasoningSubject,
+  parseReasoningMutationRecord,
 } from "./parseStored";
-export { allocateReasoningId, isValidReasoningId, nextReasoningId } from "./ids";
+export { isValidReasoningId, nextPropositionVersionId, subjectDisplayTitle } from "./ids";
+export { computeCanonicalReasoningMetrics } from "./metrics";
+export type { CanonicalReasoningMetrics } from "./metrics";
+export { deriveReasoningAnalysis } from "./derivedAnalysis";
+export type { DerivedReasoningAnalysis } from "./derivedAnalysis";
+export {
+  propositionCommitment,
+  liveLabel,
+} from "./commitment";
+export type { PropositionCommitment } from "./commitment";
+export {
+  computePersistenceDiagnostics,
+  coverageForTurn,
+  looksLikePersistenceReview,
+  nextAgentMemoryTexts,
+} from "./persistence";
+export type {
+  PersistenceDiagnostics,
+  PersistenceMessage,
+  TurnPersistenceCoverage,
+} from "./persistence";
+export {
+  derivedFromCycleIds,
+  derivedFromEdges,
+  nextRevision,
+  parseBasisField,
+  provenanceEdges,
+  resolveAndValidateBasis,
+  resolveBasisRef,
+  revisesEdges,
+  usedByVersionIds,
+  versionPublicRef,
+  versionOrdinalRef,
+  versionsInCreationOrder,
+} from "./provenance";

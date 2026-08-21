@@ -1,5 +1,6 @@
 /**
- * Full-transcript architecture invariants for the two-agent experiment.
+ * Graph-memory transcript architecture: persist the full conversation,
+ * but feed the model only the previous partner utterance plus the graph.
  *
  * Run: npm run test:transcript
  */
@@ -13,7 +14,7 @@ import { deriveConversationEfficiency } from "../src/experiment/conversationEffi
 import { normalizeRunConfig } from "../src/experiment/configAccessors";
 import { DEFAULT_RUN_CONFIG } from "../src/experiment/defaults";
 import { serializeConversation, serializeRun } from "../src/experiment/serializeConversation";
-import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../src/experiment/transcriptProtocol";
+import { GRAPH_MEMORY_TRANSCRIPT_PROTOCOL } from "../src/experiment/transcriptProtocol";
 import type { ExperimentRun } from "../src/experiment/types";
 import type { Problem } from "../src/problems/types";
 import { runExperiment } from "../src/runtime/runExperiment";
@@ -29,8 +30,9 @@ import {
   assistantHistoryContents,
   buildAgentTurnRequest,
   buildTurnRequestForAgent,
+  previousPartnerUtterance,
 } from "../src/runtime/renderModelRequest";
-import { formatUtteranceForProvider, type AgentUtterance } from "../src/runtime/transcript";
+import { type AgentUtterance } from "../src/runtime/transcript";
 import type { AgentId } from "../src/agents/types";
 
 function policy(partial: Partial<CommunicationPolicy> = {}): CommunicationPolicy {
@@ -90,26 +92,34 @@ const ordered: AgentUtterance[] = [
   utterance("agent_b", 4, "B2 lock-in"),
 ];
 
-// --- 1–2. Full prior transcript + order on every subsequent turn ---
+// --- 1–2. Previous partner utterance only; no full transcript in model history ---
 for (let turn = 1; turn <= 5; turn++) {
+  const speaker = turn % 2 === 1 ? "agent_a" : "agent_b";
   const request = buildTurnRequestForAgent({
-    agentId: turn % 2 === 1 ? "agent_a" : "agent_b",
+    agentId: speaker,
     agentPrompts: prompts,
     problemText: "P",
     utterances: ordered,
     turn,
     maxTurns: 8,
   });
-  const history = assistantHistoryContents(request.messages);
-  const expected = ordered
-    .filter((u) => u.turn < turn)
-    .map((u) => formatUtteranceForProvider(u));
-  assert.deepEqual(
-    history,
-    expected,
-    `turn ${turn} history must be the full chronological prefix`,
+  assert.equal(
+    assistantHistoryContents(request.messages).length,
+    0,
+    `turn ${turn} must not include assistant transcript history`,
   );
-  assert.equal(request.telemetry.transcriptMessagesBeforeTurn, turn - 1);
+  const partner = previousPartnerUtterance(ordered, speaker, turn);
+  const partnerMsg = request.messages.find((m) =>
+    m.content.startsWith("MOST RECENT PARTNER MESSAGE"),
+  );
+  if (partner) {
+    assert.ok(partnerMsg, `turn ${turn} should include the previous partner utterance`);
+    assert.match(partnerMsg.content, new RegExp(partner.content));
+  } else {
+    assert.equal(partnerMsg, undefined);
+  }
+  assert.equal(request.telemetry.historicalTranscriptCharsIncluded, 0);
+  assert.equal(request.telemetry.transcriptMessagesBeforeTurn, Math.min(turn - 1, ordered.length));
   assert.equal(request.telemetry.turnNumber, turn);
 }
 
@@ -135,6 +145,7 @@ assert.deepEqual(
   assistantHistoryContents(turn4B.messages),
   "history must not depend on which agent is speaking",
 );
+assert.equal(assistantHistoryContents(turn4A.messages).length, 0);
 assert.notEqual(turn4A.messages[0]?.content, turn4B.messages[0]?.content);
 assert.match(turn4A.messages.at(-1)?.content ?? "", /Respond as Agent A/);
 assert.match(turn4B.messages.at(-1)?.content ?? "", /Respond as Agent B/);
@@ -164,12 +175,26 @@ const histHigh = assistantHistoryContents(
   }).messages,
 );
 assert.deepEqual(histLow, histHigh);
-assert.equal(histLow.length, 4);
+assert.equal(histLow.length, 0);
 
-// Prefixed-assistant representation (documented protocol).
-assert.equal(histLow[0], "[Agent A]: A1 proposal");
-assert.equal(histLow[1], "[Agent B]: B1 reply");
-assert.ok(histLow.every((line) => line.startsWith("[Agent ")));
+const partnerLow = buildTurnRequestForAgent({
+  agentId: "agent_a",
+  agentPrompts: lowFam,
+  problemText: "P",
+  utterances: ordered,
+  turn: 5,
+  maxTurns: 8,
+}).messages.find((m) => m.content.startsWith("MOST RECENT PARTNER MESSAGE"));
+const partnerHigh = buildTurnRequestForAgent({
+  agentId: "agent_a",
+  agentPrompts: highFam,
+  problemText: "P",
+  utterances: ordered,
+  turn: 5,
+  maxTurns: 8,
+}).messages.find((m) => m.content.startsWith("MOST RECENT PARTNER MESSAGE"));
+assert.deepEqual(partnerLow, partnerHigh);
+assert.match(partnerLow?.content ?? "", /B2 lock-in/);
 
 type RecordedCall = {
   serial: number;
@@ -228,58 +253,53 @@ class RecordingClient implements ModelClient {
   }
 }
 
+function partnerMessage(messages: ModelRequest["messages"]): string | undefined {
+  return messages.find((m) => m.content.startsWith("MOST RECENT PARTNER MESSAGE"))
+    ?.content;
+}
+
 function historySerials(messages: ModelRequest["messages"]): number[] {
-  const serials: number[] = [];
-  for (const line of assistantHistoryContents(messages)) {
-    const match = line.match(/SERIAL:(\d+)/);
-    if (match) serials.push(Number(match[1]));
-  }
-  return serials;
+  const partner = partnerMessage(messages);
+  if (!partner) return [];
+  const match = partner.match(/SERIAL:(\d+)/);
+  return match ? [Number(match[1])] : [];
 }
 
 function assertLineageIsolated(log: RecordedCall[]): void {
   const bySerial = new Map(log.map((row) => [row.serial, row]));
+  const byProblemTurn = new Map(
+    log.map((row) => [`${row.problemId}:${row.turn}`, row]),
+  );
   for (const call of log) {
     const history = assistantHistoryContents(call.messages);
+    assert.equal(history.length, 0, "model request must not include assistant transcript history");
     const problemMsg = call.messages.find(
       (m) => m.role === "user" && m.content.startsWith("Shared problem:"),
     );
     assert.ok(problemMsg, "request must include shared problem");
+    // Agent-facing views may be asymmetric packets (shared context + unit
+    // subsets) rather than the legacy monolithic problem.text.
     assert.ok(
-      problemMsg.content.includes(call.problemText),
-      "request problem text must match this problem",
+      problemMsg.content.includes(call.problemText) ||
+        problemMsg.content.includes("SHARED INFORMATION") ||
+        problemMsg.content.includes("PRIVATE INFORMATION") ||
+        problemMsg.content.includes("YOUR INFORMATION PACKET") ||
+        problemMsg.content.includes("Statement to prove"),
+      "request problem text must match this problem or its information packet",
     );
 
     const serials = historySerials(call.messages);
-    const root = serials[0];
-    for (const line of history) {
-      const match = line.match(/SERIAL:(\d+):TAG:([^:]+):PROBLEM:([^:]+):TURN:(\d+)/);
-      assert.ok(match, `history line must be a prior tagged utterance: ${line}`);
-      const serial = Number(match[1]);
-      const prior = bySerial.get(serial);
-      assert.ok(prior, `serial ${serial} must exist`);
-      assert.equal(
-        prior.problemId,
-        call.problemId,
-        `serial ${serial} leaked from ${prior.problemId} into ${call.problemId}`,
-      );
-      const priorSerials = historySerials(prior.messages);
-      if (priorSerials.length === 0) {
-        assert.equal(serial, root, "turn-1 utterance must be this conversation's root");
-      } else {
-        assert.equal(
-          priorSerials[0],
-          root,
-          `serial ${serial} belongs to a different conversation root`,
-        );
-      }
+    if (call.turn === 1) {
+      assert.equal(serials.length, 0, "turn 1 has no previous partner utterance");
+      continue;
     }
-
-    assert.equal(
-      history.length,
-      call.turn - 1,
-      `turn ${call.turn} should see ${call.turn - 1} prior utterances`,
-    );
+    assert.equal(serials.length, 1, `turn ${call.turn} should see only the previous partner utterance`);
+    const prior = bySerial.get(serials[0]!);
+    assert.ok(prior, `serial ${serials[0]} must exist`);
+    assert.equal(prior.problemId, call.problemId);
+    assert.equal(prior.turn, call.turn - 1);
+    const expectedPrior = byProblemTurn.get(`${call.problemId}:${call.turn - 1}`);
+    assert.equal(prior, expectedPrior);
   }
 }
 
@@ -347,8 +367,8 @@ const [run1, run2] = await Promise.all([
 
 assert.equal(run1.id, "run-iso-1");
 assert.equal(run2.id, "run-iso-2");
-assert.deepEqual(run1.transcriptProtocol, FULL_HISTORY_TRANSCRIPT_PROTOCOL);
-assert.deepEqual(run2.transcriptProtocol, FULL_HISTORY_TRANSCRIPT_PROTOCOL);
+assert.deepEqual(run1.transcriptProtocol, GRAPH_MEMORY_TRANSCRIPT_PROTOCOL);
+assert.deepEqual(run2.transcriptProtocol, GRAPH_MEMORY_TRANSCRIPT_PROTOCOL);
 assert.notEqual(run1.agentPrompts.agentA, run2.agentPrompts.agentA);
 assert.equal(run1.conversations.length, 2);
 assert.equal(run2.conversations.length, 2);
@@ -377,7 +397,7 @@ const finalRun: ExperimentRun = {
   createdAt: new Date().toISOString(),
   policy: policy(),
   agentPrompts: prompts,
-  transcriptProtocol: FULL_HISTORY_TRANSCRIPT_PROTOCOL,
+  transcriptProtocol: GRAPH_MEMORY_TRANSCRIPT_PROTOCOL,
   config: isoConfig,
   conversations: [finalConv],
   status: "completed",
@@ -408,7 +428,7 @@ assert.equal(exported.result.status, "final_answer");
 assert.ok(exported.result.final_answer);
 assert.equal(exported.messages.length, 2);
 assert.match(exported.messages[1]!.content, /FINAL_ANSWER:/);
-assert.deepEqual(exported.transcript_protocol, FULL_HISTORY_TRANSCRIPT_PROTOCOL);
+assert.deepEqual(exported.transcript_protocol, GRAPH_MEMORY_TRANSCRIPT_PROTOCOL);
 
 // --- 12. Token/usage telemetry is associated with the correct run/problem/turn ---
 for (const conversation of [convA, convB, finalConv]) {
@@ -421,12 +441,14 @@ for (const conversation of [convA, convB, finalConv]) {
     assert.equal(message.usage.source, "estimated");
     assert.ok((message.usage.inputTokens ?? 0) > 0);
     assert.ok((message.usage.outputTokens ?? 0) > 0);
+    assert.equal(message.requestTelemetry.historicalTranscriptCharsIncluded, 0);
     if (index > 0) {
       assert.ok(
-        message.requestTelemetry.historyCharacters >
-          (conversation.messages[index - 1]!.requestTelemetry?.historyCharacters ?? 0),
-        "history characters must grow with the full transcript",
+        (message.requestTelemetry.previousUtteranceChars ?? 0) > 0,
+        "turns after the first include the previous partner utterance",
       );
+    } else {
+      assert.equal(message.requestTelemetry.previousUtteranceChars ?? 0, 0);
     }
   });
   assert.ok(conversation.conversationEfficiency);
@@ -442,7 +464,8 @@ assert.equal(
   buildTurnRequestForAgent({
     agentId: "agent_a",
     agentPrompts: prompts,
-    problemText: finalProblem.text,
+    problemText:
+      finalConv.problemTextByAgent?.agent_a ?? finalConv.problemText,
     utterances: [],
     turn: 1,
     maxTurns: 8,
@@ -456,7 +479,7 @@ assert.ok((efficiency.averageOutputTokensPerUtterance ?? 0) > 0);
 
 const runExport = serializeRun(finalRun);
 assert.equal(runExport.schema_version, "1.5");
-assert.deepEqual(runExport.transcript_protocol, FULL_HISTORY_TRANSCRIPT_PROTOCOL);
+assert.deepEqual(runExport.transcript_protocol, GRAPH_MEMORY_TRANSCRIPT_PROTOCOL);
 assert.equal(runExport.conversations[0]?.efficiency.turn_count, 2);
 
 // Direct loop: FINAL_ANSWER on turn 1 still persisted.
@@ -494,5 +517,5 @@ const twice = buildTurnRequestForAgent({
 assert.deepEqual(once, twice);
 
 console.log(
-  "ok — transcript architecture: full history, order, symmetry, policy-independent visibility, isolation, FINAL_ANSWER persist+eval, telemetry",
+  "ok — transcript architecture: previous-utterance-only model context, persisted full transcript, isolation, FINAL_ANSWER persist+eval, telemetry",
 );

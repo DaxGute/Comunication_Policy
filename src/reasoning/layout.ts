@@ -1,17 +1,21 @@
-import type { ReasoningEdge, ReasoningGraph, ReasoningNode } from "./types";
+/**
+ * Subject-lane, time-left-to-right layout for the provenance DAG.
+ * Only `revises` and `derived_from` edges are drawn in the kernel.
+ * Final-synthesis geometry is inspector overlay, not a canonical edge kind.
+ */
+import type { AgentId } from "../agents/types";
+import { provenanceEdges } from "./provenance";
+import { subjectDisplayTitle } from "./ids";
+import type {
+  PropositionVersion,
+  ProvenanceEdgeKind,
+  ReasoningActor,
+  ReasoningGraph,
+  ReasoningSubject,
+  ReasoningSubjectSource,
+} from "./types";
 
-export type LayoutEdgeKind =
-  | "parent"
-  | "dependency"
-  | "supersedes"
-  | "final"
-  | "answers"
-  | "supports"
-  | "challenges"
-  | "depends_on"
-  | "revises"
-  | "replaced_by"
-  | "grounds";
+export type LayoutEdgeKind = ProvenanceEdgeKind | "final_synthesis";
 
 export type GraphLayoutNode = {
   id: string;
@@ -21,13 +25,48 @@ export type GraphLayoutNode = {
   height: number;
   turnIndex: number;
   depth: number;
-  node: ReasoningNode;
+  kind: "version";
+  subjectId: string;
+  version: PropositionVersion;
+  subject?: ReasoningSubject;
+  laneIndex: number;
 };
 
 export type GraphLayoutEdge = {
   from: string;
   to: string;
   kind: LayoutEdgeKind;
+  declaredBy?: string;
+  turnIndex?: number;
+};
+
+export type GraphLayoutLane = {
+  subjectId: string;
+  label: string;
+  y: number;
+  height: number;
+  source?: ReasoningSubjectSource;
+  createdAtTurn?: number;
+  createdBy?: ReasoningActor;
+};
+
+export type GraphLayoutTurnBand = {
+  turnIndex: number;
+  x: number;
+  nodeX: number;
+  width: number;
+  agentId?: AgentId;
+  persistentChange?: boolean;
+};
+
+export type GraphLayoutFinalSynthesis = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  turnIndex: number;
+  declared: boolean;
+  basisVersionIds: string[];
 };
 
 export type GraphLayout = {
@@ -35,448 +74,250 @@ export type GraphLayout = {
   height: number;
   nodes: GraphLayoutNode[];
   edges: GraphLayoutEdge[];
+  lanes: GraphLayoutLane[];
   turnBands: GraphLayoutTurnBand[];
+  finalSynthesis?: GraphLayoutFinalSynthesis;
 };
 
-export type GraphLayoutTurnBand = {
+export type LayoutTurnSpec = {
   turnIndex: number;
-  y: number;
-  nodeY: number;
+  agentId?: AgentId;
+  persistentChange?: boolean;
 };
 
-const NODE_W = 176;
-const NODE_H = 72;
-const ISSUE_W = 200;
-const GAP_X = 36;
-const TURN_STEP = 148;
-const PAD_X = 76;
-const PAD_Y = 36;
-const SUBJECT_GAP_Y = 104;
-const ROOT_CENTER_X = 220;
-const ROOT_LANE_STEP = NODE_W + GAP_X * 2;
-const MIN_CANVAS_W = 640;
-const LOCAL_OFFSET = 28;
-const ORPHAN_LANES = 2;
-
-export const LAYOUT_ROOT_CENTER_X = ROOT_CENTER_X;
-export const LAYOUT_LANE_STEP = ROOT_LANE_STEP;
-export const LAYOUT_ORPHAN_LANES = ORPHAN_LANES;
-export const UNASSIGNED_REGION_ID = "__unassigned__";
-
-export type LayoutOptions = {
-  /** Include empty chronological bands through the current conversation turn. */
-  throughTurn?: number;
-  finalAnswer?: {
-    text: string;
-    supportingNodeIds: string[];
+export type ReasoningGraphLayoutOptions = {
+  currentStateOnly?: boolean;
+  agentFilter?: "all" | "agent_a" | "agent_b";
+  edgeFilter?: "all" | "revises" | "derived_from";
+  statusFilter?: "all" | "active" | "superseded" | "removed";
+  subjectId?: string;
+  turnMin?: number;
+  turnMax?: number;
+  /** When set, every listed turn gets a column, including zero-change turns. */
+  turns?: LayoutTurnSpec[];
+  finalSynthesis?: {
+    turnIndex?: number;
+    declared?: boolean;
+    basisVersionIds?: string[];
   };
 };
 
-function uniqueEdges(edges: GraphLayoutEdge[]): GraphLayoutEdge[] {
-  const seen = new Set<string>();
-  const out: GraphLayoutEdge[] = [];
-  for (const edge of edges) {
-    const key = `${edge.kind}:${edge.from}->${edge.to}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(edge);
-  }
-  return out;
+const NODE_W = 188;
+const NODE_H = 78;
+const GAP_X = 56;
+const ROW_H = 148;
+const LANE_LABEL_W = 196;
+const PAD_X = 24;
+const TURN_HEADER_H = 52;
+const SYNTHESIS_H = 96;
+const SYNTHESIS_GAP = 28;
+
+export const LAYOUT_ROOT_CENTER_X = LANE_LABEL_W + PAD_X + NODE_W / 2;
+export const LAYOUT_LANE_STEP = NODE_W + GAP_X;
+export const LAYOUT_ORPHAN_LANES = 0;
+export const UNASSIGNED_REGION_ID = "__unassigned__";
+
+function subjectList(graph: ReasoningGraph): ReasoningSubject[] {
+  if (graph.subjects.length > 0) return graph.subjects;
+  return [...new Set(graph.versions.map((version) => version.subjectId))].map(
+    (id) => ({ id, source: "agent" as const }),
+  );
 }
 
-function structuralNeighbors(
-  node: ReasoningNode,
-  nodes: ReasoningNode[],
-  edges: ReasoningEdge[],
-): string[] {
-  const neighbors = new Set([
-    ...node.parents,
-    ...node.dependencies,
-    ...(node.type !== "final_answer" && node.subjectId
-      ? [node.subjectId]
-      : []),
-    ...(node.type !== "final_answer" && node.supersedes
-      ? [node.supersedes]
-      : []),
-  ]);
-  for (const candidate of nodes) {
-    if (
-      candidate.parents.includes(node.id) ||
-      candidate.dependencies.includes(node.id) ||
-      (candidate.type !== "final_answer" &&
-        candidate.subjectId === node.id) ||
-      (candidate.type !== "final_answer" && candidate.supersedes === node.id)
-    ) {
-      neighbors.add(candidate.id);
+function visibleVersions(
+  graph: ReasoningGraph,
+  options: ReasoningGraphLayoutOptions,
+): PropositionVersion[] {
+  let versions = graph.versions;
+  if (options.subjectId) {
+    versions = versions.filter((version) => version.subjectId === options.subjectId);
+  }
+  if (options.agentFilter && options.agentFilter !== "all") {
+    versions = versions.filter((version) => version.agentId === options.agentFilter);
+  }
+  if (options.statusFilter && options.statusFilter !== "all") {
+    versions = versions.filter((version) => version.status === options.statusFilter);
+  }
+  if (options.turnMin !== undefined) {
+    versions = versions.filter((version) => version.turn >= options.turnMin!);
+  }
+  if (options.turnMax !== undefined) {
+    versions = versions.filter((version) => version.turn <= options.turnMax!);
+  }
+  if (options.currentStateOnly) {
+    const active = new Set(
+      versions.filter((version) => version.status === "active").map((version) => version.id),
+    );
+    const keep = new Set(active);
+    for (const version of graph.versions) {
+      if (!active.has(version.id)) continue;
+      for (const sourceId of version.derivedFromVersionIds ?? []) keep.add(sourceId);
     }
-  }
-  for (const edge of edges) {
-    if (edge.sourceNodeId === node.id) neighbors.add(edge.targetNodeId);
-    if (edge.targetNodeId === node.id) neighbors.add(edge.sourceNodeId);
-  }
-  return [...neighbors];
-}
-
-function placeTurnRow(
-  row: ReasoningNode[],
-  allNodes: ReasoningNode[],
-  positionedById: Map<string, GraphLayoutNode>,
-  orphanCursor: { index: number },
-  subjectCenters: Map<string, number>,
-  orphanOrigin: number,
-  y: number,
-  edges: ReasoningEdge[],
-): GraphLayoutNode[] {
-  const rowIds = new Set(row.map((node) => node.id));
-  const desiredCenter = new Map<string, number>();
-  const attachedIds = new Set<string>();
-
-  for (const node of row) {
-    if (node.type !== "final_answer" && node.subjectId) {
-      const subjectCenter = subjectCenters.get(node.subjectId);
-      if (subjectCenter !== undefined) {
-        desiredCenter.set(node.id, subjectCenter);
-        attachedIds.add(node.id);
-      }
-    }
-  }
-
-  for (const node of row) {
-    if (desiredCenter.has(node.id)) continue;
-    const prior = structuralNeighbors(node, allNodes, edges)
-      .map((id) => positionedById.get(id))
-      .filter((item): item is GraphLayoutNode => Boolean(item));
-    if (prior.length > 0) {
-      desiredCenter.set(
-        node.id,
-        prior.reduce((sum, item) => sum + item.x + item.width / 2, 0) /
-          prior.length,
+    versions = graph.versions.filter((version) => keep.has(version.id));
+    if (options.subjectId) {
+      versions = versions.filter(
+        (version) => version.subjectId === options.subjectId || keep.has(version.id),
       );
     }
   }
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const node of row) {
-      if (desiredCenter.has(node.id) || attachedIds.has(node.id)) continue;
-      const relatedCenters = structuralNeighbors(node, allNodes, edges)
-        .filter((id) => rowIds.has(id))
-        .map((id) => desiredCenter.get(id))
-        .filter((value): value is number => value !== undefined);
-      if (relatedCenters.length > 0) {
-        desiredCenter.set(
-          node.id,
-          relatedCenters.reduce((sum, value) => sum + value, 0) /
-            relatedCenters.length,
-        );
-        changed = true;
-      }
-    }
-  }
-
-  for (const node of row) {
-    if (desiredCenter.has(node.id)) continue;
-    const component = new Set<string>([node.id]);
-    const queue = [node.id];
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const currentNode = row.find((candidate) => candidate.id === current);
-      if (!currentNode) continue;
-      for (const neighbor of structuralNeighbors(currentNode, allNodes, edges)) {
-        if (!rowIds.has(neighbor) || component.has(neighbor)) continue;
-        if (attachedIds.has(neighbor)) continue;
-        component.add(neighbor);
-        queue.push(neighbor);
-      }
-    }
-    const center =
-      orphanOrigin + (orphanCursor.index % ORPHAN_LANES) * ROOT_LANE_STEP;
-    orphanCursor.index += 1;
-    for (const id of component) desiredCenter.set(id, center);
-  }
-
-  const ordered = [...row].sort((a, b) => {
-    const centerDelta =
-      (desiredCenter.get(a.id) ?? 0) - (desiredCenter.get(b.id) ?? 0);
-    return centerDelta || a.id.localeCompare(b.id);
-  });
-
-  const groupSizes = new Map<number, number>();
-  for (const node of ordered) {
-    const center = Math.round(desiredCenter.get(node.id) ?? 0);
-    groupSizes.set(center, (groupSizes.get(center) ?? 0) + 1);
-  }
-  const groupIndexes = new Map<number, number>();
-  const out: GraphLayoutNode[] = [];
-  for (const node of ordered) {
-    const width =
-      node.type === "final_answer"
-        ? 280
-        : node.type === "issue"
-          ? ISSUE_W
-          : NODE_W;
-    const center = Math.round(desiredCenter.get(node.id) ?? ROOT_CENTER_X);
-    const index = groupIndexes.get(center) ?? 0;
-    const count = groupSizes.get(center) ?? 1;
-    groupIndexes.set(center, index + 1);
-    const centeredOffset = (index - (count - 1) / 2) * LOCAL_OFFSET;
-    const x = Math.max(PAD_X, center + centeredOffset - width / 2);
-    const item: GraphLayoutNode = {
-      id: node.id,
-      x,
-      y,
-      width,
-      height: NODE_H,
-      turnIndex: node.createdAtTurn,
-      depth: node.createdAtTurn,
-      node,
-    };
-    out.push(item);
-    positionedById.set(node.id, item);
-  }
-  return out;
+  return versions;
 }
 
-/**
- * Chronological layout. Canonical node provenance owns the vertical axis;
- * structural relationships influence horizontal lanes only. Final-answer
- * nodes stay in their terminating turn and sit below that turn's reasoning.
- */
 export function layoutReasoningGraph(
   graph: ReasoningGraph,
-  options: LayoutOptions = {},
+  options: ReasoningGraphLayoutOptions = {},
 ): GraphLayout {
-  const nodes = [...graph.nodes];
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const turns = new Map<number, ReasoningNode[]>();
-  for (const node of nodes) {
-    const list = turns.get(node.createdAtTurn) ?? [];
-    list.push(node);
-    turns.set(node.createdAtTurn, list);
-  }
-
-  for (const list of turns.values()) {
-    list.sort((a, b) => a.id.localeCompare(b.id));
-  }
-
-  const eventTurns = graph.events.map((event) => event.turnIndex);
-  const nodeTurns = nodes.map((node) => node.createdAtTurn);
-  const allTurns = [...eventTurns, ...nodeTurns].filter(Number.isFinite);
-  const minTurn = allTurns.length > 0 ? Math.min(1, ...allTurns) : 1;
-  const latestProvenanceTurn =
-    allTurns.length > 0 ? Math.max(...allTurns) : minTurn;
-  const maxTurn = Math.max(
-    latestProvenanceTurn,
-    options.throughTurn ?? latestProvenanceTurn,
+  const visible = visibleVersions(graph, options);
+  const visibleIds = new Set(visible.map((version) => version.id));
+  const subjects = subjectList(graph).filter(
+    (subject) =>
+      visible.some((version) => version.subjectId === subject.id) ||
+      (!options.currentStateOnly &&
+        !options.subjectId &&
+        graph.subjects.some(
+          (item) => item.id === subject.id && item.source === "task",
+        )),
   );
-  const turnBands: GraphLayoutTurnBand[] = [];
-  const positioned: GraphLayoutNode[] = [];
-  const positionedById = new Map<string, GraphLayoutNode>();
-  const subjectCenters = new Map<string, number>();
-  const subjects = graph.subjects ?? [];
-  for (let index = 0; index < subjects.length; index++) {
-    const subject = subjects[index]!;
-    const center = ROOT_CENTER_X + index * ROOT_LANE_STEP;
-    subjectCenters.set(subject.id, center);
-    const synthetic: ReasoningNode = {
-      id: subject.id,
-      type: "issue",
-      text: subject.description ?? subject.label,
-      createdBy: "agent_a",
-      createdAtTurn: 0,
-      status: "open",
-      parents: [],
-      dependencies: [],
-      metadata: {
-        ...(subject.metadata ?? {}),
-        taskDefined: true,
-        subjectLabel: subject.label,
-      },
-    };
-    const item: GraphLayoutNode = {
-      id: subject.id,
-      x: center - ISSUE_W / 2,
-      y: PAD_Y,
-      width: ISSUE_W,
-      height: NODE_H,
-      turnIndex: 0,
-      depth: 0,
-      node: synthetic,
-    };
-    positioned.push(item);
-    positionedById.set(item.id, item);
-  }
-  const orphanOrigin =
-    subjects.length > 0
-      ? ROOT_CENTER_X + subjects.length * ROOT_LANE_STEP
-      : ROOT_CENTER_X;
-  const orphanCursor = { index: 0 };
-  const layoutEdges = graph.edges ?? [];
+  const subjectIndex = new Map(subjects.map((subject, index) => [subject.id, index]));
+  const extra = [
+    ...new Set(
+      visible
+        .map((version) => version.subjectId)
+        .filter((id) => !subjectIndex.has(id)),
+    ),
+  ];
+  extra.forEach((id) => {
+    subjectIndex.set(id, subjects.length);
+    subjects.push({ id, source: "agent" });
+  });
 
-  for (let turn = minTurn; turn <= maxTurn; turn++) {
-    const bandY =
-      PAD_Y +
-      (subjects.length > 0 ? SUBJECT_GAP_Y : 0) +
-      (turn - minTurn) * TURN_STEP;
-    const nodeY = bandY + 28;
-    turnBands.push({ turnIndex: turn, y: bandY, nodeY });
-    positioned.push(
-      ...placeTurnRow(
-        turns.get(turn) ?? [],
-        nodes,
-        positionedById,
-        orphanCursor,
-        subjectCenters,
-        orphanOrigin,
-        nodeY,
-        layoutEdges,
-      ),
+  const turnSpecs: LayoutTurnSpec[] =
+    options.turns && options.turns.length > 0
+      ? [...options.turns].sort((a, b) => a.turnIndex - b.turnIndex)
+      : [...new Set(visible.map((version) => version.turn))]
+          .sort((a, b) => a - b)
+          .map((turnIndex) => ({ turnIndex }));
+  const turns = turnSpecs.map((item) => item.turnIndex);
+  const turnIndex = new Map(turns.map((turn, index) => [turn, index]));
+  const occupancy = new Map<string, number>();
+  const padY = TURN_HEADER_H + 12;
+
+  const nodes: GraphLayoutNode[] = [];
+  let maxX = LANE_LABEL_W + 320;
+  for (const version of visible) {
+    const lane = subjectIndex.get(version.subjectId) ?? 0;
+    const col = turnIndex.get(version.turn) ?? turns.length;
+    const key = `${lane}:${col}`;
+    const stack = occupancy.get(key) ?? 0;
+    occupancy.set(key, stack + 1);
+    const x = LANE_LABEL_W + PAD_X + col * (NODE_W + GAP_X);
+    const y = padY + lane * ROW_H + stack * 18;
+    nodes.push({
+      id: version.id,
+      x,
+      y,
+      width: NODE_W,
+      height: NODE_H,
+      turnIndex: version.turn,
+      depth: col + 1,
+      kind: "version",
+      subjectId: version.subjectId,
+      version,
+      subject: subjects[lane],
+      laneIndex: lane,
+    });
+    maxX = Math.max(maxX, x + NODE_W + PAD_X);
+  }
+  if (turns.length > 0) {
+    maxX = Math.max(
+      maxX,
+      LANE_LABEL_W + PAD_X + turns.length * (NODE_W + GAP_X),
     );
   }
 
-  const hasOrphans = nodes.some(
-    (node) =>
-      node.type !== "final_answer" &&
-      !(node.subjectId && subjectCenters.has(node.subjectId)),
-  );
-  if (hasOrphans && subjects.length > 0) {
-    const item: GraphLayoutNode = {
-      id: UNASSIGNED_REGION_ID,
-      x: orphanOrigin - ISSUE_W / 2,
-      y: PAD_Y,
-      width: ISSUE_W,
-      height: NODE_H,
-      turnIndex: 0,
-      depth: 0,
-      node: {
-        id: UNASSIGNED_REGION_ID,
-        type: "issue",
-        text: "Unassigned / emergent reasoning",
-        createdBy: "agent_a",
-        createdAtTurn: 0,
-        status: "open",
-        parents: [],
-        dependencies: [],
-        metadata: { taskDefined: true, subjectLabel: "Unassigned" },
-      },
-    };
-    positioned.push(item);
-    positionedById.set(item.id, item);
-  }
-
-  const maxNodeRight = positioned.reduce(
-    (max, item) => Math.max(max, item.x + item.width),
-    0,
-  );
-  const maxWidth = Math.max(MIN_CANVAS_W, maxNodeRight + PAD_X);
-  const embeddedFinal = positioned.find(
-    (item) => item.node.type === "final_answer",
-  );
-  if (embeddedFinal) {
-    embeddedFinal.x = (maxWidth - embeddedFinal.width) / 2;
-    embeddedFinal.y += NODE_H + 24;
-  }
-  const heightWithoutFinal =
-    positioned.length > 0
-      ? Math.max(...positioned.map((item) => item.y + item.height)) + PAD_Y
-      : 220;
-
+  const edgeKind = options.edgeFilter ?? "all";
   const edges: GraphLayoutEdge[] = [];
-  if ((graph.edges?.length ?? 0) === 0) {
-    for (const node of nodes) {
-      for (const parentId of node.parents) {
-        if (byId.has(parentId)) {
-          edges.push({ from: parentId, to: node.id, kind: "parent" });
-        }
-      }
-      for (const depId of node.dependencies) {
-        if (byId.has(depId)) {
-          edges.push({ from: node.id, to: depId, kind: "dependency" });
-        }
-      }
-      if (
-        node.type !== "final_answer" &&
-        node.subjectId &&
-        positionedById.has(node.subjectId)
-      ) {
-        edges.push({ from: node.id, to: node.subjectId, kind: "answers" });
-      }
-      if (
-        node.type !== "final_answer" &&
-        node.supersedes &&
-        byId.has(node.supersedes)
-      ) {
-        edges.push({ from: node.id, to: node.supersedes, kind: "supersedes" });
-      }
-    }
-  }
-  for (const edge of graph.edges ?? []) {
+  for (const edge of provenanceEdges(graph)) {
+    if (edgeKind !== "all" && edge.kind !== edgeKind) continue;
+    if (options.currentStateOnly && edge.kind === "revises") continue;
+    if (!visibleIds.has(edge.from) || !visibleIds.has(edge.to)) continue;
+    const target = graph.versions.find((version) => version.id === edge.to);
     edges.push({
-      from: edge.sourceNodeId,
-      to: edge.targetNodeId,
-      kind:
-        edge.targetNodeId === "__final_answer__" ? "final" : edge.type,
+      from: edge.from,
+      to: edge.to,
+      kind: edge.kind,
+      declaredBy: target?.agentId,
+      turnIndex: target?.turn,
     });
   }
 
-  let width = maxWidth;
-  let height = heightWithoutFinal;
+  const lanes: GraphLayoutLane[] = subjects.map((subject, index) => ({
+    subjectId: subject.id,
+    label: subjectDisplayTitle(subject),
+    y: padY + index * ROW_H - 16,
+    height: ROW_H,
+    source: subject.source,
+    createdAtTurn: subject.createdAtTurn,
+    createdBy: subject.createdBy,
+  }));
 
-  const finalAnswer = options.finalAnswer;
-  if (finalAnswer?.text && !byId.has("__final_answer__")) {
-    const finalId = "__final_answer__";
-    const finalWidth = Math.min(280, Math.max(ISSUE_W, maxWidth * 0.35));
-    const finalY = heightWithoutFinal + 8;
-    const finalX = (maxWidth - finalWidth) / 2;
-    const synthetic: ReasoningNode = {
-      id: finalId,
-      type: "final_answer",
-      text: finalAnswer.text,
-      createdBy: "agent_a",
-      createdAtTurn: maxTurn,
-      sourceMessageId: `legacy-final-turn-${maxTurn}`,
-      sourceEventId: `legacy-final-turn-${maxTurn}`,
-      status: "accepted",
-      parents: [...finalAnswer.supportingNodeIds],
-      dependencies: [],
-      supportingNodeIds: [...finalAnswer.supportingNodeIds],
-      supportErrors: [],
+  const turnBands: GraphLayoutTurnBand[] = turnSpecs.map((spec, index) => ({
+    turnIndex: spec.turnIndex,
+    x: LANE_LABEL_W + PAD_X + index * (NODE_W + GAP_X),
+    nodeX: LANE_LABEL_W + PAD_X + index * (NODE_W + GAP_X),
+    width: NODE_W,
+    agentId: spec.agentId,
+    persistentChange: spec.persistentChange,
+  }));
+
+  let finalSynthesis: GraphLayoutFinalSynthesis | undefined;
+  const laneBottom =
+    subjects.length > 0
+      ? padY + subjects.length * ROW_H
+      : padY + ROW_H;
+  if (options.finalSynthesis && (options.edgeFilter ?? "all") === "all") {
+    const finalTurn =
+      options.finalSynthesis.turnIndex ??
+      turns[turns.length - 1] ??
+      1;
+    const col = turnIndex.get(finalTurn) ?? Math.max(0, turns.length - 1);
+    const boxX = LANE_LABEL_W + 8;
+    const boxY = laneBottom + SYNTHESIS_GAP;
+    const boxW = Math.max(320, maxX - boxX - 16);
+    finalSynthesis = {
+      x: boxX,
+      y: boxY,
+      width: boxW,
+      height: SYNTHESIS_H,
+      turnIndex: finalTurn,
+      declared: options.finalSynthesis.declared === true,
+      basisVersionIds: options.finalSynthesis.basisVersionIds ?? [],
     };
-    const layoutNode: GraphLayoutNode = {
-      id: finalId,
-      x: finalX,
-      y: finalY,
-      width: finalWidth,
-      height: NODE_H,
-      turnIndex: maxTurn,
-      depth: maxTurn,
-      node: synthetic,
-    };
-    positioned.push(layoutNode);
-    height = finalY + NODE_H + PAD_Y;
-    for (const id of finalAnswer.supportingNodeIds) {
-      const support = byId.get(id);
-      if (
-        positionedById.has(id) &&
-        support &&
-        support.status !== "rejected" &&
-        support.status !== "superseded"
-      ) {
-        edges.push({ from: id, to: finalId, kind: "final" });
+    for (const versionId of finalSynthesis.basisVersionIds) {
+      if (!visibleIds.has(versionId) && !graph.versions.some((item) => item.id === versionId)) {
+        continue;
       }
+      edges.push({
+        from: versionId,
+        to: "__final_synthesis__",
+        kind: "final_synthesis",
+        turnIndex: finalTurn,
+      });
     }
+    void col;
   }
 
-  if (positioned.length === 0) {
-    return { width: 420, height: 220, nodes: [], edges: [], turnBands: [] };
-  }
-
+  const height = Math.max(
+    280,
+    (finalSynthesis ? finalSynthesis.y + finalSynthesis.height + 24 : laneBottom + 24),
+  );
   return {
-    width: Math.max(width, 360),
-    height: Math.max(height, 220),
-    nodes: positioned,
-    edges: uniqueEdges(edges),
+    width: Math.max(640, maxX),
+    height,
+    nodes,
+    edges,
+    lanes,
     turnBands,
+    finalSynthesis,
   };
 }

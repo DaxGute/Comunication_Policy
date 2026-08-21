@@ -14,7 +14,7 @@ import type {
 } from "../../experiment/runTree";
 import type { ExperimentRun } from "../../experiment/types";
 
-export type ProblemPaneTab = "analysis" | "conversation" | "graph";
+export type ProblemPaneTab = "analysis" | "conversation" | "graph" | "information";
 
 export type InspectorProps = {
   runs: ExperimentRun[];

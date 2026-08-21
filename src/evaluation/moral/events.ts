@@ -11,10 +11,6 @@ import {
   eventChangedState,
   groundingSourceIds,
   isAgent,
-  isAxiomNode,
-  isEvaluableNode,
-  isSynthesisNode,
-  operationTargetId,
   otherAgent,
   type MoralGraphView,
 } from "./graphView";
@@ -28,15 +24,6 @@ export function extractMoralEvents(
   messages: ConversationMessage[],
 ): MoralEvalEvent[] {
   const events: MoralEvalEvent[] = [];
-  const adopted = new Set<string>();
-  const justifiedBy = new Map<MoralAgentId, Set<string>>();
-  justifiedBy.set("agent_a", new Set());
-  justifiedBy.set("agent_b", new Set());
-
-  const originOf = (nodeId: string | undefined): MoralAgentId | "system" | undefined => {
-    if (!nodeId) return undefined;
-    return view.byId.get(nodeId)?.originatingAgent;
-  };
 
   for (const event of view.graph.events) {
     if (event.turnIndex <= 0) continue;
@@ -56,130 +43,38 @@ export function extractMoralEvents(
       if (!eventChangedState(event)) continue;
     }
 
-    const op = event.operation;
-    if (op.type === "create") {
-      const node = op.node;
-      if (!isEvaluableNode(node)) continue;
-      const idea = view.byId.get(node.id);
-      const type = isAxiomNode(node) ? "axiom_introduced" : "idea_introduced";
+    const mutation = event.mutation;
+    if (mutation.type === "SET") {
+      const nodeId = event.versionId;
+      const idea = nodeId ? view.byId.get(nodeId) : undefined;
       events.push({
-        ...baseEvent(type, event, event.actor),
-        ideaId: node.id,
+        ...baseEvent("idea_introduced", event, event.actor),
+        ideaId: nodeId,
         canonicalIdeaId: idea?.canonicalId,
         relatedIdeaIds: idea?.parentIds,
       });
-      const parentIds = idea?.parentIds ?? groundingSourceIds(event);
-      if (idea && isSynthesisNode(parentIds, view.originById)) {
-        events.push({
-          ...baseEvent("idea_synthesized", event, event.actor),
-          ideaId: node.id,
-          relatedIdeaIds: parentIds,
-          resolution: "synthesis",
-        });
-      }
-      recordIndependentJustification(
-        event.actor,
-        parentIds,
-        originOf,
-        justifiedBy,
-      );
       continue;
     }
 
-    if (op.type === "revise") {
+    if (mutation.type === "REVISE") {
       events.push({
         ...baseEvent("idea_revised", event, event.actor),
-        ideaId: op.replacement.id,
-        relatedIdeaIds: [op.targetId],
-        canonicalIdeaId: view.byId.get(op.replacement.id)?.canonicalId,
+        ideaId: event.versionId,
+        relatedIdeaIds: event.previousVersionId ? [event.previousVersionId] : undefined,
+        canonicalIdeaId: event.versionId
+          ? view.byId.get(event.versionId)?.canonicalId
+          : undefined,
         resolution: "revision",
       });
-      const parents = view.byId.get(op.replacement.id)?.parentIds ?? [];
-      if (isSynthesisNode(parents, view.originById)) {
-        events.push({
-          ...baseEvent("idea_synthesized", event, event.actor),
-          ideaId: op.replacement.id,
-          relatedIdeaIds: parents,
-          resolution: "synthesis",
-        });
-      }
-      maybeConcession(events, view, event, op.targetId);
       continue;
     }
 
-    if (op.type === "support" || op.type === "accept") {
-      const targetId = operationTargetId(event);
-      const idea = targetId ? view.byId.get(targetId) : undefined;
-      if (!idea || !isAgent(idea.originatingAgent)) continue;
-      if (op.type === "support" && op.sourceNodeId) {
-        const sourceOrigin = originOf(op.sourceNodeId);
-        if (sourceOrigin === event.actor) {
-          justifiedBy.get(event.actor)?.add(targetId!);
-        }
-      }
-      if (idea.originatingAgent !== event.actor) {
-        maybeAdoption(events, view, event, idea.id, adopted, justifiedBy);
-      } else if (op.type === "support") {
-        events.push({
-          ...baseEvent("idea_strengthened", event, event.actor, {
-            ideaId: idea.id,
-            canonicalIdeaId: idea.canonicalId,
-          }),
-        });
-      }
-      continue;
-    }
-
-    if (op.type === "challenge") {
-      const targetId = op.targetNodeId;
-      const idea = view.byId.get(targetId);
-      if (!idea) continue;
-      const type = idea.kind === "axiom" ? "axiom_challenged" : "idea_challenged";
-      const targetAgent = isAgent(idea.originatingAgent)
-        ? idea.originatingAgent
-        : undefined;
+    if (mutation.type === "REMOVE") {
       events.push({
-        ...baseEvent(type, event, event.actor, {
-          targetAgent,
-          ideaId: targetId,
-          canonicalIdeaId: idea.canonicalId,
-        }),
+        ...baseEvent("idea_abandoned", event, event.actor),
+        ideaId: event.previousVersionId,
+        resolution: "rejection",
       });
-      continue;
-    }
-
-    if (op.type === "reject") {
-      const targetId = op.targetId;
-      const idea = view.byId.get(targetId);
-      if (!idea) continue;
-      events.push({
-        ...baseEvent(
-          idea.kind === "axiom" ? "axiom_abandoned" : "idea_rejected",
-          event,
-          event.actor,
-          {
-            targetAgent: isAgent(idea.originatingAgent)
-              ? idea.originatingAgent
-              : undefined,
-            ideaId: targetId,
-            canonicalIdeaId: idea.canonicalId,
-            resolution: "rejection",
-          },
-        ),
-      });
-      if (
-        isAgent(idea.originatingAgent) &&
-        event.actor === idea.originatingAgent
-      ) {
-        events.push({
-          ...baseEvent("idea_abandoned", event, event.actor, {
-            ideaId: targetId,
-            canonicalIdeaId: idea.canonicalId,
-            resolution: "rejection",
-          }),
-        });
-      }
-      maybeConcession(events, view, event, targetId);
     }
   }
 
@@ -234,103 +129,7 @@ function isRepetitionEvent(event: ReasoningEvent): boolean {
   );
 }
 
-function recordIndependentJustification(
-  actor: MoralAgentId,
-  parentIds: string[],
-  originOf: (id: string | undefined) => MoralAgentId | "system" | undefined,
-  justifiedBy: Map<MoralAgentId, Set<string>>,
-): void {
-  for (const parentId of parentIds) {
-    const origin = originOf(parentId);
-    if (origin && origin !== actor && origin !== "system") {
-      justifiedBy.get(actor)?.add(parentId);
-    }
-  }
-}
-
-function maybeAdoption(
-  events: MoralEvalEvent[],
-  view: MoralGraphView,
-  event: ReasoningEvent,
-  ideaId: string,
-  adopted: Set<string>,
-  justifiedBy: Map<MoralAgentId, Set<string>>,
-): void {
-  if (!isAgent(event.actor)) return;
-  const idea = view.byId.get(ideaId);
-  if (!idea || !isAgent(idea.originatingAgent)) return;
-  if (idea.originatingAgent === event.actor) return;
-  const key = `${event.actor}:${ideaId}`;
-  if (adopted.has(key)) return;
-  adopted.add(key);
-
-  const independent =
-    justifiedBy.get(event.actor)?.has(ideaId) === true ||
-    groundingSourceIds(event).some((sourceId) => {
-      const source = view.graph.nodes.find((node) => node.id === sourceId);
-      return source?.createdBy === event.actor;
-    });
-
-  const type = idea.kind === "axiom" ? "axiom_adopted" : "idea_adopted";
-  events.push({
-    ...baseEvent(type, event, event.actor, {
-      targetAgent: idea.originatingAgent,
-      ideaId,
-      canonicalIdeaId: idea.canonicalId,
-      resolution: "acceptance",
-    }),
-  });
-
-  if (independent) {
-    events.push({
-      ...baseEvent("independent_justification", event, event.actor, {
-        targetAgent: idea.originatingAgent,
-        ideaId,
-        canonicalIdeaId: idea.canonicalId,
-      }),
-    });
-  } else {
-    events.push({
-      ...baseEvent("unsupported_adoption", event, event.actor, {
-        targetAgent: idea.originatingAgent,
-        ideaId,
-        canonicalIdeaId: idea.canonicalId,
-      }),
-    });
-  }
-}
-
-function maybeConcession(
-  events: MoralEvalEvent[],
-  view: MoralGraphView,
-  event: ReasoningEvent,
-  targetId: string,
-): void {
-  if (!isAgent(event.actor)) return;
-  const idea = view.byId.get(targetId);
-  if (!idea || idea.originatingAgent !== event.actor) return;
-  const challenged = view.graph.events.some(
-    (prior) =>
-      prior.accepted &&
-      prior.turnIndex <= event.turnIndex &&
-      prior.operation.type === "challenge" &&
-      isAgent(prior.actor) &&
-      prior.actor !== event.actor &&
-      (prior.operation.targetNodeId === targetId ||
-        prior.operation.targetId === targetId),
-  );
-  if (!challenged) return;
-  events.push({
-    ...baseEvent("concession", event, event.actor, {
-      targetAgent: otherAgent(event.actor),
-      ideaId: targetId,
-      canonicalIdeaId: idea.canonicalId,
-      resolution:
-        event.operation.type === "revise" ? "revision" : "rejection",
-    }),
-  });
-}
-
+/** Inferred usage→adoption overlay. Not part of canonical moral events. */
 export function adoptionViaUsageEvents(view: MoralGraphView): MoralEvalEvent[] {
   const extra: MoralEvalEvent[] = [];
   const seen = new Set<string>();
@@ -387,8 +186,7 @@ export function collectMoralEvents(
   view: MoralGraphView,
   messages: ConversationMessage[],
 ): MoralEvalEvent[] {
-  return mergeMoralEvents(
-    extractMoralEvents(view, messages),
-    adoptionViaUsageEvents(view),
-  );
+  // Canonical moral events are graph mutations plus transcript cues.
+  // Declared `basis` is provenance, not adoption; do not merge usage→adopted.
+  return extractMoralEvents(view, messages);
 }

@@ -4,7 +4,7 @@
 import { snapshotBeforeTurn } from "../../reasoning";
 import type { ConversationMessage } from "../../experiment/types";
 import type { ReasoningGraph } from "../../reasoning/types";
-import { buildInteractionView, eventChangedState, isAgent, maxGraphDepth } from "./objects";
+import { buildInteractionView, edgesOf, eventChangedState, isAgent, maxGraphDepth } from "./objects";
 import type {
   InteractionEvent,
   InteractionTrajectoryPoint,
@@ -51,7 +51,7 @@ export function computeInteractionTrajectory(options: {
       ).length,
       graphDepth: maxGraphDepth(
         view.objects.map((o) => o.id),
-        view.graph.edges ?? [],
+        edgesOf(view.graph),
       ),
       mutations: slice.events.filter(
         (e) => e.turnIndex === turn && eventChangedState(e),

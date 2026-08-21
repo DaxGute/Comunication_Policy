@@ -13,6 +13,10 @@ import {
 } from "../models/modelRegistry";
 import type { MultiAgentEvaluation } from "../evaluation/types";
 import { postHocProfileFor } from "../evaluation/posthoc/registry";
+import {
+  clampInformationOverlap,
+  snapInformationOverlap,
+} from "../information/split";
 import type { ExperimentRun, RunConfig } from "./types";
 
 /** Legacy persisted shape may include `model` instead of `runModel`. */
@@ -94,6 +98,19 @@ export function normalizeRunConfig(
     stallFailTurns: parsed.stallFailTurns ?? defaults.stallFailTurns,
     localLoopTurns: parsed.localLoopTurns ?? defaults.localLoopTurns,
     cycleWindowTurns: parsed.cycleWindowTurns ?? defaults.cycleWindowTurns,
+    // New moral runs always use agent-created empty graphs. Legacy seeding
+    // aliases are accepted on input only so old configs load; they are never
+    // preserved as an active runtime mode.
+    moralSubjectInitialization: "agent-created",
+    moralSubjectSeeding: "agent-created",
+    informationOverlap: snapInformationOverlap(
+      clampInformationOverlap(
+        typeof parsed.informationOverlap === "number"
+          ? parsed.informationOverlap
+          : (defaults.informationOverlap ?? 1),
+      ),
+    ),
+    informationStructure: parsed.informationStructure,
   };
 }
 

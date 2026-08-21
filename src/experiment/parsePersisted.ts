@@ -28,11 +28,11 @@ import type {
   UsageSource,
 } from "./types";
 import {
+  detectReasoningSchema,
   hydrateReasoningGraph,
   parseReasoningEvent,
-  parseReasoningIntent,
-  parseReasoningNode,
-  parseReasoningOperation,
+  parseReasoningMutation,
+  parsePropositionVersion,
   parseReasoningSubject,
 } from "../reasoning";
 import type { FinalAnswerSupport } from "../reasoning/types";
@@ -179,6 +179,30 @@ function parseRequestTelemetry(
       Number.isFinite(t.historyCharacters)
         ? Math.max(0, Math.round(t.historyCharacters))
         : 0,
+    graphSubjectCount:
+      typeof t.graphSubjectCount === "number"
+        ? Math.max(0, Math.round(t.graphSubjectCount))
+        : undefined,
+    graphActiveValueCount:
+      typeof t.graphActiveValueCount === "number"
+        ? Math.max(0, Math.round(t.graphActiveValueCount))
+        : undefined,
+    graphHistoryVersionCount:
+      typeof t.graphHistoryVersionCount === "number"
+        ? Math.max(0, Math.round(t.graphHistoryVersionCount))
+        : undefined,
+    graphSerializedChars:
+      typeof t.graphSerializedChars === "number"
+        ? Math.max(0, Math.round(t.graphSerializedChars))
+        : undefined,
+    previousUtteranceChars:
+      typeof t.previousUtteranceChars === "number"
+        ? Math.max(0, Math.round(t.previousUtteranceChars))
+        : undefined,
+    historicalTranscriptCharsIncluded:
+      typeof t.historicalTranscriptCharsIncluded === "number"
+        ? Math.max(0, Math.round(t.historicalTranscriptCharsIncluded))
+        : undefined,
   };
 }
 
@@ -236,29 +260,12 @@ function parseReasoningDiagnostics(
 ): ReasoningGraphDiagnostics | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const value = raw as Partial<ReasoningGraphDiagnostics>;
-  const requiredNumbers: Array<keyof ReasoningGraphDiagnostics> = [
-    "nodeCount",
-    "nodesPerTurn",
-    "proposalCount",
-    "claimCount",
-    "evidenceCount",
-    "issueCount",
-    "atomicityWarningCount",
-    "unlinkedNodeCount",
-    "relationshipCount",
-    "relationshipCoverage",
-    "evidenceUsage",
-    "finalSupportingNodeCount",
-    "invalidFinalSupportCount",
-  ];
-  if (
-    requiredNumbers.some(
-      (key) => typeof value[key] !== "number" || !Number.isFinite(value[key]),
-    ) ||
-    !Array.isArray(value.atomicityWarnings)
-  ) {
-    return undefined;
-  }
+  const hasCanonical =
+    typeof value.subjectCount === "number" ||
+    typeof value.rejectedMutationCount === "number" ||
+    typeof value.versionCount === "number" ||
+    typeof (value as { nodeCount?: unknown }).nodeCount === "number";
+  if (!hasCanonical) return undefined;
   return value as ReasoningGraphDiagnostics;
 }
 
@@ -312,17 +319,28 @@ function parseMessage(raw: unknown): ConversationMessage | undefined {
     modelRequest: parseModelRequest(m.modelRequest),
     requestTelemetry: parseRequestTelemetry(m.requestTelemetry),
     rawContent: typeof m.rawContent === "string" ? m.rawContent : undefined,
-    reasoningMoves: Array.isArray(m.reasoningMoves)
-      ? m.reasoningMoves
+    reasoningMutations: Array.isArray(m.reasoningMutations)
+      ? m.reasoningMutations
+          .map((item) => {
+            const parsed = parseReasoningMutation(item);
+            return parsed.type === "invalid" ? undefined : parsed;
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
       : undefined,
-    reasoningIntents: Array.isArray(m.reasoningIntents)
-      ? m.reasoningIntents.map((intent) => parseReasoningIntent(intent))
-      : undefined,
-    reasoningOperations: Array.isArray(m.reasoningOperations)
-      ? m.reasoningOperations
-          .map(parseReasoningOperation)
-          .filter((op): op is NonNullable<typeof op> => Boolean(op))
-      : undefined,
+    ...(m.nothingToAdd === true ? { nothingToAdd: true } : {}),
+    ...(m.readyToFinalize === true ? { readyToFinalize: true } : {}),
+    ...(m.readyToFinalize === false ? { readyToFinalize: false } : {}),
+    ...(Array.isArray(m.focusSubjectIds)
+      ? (() => {
+          const focusSubjectIds = m.focusSubjectIds
+            .filter((id): id is string => typeof id === "string")
+            .map((id) => id.trim())
+            .filter(Boolean);
+          return focusSubjectIds.length > 0 ? { focusSubjectIds } : {};
+        })()
+      : {}),
+    ...(m.materialGraphChange === true ? { materialGraphChange: true } : {}),
+    ...(m.readinessInvalidated === true ? { readinessInvalidated: true } : {}),
   };
 }
 
@@ -331,6 +349,8 @@ function parseFinalAnswerSupport(raw: unknown): FinalAnswerSupport | undefined {
   const parsed = raw as {
     text?: unknown;
     supportingNodeIds?: unknown;
+    basisVersionIds?: unknown;
+    declared?: unknown;
     errors?: unknown;
   };
   const supportingNodeIds = Array.isArray(parsed.supportingNodeIds)
@@ -338,14 +358,25 @@ function parseFinalAnswerSupport(raw: unknown): FinalAnswerSupport | undefined {
         (id): id is string => typeof id === "string",
       )
     : [];
+  const basisVersionIds = Array.isArray(parsed.basisVersionIds)
+    ? parsed.basisVersionIds.filter((id): id is string => typeof id === "string")
+    : [];
   const errors = Array.isArray(parsed.errors)
     ? parsed.errors.filter((item): item is string => typeof item === "string")
     : [];
   const text = typeof parsed.text === "string" ? parsed.text : undefined;
-  if (!text && supportingNodeIds.length === 0 && errors.length === 0) {
+  const declared =
+    typeof parsed.declared === "boolean" ? parsed.declared : undefined;
+  if (
+    !text &&
+    supportingNodeIds.length === 0 &&
+    basisVersionIds.length === 0 &&
+    errors.length === 0 &&
+    declared === undefined
+  ) {
     return undefined;
   }
-  return { text, supportingNodeIds, errors };
+  return { text, supportingNodeIds, basisVersionIds, declared, errors };
 }
 
 function parseConversation(raw: unknown): ProblemConversation | undefined {
@@ -368,10 +399,15 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
   const messages = c.messages
     .map(parseMessage)
     .filter((m): m is ConversationMessage => Boolean(m));
+  const schema = detectReasoningSchema({
+    reasoningSchemaVersion: c.reasoningSchemaVersion,
+    reasoningEvents: c.reasoningEvents,
+  });
   const hasReasoning =
     Array.isArray(c.reasoningSubjects) ||
-    Array.isArray(c.reasoningNodes) ||
-    Array.isArray(c.reasoningEvents);
+    Array.isArray(c.reasoningVersions) ||
+    Array.isArray(c.reasoningEvents) ||
+    Array.isArray((c as { reasoningNodes?: unknown }).reasoningNodes);
   const parsedSubjects = hasReasoning
     ? (c.reasoningSubjects ?? [])
         .map(parseReasoningSubject)
@@ -379,33 +415,100 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
           Boolean(subject),
         )
     : undefined;
-  const parsedNodes = hasReasoning
-    ? (c.reasoningNodes ?? [])
-        .map(parseReasoningNode)
-        .filter((n): n is NonNullable<typeof n> => Boolean(n))
-    : undefined;
-  const parsedEvents = hasReasoning
-    ? (c.reasoningEvents ?? [])
-        .map(parseReasoningEvent)
-        .filter((e): e is NonNullable<typeof e> => Boolean(e))
-    : undefined;
-  const hydrated = hasReasoning
-    ? hydrateReasoningGraph({
-        reasoningSubjects: parsedSubjects,
-        reasoningNodes: parsedNodes,
-        reasoningEvents: parsedEvents,
-      })
-    : undefined;
+  const parsedEvents =
+    schema === 1
+      ? []
+      : hasReasoning
+        ? (c.reasoningEvents ?? [])
+            .map(parseReasoningEvent)
+            .filter((e): e is NonNullable<typeof e> => Boolean(e))
+        : undefined;
+  const hydrated =
+    schema === 1
+      ? undefined
+      : hasReasoning
+        ? hydrateReasoningGraph({
+            reasoningSchemaVersion: 2,
+            reasoningSubjects: parsedSubjects,
+            reasoningEvents: parsedEvents,
+          })
+        : undefined;
+  const parsedVersions = Array.isArray(c.reasoningVersions)
+    ? c.reasoningVersions
+        .map(parsePropositionVersion)
+        .filter((v): v is NonNullable<typeof v> => Boolean(v))
+    : hydrated?.versions;
   return {
     problemId: c.problemId,
     problemTitle: c.problemTitle,
     problemText: c.problemText,
+    problemTextByAgent:
+      c.problemTextByAgent &&
+      typeof c.problemTextByAgent === "object" &&
+      typeof (c.problemTextByAgent as { agent_a?: unknown }).agent_a ===
+        "string" &&
+      typeof (c.problemTextByAgent as { agent_b?: unknown }).agent_b === "string"
+        ? {
+            agent_a: (c.problemTextByAgent as { agent_a: string }).agent_a,
+            agent_b: (c.problemTextByAgent as { agent_b: string }).agent_b,
+          }
+        : undefined,
+    informationAssignment:
+      c.informationAssignment && typeof c.informationAssignment === "object"
+        ? (c.informationAssignment as ProblemConversation["informationAssignment"])
+        : undefined,
+    informationFlowMetrics:
+      c.informationFlowMetrics && typeof c.informationFlowMetrics === "object"
+        ? (c.informationFlowMetrics as ProblemConversation["informationFlowMetrics"])
+        : undefined,
     messages,
     finalAnswer: typeof c.finalAnswer === "string" ? c.finalAnswer : undefined,
     finalAnswerSupport: parseFinalAnswerSupport(c.finalAnswerSupport),
+    finalBasisVersionIds: Array.isArray(c.finalBasisVersionIds)
+      ? c.finalBasisVersionIds.filter((id): id is string => typeof id === "string")
+      : parseFinalAnswerSupport(c.finalAnswerSupport)?.basisVersionIds,
+    finalBasisDeclared:
+      typeof c.finalBasisDeclared === "boolean"
+        ? c.finalBasisDeclared
+        : parseFinalAnswerSupport(c.finalAnswerSupport)?.declared,
+    finalBasisErrors: Array.isArray(c.finalBasisErrors)
+      ? c.finalBasisErrors.filter((item): item is string => typeof item === "string")
+      : parseFinalAnswerSupport(c.finalAnswerSupport)?.errors,
+    finalSourceInformationIds: Array.isArray(c.finalSourceInformationIds)
+      ? c.finalSourceInformationIds.filter(
+          (id): id is string => typeof id === "string",
+        )
+      : undefined,
+    reasoningSchemaVersion: schema === 1 ? 1 : hasReasoning ? 2 : undefined,
     reasoningSubjects: hydrated?.subjects ?? parsedSubjects,
-    reasoningNodes: hydrated?.nodes,
+    reasoningVersions: hydrated?.versions ?? parsedVersions,
     reasoningEvents: hydrated?.events ?? parsedEvents,
+    finalGraphState:
+      c.finalGraphState && typeof c.finalGraphState === "object"
+        ? {
+            subjects: Array.isArray(c.finalGraphState.subjects)
+              ? c.finalGraphState.subjects
+                  .map(parseReasoningSubject)
+                  .filter((s): s is NonNullable<typeof s> => Boolean(s))
+              : [],
+            versions: Array.isArray(c.finalGraphState.versions)
+              ? c.finalGraphState.versions
+                  .map(parsePropositionVersion)
+                  .filter((v): v is NonNullable<typeof v> => Boolean(v))
+              : [],
+          }
+        : undefined,
+    legacyReasoningSnapshot:
+      schema === 1
+        ? {
+            nodes: Array.isArray((c as { reasoningNodes?: unknown }).reasoningNodes)
+              ? ((c as { reasoningNodes?: unknown[] }).reasoningNodes ?? [])
+              : undefined,
+            events: Array.isArray(c.reasoningEvents)
+              ? c.reasoningEvents
+              : undefined,
+          }
+        : undefined,
     reasoningDiagnostics: parseReasoningDiagnostics(c.reasoningDiagnostics),
     stoppedReason: c.stoppedReason as ProblemConversation["stoppedReason"],
     error: typeof c.error === "string" ? c.error : undefined,

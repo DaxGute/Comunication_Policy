@@ -11,19 +11,24 @@ import { isProblemAnalysisRunning } from "../../experiment/evaluationUi";
 import { serializeConversation } from "../../experiment/serializeConversation";
 import type { ExperimentRun, ProblemConversation } from "../../experiment/types";
 import {
-  eventsForMessage,
   hydrateReasoningGraph,
   nodeIdsTouchedByMessage,
+  computeTurnScopes,
+  type ReasoningGraph,
+  type TurnScopeDiagnostics,
 } from "../../reasoning";
 import type { CrosswordSpec } from "../../problems/crossword/types";
+import type { MoralSpec } from "../../problems/moral/types";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
 import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
 import { ReasoningGraphView } from "../graph/ReasoningGraph";
+import { MoralPreview } from "../moral/MoralPreview";
 import { InlineEditableText } from "../ui/InlineEditableText";
 import { TextPreviewModal } from "../ui/TextPreviewModal";
 import { TokenUsagePanel } from "../ui/TokenUsagePanel";
 import {
   formatModelRequestForAudit,
+  formatTurnMemoryForAudit,
   resolveModelRequest,
 } from "../../runtime/renderModelRequest";
 import {
@@ -35,6 +40,7 @@ import {
   ProblemResultDetails,
 } from "./problemMetrics";
 import { crosswordPredictedGrid, resolveCrosswordDetails } from "./crosswordDetails";
+import { InformationAssignmentPanel } from "./InformationAssignmentPanel";
 import { CopyJsonButton, InspectorBusySpinner } from "./shared";
 import { messageStatsLabel } from "./format";
 import type { InspectorProps, ProblemPaneTab } from "./types";
@@ -47,6 +53,7 @@ export const TranscriptView = memo(function TranscriptView({
   onRunEvaluation,
   onRenameProblem,
   crossword,
+  moral,
   tab,
   onTabChange,
   speakingAgentId,
@@ -54,7 +61,6 @@ export const TranscriptView = memo(function TranscriptView({
   selectedNodeId,
   onSelectMessage,
   onSelectNode,
-  onOpenConversationTurn,
   onViewReasoning,
 }: {
   conversation: ProblemConversation;
@@ -64,6 +70,7 @@ export const TranscriptView = memo(function TranscriptView({
   onRunEvaluation: InspectorProps["onRunEvaluation"];
   onRenameProblem: InspectorProps["onRenameProblem"];
   crossword?: CrosswordSpec;
+  moral?: MoralSpec;
   tab: ProblemPaneTab;
   onTabChange: (tab: ProblemPaneTab) => void;
   speakingAgentId?: AgentId;
@@ -71,11 +78,13 @@ export const TranscriptView = memo(function TranscriptView({
   selectedNodeId?: string;
   onSelectMessage?: (messageId: string) => void;
   onSelectNode?: (nodeId: string | undefined, messageId?: string) => void;
-  onOpenConversationTurn?: (messageId: string, nodeId?: string) => void;
   onViewReasoning?: (messageId: string) => void;
 }) {
   const [convoJsonOpen, setConvoJsonOpen] = useState(false);
-  const [auditTurn, setAuditTurn] = useState<number | null>(null);
+  const [audit, setAudit] = useState<{
+    kind: "request" | "memory";
+    turn: number;
+  } | null>(null);
   const [expandedMessageIds, setExpandedMessageIds] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -84,26 +93,59 @@ export const TranscriptView = memo(function TranscriptView({
     [conversation, crossword, evaluation],
   );
   const isCrossword = Boolean(crossword) || evaluation?.details?.grader === "crossword";
-  const isMoral = evaluation?.details?.grader === "moral_open_ended";
+  const isMoral =
+    Boolean(moral) ||
+    evaluation?.details?.grader === "moral_open_ended" ||
+    run.config.problemCategory === "moral_philosophical";
   const isProof = evaluation?.details?.grader === "proof_collaborative";
   const predictedGrid = useMemo(
     () => crosswordPredictedGrid({ crosswordDetails, evaluation }),
     [crosswordDetails, evaluation],
   );
+  const moralAnswer =
+    evaluation?.finalAnswer?.trim() ||
+    conversation.finalAnswer?.trim() ||
+    undefined;
 
   const reasoningGraph = useMemo(
     () =>
       hydrateReasoningGraph({
+        reasoningSchemaVersion: conversation.reasoningSchemaVersion,
         reasoningSubjects: conversation.reasoningSubjects,
-        reasoningNodes: conversation.reasoningNodes,
+        reasoningVersions: conversation.reasoningVersions,
         reasoningEvents: conversation.reasoningEvents,
       }),
     [
+      conversation.reasoningSchemaVersion,
       conversation.reasoningSubjects,
-      conversation.reasoningNodes,
+      conversation.reasoningVersions,
       conversation.reasoningEvents,
     ],
   );
+  const turnScopesByTurn = useMemo(() => {
+    if (!isMoral) return new Map<number, TurnScopeDiagnostics>();
+    const scopes =
+      conversation.reasoningDiagnostics?.collaboration?.turnScopes ??
+      computeTurnScopes(
+        reasoningGraph,
+        conversation.messages.map((message) => ({
+          turnIndex: message.turnIndex,
+          agentId: message.agentId,
+          content: message.content,
+          nothingToAdd: message.nothingToAdd,
+          readyToFinalize: message.readyToFinalize,
+          materialGraphChange: message.materialGraphChange,
+          readinessInvalidated: message.readinessInvalidated,
+          focusSubjectIds: message.focusSubjectIds,
+        })),
+      );
+    return new Map(scopes.map((scope) => [scope.turnIndex, scope]));
+  }, [
+    isMoral,
+    conversation.reasoningDiagnostics?.collaboration?.turnScopes,
+    conversation.messages,
+    reasoningGraph,
+  ]);
   const convoJsonText = useMemo(
     () =>
       convoJsonOpen
@@ -216,21 +258,30 @@ export const TranscriptView = memo(function TranscriptView({
               ) : undefined
             }
           />
+        ) : moral ? (
+          <>
+            <MoralPreview moral={moral} answer={moralAnswer} />
+            {hasProblemTokenUsage || evaluation ? (
+              <div className="results-stats-row">
+                {evaluation ? (
+                  <MoralOpenMetrics
+                    evaluation={evaluation}
+                    messages={conversation.messages}
+                  />
+                ) : null}
+                {problemTokenUsage}
+              </div>
+            ) : null}
+          </>
         ) : (
           <pre className="transcript__problem mono">
             {conversation.problemText}
           </pre>
         )}
         {!crossword &&
-        (hasProblemTokenUsage ||
-          (evaluation && (isMoral || isProof))) ? (
+        !moral &&
+        (hasProblemTokenUsage || (evaluation && isProof)) ? (
           <div className="results-stats-row">
-            {evaluation && isMoral ? (
-              <MoralOpenMetrics
-                evaluation={evaluation}
-                messages={conversation.messages}
-              />
-            ) : null}
             {evaluation && isProof ? (
               <ProofOpenMetrics
                 evaluation={evaluation}
@@ -289,6 +340,15 @@ export const TranscriptView = memo(function TranscriptView({
           onClick={() => onTabChange("graph")}
         >
           Reasoning Graph
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "information"}
+          className={tab === "information" ? "is-active" : undefined}
+          onClick={() => onTabChange("information")}
+        >
+          Information
         </button>
       </div>
 
@@ -448,27 +508,13 @@ export const TranscriptView = memo(function TranscriptView({
                   const agentLabel =
                     message.agentId === "agent_a" ? "Agent A" : "Agent B";
                   const stats = messageStatsLabel(message);
-                  const turnEvents = eventsForMessage(reasoningGraph, message.id);
                   const touched = nodeIdsTouchedByMessage(reasoningGraph, message.id);
-                  const rejectedCount = turnEvents.filter(
-                    (event) => !event.accepted,
-                  ).length;
-                  const protocolFailure = turnEvents.some(
-                    (event) => event.operation.type === "protocol_failure",
-                  );
-                  const hasReasoningTurn = turnEvents.length > 0;
-                  const opsLabel = [
-                    ...touched,
-                    rejectedCount > 0 ? `${rejectedCount} rejected` : null,
-                    protocolFailure ? "protocol failure" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
                   const selected = message.id === selectedMessageId;
                   const nodeHighlight =
                     Boolean(selectedNodeId) &&
                     touched.includes(selectedNodeId!);
                   const expanded = expandedMessageIds.has(message.id);
+                  const turnScope = turnScopesByTurn.get(message.turnIndex);
                   return (
                     <li
                       key={message.id}
@@ -517,9 +563,39 @@ export const TranscriptView = memo(function TranscriptView({
                             <strong>
                               Turn {message.turnIndex} · {agentLabel}
                             </strong>
-                            {opsLabel ? (
-                              <span className="transcript__msg-ops">
-                                {opsLabel}
+                            {isMoral ? (
+                              <span className="transcript__msg-protocol muted">
+                                {message.materialGraphChange
+                                  ? "Graph changed"
+                                  : "No material change"}
+                                {message.readyToFinalize === true
+                                  ? " · Ready to finalize"
+                                  : ""}
+                                {message.readinessInvalidated
+                                  ? " · Readiness reset"
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {isMoral && turnScope ? (
+                              <span className="transcript__msg-scope muted mono">
+                                created {turnScope.considerationsCreated} ·
+                                revised {turnScope.considerationsRevised} ·
+                                touched {turnScope.considerationsTouched} ·
+                                {turnScope.messageChars} chars ·
+                                {turnScope.graphChanged
+                                  ? " graphΔ"
+                                  : " no graphΔ"}
+                                {turnScope.partnerPriorGraphChange
+                                  ? " · partnerΔ prior"
+                                  : ""}
+                                {turnScope.readyToFinalize === true
+                                  ? " · ready"
+                                  : turnScope.readyToFinalize === false
+                                    ? " · not ready"
+                                    : ""}
+                                {turnScope.focusSubjectIds?.length
+                                  ? ` · focus ${turnScope.focusSubjectIds.join(", ")}`
+                                  : ""}
                               </span>
                             ) : null}
                           </span>
@@ -532,8 +608,7 @@ export const TranscriptView = memo(function TranscriptView({
                                 ).toLocaleTimeString()}
                               </span>
                             ) : null}
-                            {hasReasoningTurn ? (
-                              <button
+                            <button
                                 type="button"
                                 className="transcript__msg-audit"
                                 onClick={(event) => {
@@ -545,14 +620,30 @@ export const TranscriptView = memo(function TranscriptView({
                               >
                                 View reasoning
                               </button>
-                            ) : null}
                             <button
                               type="button"
                               className="transcript__msg-audit"
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
-                                setAuditTurn(message.turnIndex);
+                                setAudit({
+                                  kind: "memory",
+                                  turn: message.turnIndex,
+                                });
+                              }}
+                            >
+                              Memory
+                            </button>
+                            <button
+                              type="button"
+                              className="transcript__msg-audit"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setAudit({
+                                  kind: "request",
+                                  turn: message.turnIndex,
+                                });
                               }}
                             >
                               Model request
@@ -578,6 +669,18 @@ export const TranscriptView = memo(function TranscriptView({
                     </li>
                   );
                 })}
+                {isMoral && conversation.stoppedReason === "final_answer" ? (
+                  <li className="transcript__msg transcript__msg--protocol">
+                    <div className="transcript__convergence">
+                      CONVERGED · FINAL SYNTHESIS
+                      {conversation.messages.at(-1)?.agentId === "agent_a"
+                        ? " · Agent A"
+                        : conversation.messages.at(-1)?.agentId === "agent_b"
+                          ? " · Agent B"
+                          : ""}
+                    </div>
+                  </li>
+                ) : null}
               </ol>
             )}
           </div>
@@ -593,9 +696,12 @@ export const TranscriptView = memo(function TranscriptView({
             selectedMessageId={selectedMessageId}
             compact
             onSelectNode={onSelectNode}
-            onOpenSourceTurn={(messageId, nodeId) => {
-              onOpenConversationTurn?.(messageId, nodeId);
-            }}
+          />
+        ) : null}
+
+        {tab === "information" ? (
+          <InformationAssignmentPanel
+            assignment={conversation.informationAssignment}
           />
         ) : null}
       </div>
@@ -607,12 +713,20 @@ export const TranscriptView = memo(function TranscriptView({
           onClose={() => setConvoJsonOpen(false)}
         />
       ) : null}
-      {auditTurn !== null ? (
+      {audit?.kind === "request" ? (
         <ModelRequestAuditModal
           conversation={conversation}
           run={run}
-          turnIndex={auditTurn}
-          onClose={() => setAuditTurn(null)}
+          turnIndex={audit.turn}
+          onClose={() => setAudit(null)}
+        />
+      ) : null}
+      {audit?.kind === "memory" ? (
+        <TurnMemoryAuditModal
+          conversation={conversation}
+          graph={reasoningGraph}
+          turnIndex={audit.turn}
+          onClose={() => setAudit(null)}
         />
       ) : null}
     </div>
@@ -646,8 +760,44 @@ function ModelRequestAuditModal({
 
   return (
     <TextPreviewModal
-      title={`Model request · turn ${turnIndex} · ${speaker}${stored ? "" : " · reconstructed"}`}
+      title={`Model request · turn ${turnIndex} · ${speaker}${stored ? " · persisted" : " · RECONSTRUCTED WITH CURRENT SERIALIZER"}`}
       text={text}
+      onClose={onClose}
+    />
+  );
+}
+
+function TurnMemoryAuditModal({
+  conversation,
+  graph,
+  turnIndex,
+  onClose,
+}: {
+  conversation: ProblemConversation;
+  graph: ReasoningGraph;
+  turnIndex: number;
+  onClose: () => void;
+}) {
+  const message = conversation.messages.find((m) => m.turnIndex === turnIndex);
+  const speaker =
+    message?.agentId === "agent_a"
+      ? "Agent A"
+      : message?.agentId === "agent_b"
+        ? "Agent B"
+        : "unknown";
+  const stored = Boolean(
+    message?.modelRequest?.some((item) =>
+      item.content.startsWith("CURRENT SHARED REASONING STATE"),
+    ),
+  );
+  return (
+    <TextPreviewModal
+      title={`Memory · turn ${turnIndex} · ${speaker}${stored ? " · persisted" : " · RECONSTRUCTED WITH CURRENT SERIALIZER"}`}
+      text={formatTurnMemoryForAudit({
+        graph,
+        conversation,
+        turn: turnIndex,
+      })}
       onClose={onClose}
     />
   );

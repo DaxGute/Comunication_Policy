@@ -1,28 +1,43 @@
 /**
  * Read-only queries over a materialized reasoning graph.
- *
- * Intent validation and graph mutation live in graph.ts; these helpers support
- * transcript linking, audit replay, and graph-detail views.
  */
 import { materializeGraph } from "./graph";
-import type { ReasoningEvent, ReasoningGraph, ReasoningNode } from "./types";
+import { isStateChangeMutation } from "./types";
+import type { PropositionVersion, ReasoningEvent, ReasoningGraph } from "./types";
 
-/** Reconstruct the graph as it existed before `turn` (for request replay). */
+/** Reconstruct the graph as it existed after `turn` (inclusive). */
+export function snapshotThroughTurn(
+  graph: ReasoningGraph,
+  turn: number,
+): ReasoningGraph {
+  return materializeGraph(
+    graph.events.filter((event) => event.turnIndex <= turn),
+    graph.subjects.filter(
+      (subject) =>
+        subject.source === "task" ||
+        (subject.createdAtTurn !== undefined && subject.createdAtTurn <= turn),
+    ),
+  );
+}
 export function snapshotBeforeTurn(
   graph: ReasoningGraph,
   turn: number,
 ): ReasoningGraph {
   return materializeGraph(
     graph.events.filter((event) => event.turnIndex < turn),
-    graph.subjects,
+    graph.subjects.filter(
+      (subject) =>
+        subject.source === "task" ||
+        (subject.createdAtTurn !== undefined && subject.createdAtTurn < turn),
+    ),
   );
 }
 
-export function nodesCreatedInMessage(
+export function versionsCreatedInMessage(
   graph: ReasoningGraph,
   messageId: string,
-): ReasoningNode[] {
-  return graph.nodes.filter((node) => node.sourceMessageId === messageId);
+): PropositionVersion[] {
+  return graph.versions.filter((version) => version.sourceMessageId === messageId);
 }
 
 export function eventsForMessage(
@@ -32,53 +47,55 @@ export function eventsForMessage(
   return graph.events.filter((event) => event.messageId === messageId);
 }
 
-export function nodeIdsTouchedByMessage(
+export function versionIdsTouchedByMessage(
   graph: ReasoningGraph,
   messageId: string,
 ): string[] {
   const ids = new Set<string>();
-  for (const node of nodesCreatedInMessage(graph, messageId)) {
-    ids.add(node.id);
+  for (const version of versionsCreatedInMessage(graph, messageId)) {
+    ids.add(version.id);
   }
   for (const event of eventsForMessage(graph, messageId)) {
-    if (!event.accepted) continue;
-    const op = event.operation;
-    if (op.type === "create") ids.add(op.node.id);
-    else if (op.type === "revise") {
-      ids.add(op.targetId);
-      ids.add(op.replacement.id);
-    } else if (op.type === "support" || op.type === "challenge") {
-      if (op.sourceNodeId) ids.add(op.sourceNodeId);
-      ids.add(op.targetNodeId);
-    } else if (op.type === "final_answer") {
-      ids.add("__final_answer__");
-      for (const id of op.supportingNodeIds) ids.add(id);
-    } else if ("targetId" in op && op.targetId) {
-      ids.add(op.targetId);
-    }
+    if (event.versionId) ids.add(event.versionId);
+    if (event.previousVersionId) ids.add(event.previousVersionId);
+    for (const basisId of event.basisVersionIds ?? []) ids.add(basisId);
   }
-  return [...ids].filter(Boolean);
+  return [...ids];
 }
 
+/** @deprecated Use versionIdsTouchedByMessage. */
+export function nodeIdsTouchedByMessage(
+  graph: ReasoningGraph,
+  messageId: string,
+): string[] {
+  return versionIdsTouchedByMessage(graph, messageId);
+}
+
+export function eventsForVersion(
+  graph: ReasoningGraph,
+  versionId: string,
+): ReasoningEvent[] {
+  return graph.events.filter(
+    (event) =>
+      event.versionId === versionId ||
+      event.previousVersionId === versionId ||
+      event.basisVersionIds?.includes(versionId),
+  );
+}
+
+/** @deprecated Use eventsForVersion. */
 export function eventsForNode(
   graph: ReasoningGraph,
   nodeId: string,
 ): ReasoningEvent[] {
-  return graph.events.filter((event) => {
-    const op = event.operation;
-    if (op.type === "create") return op.node.id === nodeId;
-    if (op.type === "revise") {
-      return op.targetId === nodeId || op.replacement.id === nodeId;
-    }
-    if (op.type === "support" || op.type === "challenge") {
-      return op.sourceNodeId === nodeId || op.targetNodeId === nodeId;
-    }
-    if (op.type === "final_answer") {
-      return (
-        nodeId === "__final_answer__" || op.supportingNodeIds.includes(nodeId)
-      );
-    }
-    if ("targetId" in op) return op.targetId === nodeId;
-    return false;
-  });
+  return eventsForVersion(graph, nodeId);
+}
+
+export function acceptedStateChangeEvents(events: ReasoningEvent[]): ReasoningEvent[] {
+  return events.filter(
+    (event) =>
+      event.accepted &&
+      event.stateChanged !== false &&
+      isStateChangeMutation(event.mutation),
+  );
 }

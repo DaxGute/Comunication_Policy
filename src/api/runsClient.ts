@@ -22,7 +22,7 @@ async function parseJson<T>(response: Response): Promise<T> {
 }
 
 export async function listRuns(): Promise<ExperimentRun[]> {
-  const response = await fetch("/api/runs");
+  const response = await fetch("/api/runs", { cache: "no-store" });
   const body = await parseJson<{ runs: ExperimentRun[] }>(response);
   return Array.isArray(body.runs) ? body.runs : [];
 }

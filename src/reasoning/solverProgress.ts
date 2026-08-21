@@ -27,12 +27,11 @@ import {
   type StallInterventionKind,
   type StallRecoveryPhase,
 } from "./stall";
+import { isStateChangeMutation } from "./types";
 import type {
-  AtomicReasoningNode,
   IssueConvergenceState,
   ReasoningEvent,
   ReasoningGraph,
-  ReasoningNode,
 } from "./types";
 
 export type SolverSolutionQuality = {
@@ -137,21 +136,17 @@ export type SolverProgressTurnResult = {
   failureToClose: boolean;
 };
 
-function isLive(node: ReasoningNode): boolean {
-  return node.status !== "rejected" && node.status !== "superseded";
-}
-
-function isResolutionClaim(node: ReasoningNode): node is AtomicReasoningNode {
-  return node.type === "claim" || node.type === "proposal";
-}
-
-function identityOrText(node: AtomicReasoningNode): string {
-  const identity =
-    typeof node.metadata?.candidateIdentity === "string"
-      ? node.metadata.candidateIdentity
-      : undefined;
-  if (identity) return identity;
-  return `${node.subjectId ?? ""}:${node.type}:${node.text.trim().toLowerCase()}`;
+function canonicalFingerprintPayload(graph: ReasoningGraph): Record<string, string | null> {
+  const payload: Record<string, string | null> = {};
+  for (const subject of graph.subjects) {
+    const active = graph.versions.find(
+      (version) => version.subjectId === subject.id && version.status === "active",
+    );
+    payload[subject.id] = active
+      ? `${active.agentId}:${active.content.trim().toLowerCase()}`
+      : null;
+  }
+  return payload;
 }
 
 function stableStringify(value: unknown): string {
@@ -172,45 +167,17 @@ export function genericSolverStateFingerprint(
   graph: ReasoningGraph,
   issueStates: IssueConvergenceState[],
 ): string {
-  const claims = graph.nodes.filter(isResolutionClaim);
-  const payload = {
-    issues: issueStates.map((state) => {
-      const live = claims
-        .filter((node) => node.subjectId === state.issueId && isLive(node))
-        .map(identityOrText)
-        .sort();
-      const rejected = claims
-        .filter(
-          (node) =>
-            node.subjectId === state.issueId &&
-            (node.status === "rejected" || node.status === "superseded"),
-        )
-        .map(identityOrText)
-        .sort();
-      const conflicts = state.conflicts
+  const conflicts = issueStates
+    .flatMap((state) =>
+      state.conflicts
         .filter((conflict) => conflict.source === "task_constraint")
-        .map((conflict) => conflict.description ?? conflict.nodeIds.slice().sort().join("|"))
-        .sort();
-      return {
-        id: state.issueId,
-        settled: state.settledClaimId
-          ? identityOrText(
-              claims.find((node) => node.id === state.settledClaimId) ??
-                ({
-                  type: "claim",
-                  text: state.settledClaimId,
-                  subjectId: state.issueId,
-                } as AtomicReasoningNode),
-            )
-          : null,
-        live,
-        rejected,
-        unresolved: state.unresolved,
-        conflicts,
-      };
-    }),
-  };
-  return stableStringify(payload);
+        .map((conflict) => conflict.description ?? conflict.nodeIds.slice().sort().join("|")),
+    )
+    .sort();
+  return stableStringify({
+    values: canonicalFingerprintPayload(graph),
+    conflicts,
+  });
 }
 
 export function solverStateFingerprint(args: {
@@ -310,24 +277,10 @@ function issueIdForEvent(
   event: ReasoningEvent,
   graph: ReasoningGraph,
 ): string | undefined {
-  const op = event.operation;
-  if (op.type === "create") {
-    return op.node.subjectId;
-  }
-  if (op.type === "revise") {
-    return op.replacement.subjectId;
-  }
-  const targetId =
-    "targetId" in op
-      ? op.targetId
-      : "targetNodeId" in op
-        ? op.targetNodeId
-        : undefined;
-  if (targetId) {
-    const node = graph.nodes.find((item) => item.id === targetId);
-    if (node && node.type !== "final_answer" && node.subjectId) {
-      return node.subjectId;
-    }
+  if (isStateChangeMutation(event.mutation)) return event.mutation.subjectId;
+  if (event.versionId) {
+    const version = graph.versions.find((item) => item.id === event.versionId);
+    if (version) return version.subjectId;
   }
   for (const item of event.diagnostics ?? []) {
     const match = item.match(/\b([a-z]+:(?:across|down):\d+)\b/i);
@@ -344,10 +297,10 @@ export function focusIssueIdsForTurn(
   const ids = new Set<string>();
   for (const event of events) {
     if (event.turnIndex !== turnIndex) continue;
-    if (event.operation.type === "protocol_failure") continue;
+    if (event.mutation.type === "protocol_failure") continue;
     if (
-      event.operation.type === "final_answer" ||
-      (event.operation.type === "invalid" &&
+      event.mutation.type === "final_answer" ||
+      (event.mutation.type === "invalid" &&
         event.stateChanged !== false &&
         !event.diagnostics?.some(
           (item) =>
@@ -447,7 +400,7 @@ export function reduceSolverProgress(
     (event) =>
       event.turnIndex === input.turnIndex &&
       event.accepted &&
-      event.operation.type !== "protocol_failure",
+      isStateChangeMutation(event.mutation),
   ).length;
   const noOps = input.events.filter(
     (event) =>
@@ -463,7 +416,7 @@ export function reduceSolverProgress(
       event.turnIndex === input.turnIndex &&
       !event.accepted &&
       event.stateChanged !== false &&
-      event.operation.type !== "protocol_failure",
+      event.mutation.type !== "protocol_failure",
   ).length;
 
   const priorFingerprints = previous.fingerprints;

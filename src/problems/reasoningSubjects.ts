@@ -1,5 +1,6 @@
 import type { ReasoningSubject } from "../reasoning/types";
 import { taskReasoningAdapterFor } from "./adapters/registry";
+import type { MoralSubjectSeeding } from "./adapters/openSubjects";
 import type { Problem } from "./types";
 
 /**
@@ -8,7 +9,8 @@ import type { Problem } from "./types";
  */
 export function reasoningSubjectsForProblem(
   problem: Problem,
+  options?: { moralSubjectSeeding?: MoralSubjectSeeding },
 ): ReasoningSubject[] {
-  return taskReasoningAdapterFor(problem).getInitialIssues(problem);
+  return taskReasoningAdapterFor(problem, options).getInitialIssues(problem);
 }
 

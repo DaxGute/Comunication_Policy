@@ -700,12 +700,12 @@ export function EvaluationSummary({ run }: { run: ExperimentRun }) {
       <MetricsBlock
         rows={[
           {
-            label: "Stance rate",
+            label: "Final-answer rate",
             mean: formatPct(stance.mean) ?? "—",
             sd: formatPctSd(stance.sd),
           },
           {
-            label: "Stances reached",
+            label: "Final answers recorded",
             mean: String(
               moralProblems.filter((p) => p.details?.stanceReached === true)
                 .length,

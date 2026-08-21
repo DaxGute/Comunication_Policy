@@ -132,13 +132,6 @@ export const ConversationInspector = memo(function ConversationInspector({
     },
     [],
   );
-  const handleOpenConversationTurn = useCallback(
-    (messageId: string, nodeId?: string) => {
-      setLinkSelection({ nodeId, messageId });
-      setProblemTab("conversation");
-    },
-    [],
-  );
   const handleViewReasoning = useCallback((messageId: string) => {
     setLinkSelection((prev) => ({
       nodeId: prev.messageId === messageId ? prev.nodeId : undefined,
@@ -207,7 +200,6 @@ export const ConversationInspector = memo(function ConversationInspector({
                 selectedNodeId={linkSelection.nodeId}
                 onSelectMessage={handleSelectMessage}
                 onSelectNode={handleSelectNode}
-                onOpenConversationTurn={handleOpenConversationTurn}
                 onViewReasoning={handleViewReasoning}
                 evaluation={selectedRun.evaluation?.problems.find(
                   (p) => p.problemId === selectedConversation.problemId,
@@ -221,6 +213,14 @@ export const ConversationInspector = memo(function ConversationInspector({
                         selectedRun.config.problemCategory,
                         selectedConversation.problemId,
                       )?.crossword
+                    : undefined
+                }
+                moral={
+                  selectedRun.config.problemCategory === "moral_philosophical"
+                    ? getProblemById(
+                        selectedRun.config.problemCategory,
+                        selectedConversation.problemId,
+                      )?.moral
                     : undefined
                 }
               />

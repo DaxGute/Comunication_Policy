@@ -41,7 +41,11 @@ const formatted = formatMoralProblemText({
   question: sample.moral!.question,
   alternateQuestions: [],
 });
-assert(formatted.includes("Key tensions:"), "formatter missing tensions");
+assert(formatted.includes("The shared reasoning graph begins empty"), "formatter missing empty-graph instruction");
+assert(formatted.includes("small, targeted contribution"), "formatter missing local-turn instruction");
+assert(formatted.includes("comprehensive treatment of the entire dilemma"), "formatter missing finalization exhaustiveness cue");
+assert(!formatted.includes("Relevant considerations:"), "formatter must not list benchmark considerations");
+assert(sample.moral!.issues.length > 0, "benchmark issues must remain on the problem for evaluation");
 assert(formatted.includes("FINAL_ANSWER:"), "formatter missing FINAL_ANSWER hint");
 
 const prompts = buildAgentPromptPair(DEFAULT_COMMUNICATION_POLICY);

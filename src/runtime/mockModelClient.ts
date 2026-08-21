@@ -57,7 +57,12 @@ export class MockModelClient implements ModelClient {
 
     // Final turns produce a mock answer so evaluation plumbing can run.
     // For crossword, intentionally miss ~1/5 so the grader's incorrect path is visible.
-    const isClosing = turnIndex >= 3;
+    // Moral: converge via readyToFinalize handshake, then finalize.
+    const moralClosing =
+      (problem.kind === "moral" || Boolean(problem.moral)) && turnIndex >= 4;
+    const isClosing =
+      moralClosing ||
+      (!(problem.kind === "moral" || problem.moral) && turnIndex >= 3);
     let answerLine = "";
     if (isClosing) {
       if (problem.kind === "crossword_puzzle" && problem.crossword) {
@@ -90,7 +95,7 @@ export class MockModelClient implements ModelClient {
       } else if (problem.kind === "moral" || problem.moral) {
         const q = problem.moral?.question ?? "the dilemma";
         const issues = problem.moral?.issues?.slice(0, 2).join("; ");
-        answerLine = `\nFINAL_ANSWER: After weighing ${issues || "the core tensions"}, our provisional joint stance on "${q.slice(0, 72)}" is to prioritize clear communication of competing claims and refuse to treat either side as settled.`;
+        answerLine = `\nFINAL_ANSWER: After weighing ${issues || "the current considerations"}, our synthesized response on "${q.slice(0, 72)}" is to prioritize clear communication of competing claims and refuse to treat either side as settled.`;
       } else if (problem.expectedAnswer) {
         answerLine = `\nFINAL_ANSWER: ${problem.expectedAnswer}`;
       } else {
@@ -119,57 +124,47 @@ export class MockModelClient implements ModelClient {
       .filter((line): line is string => line !== null)
       .join("\n");
 
-    const issueSubject =
-      problem.category === "crossword"
-        ? "Across 1"
-        : problem.category === "proof"
-          ? "Prove the theorem"
-          : "Main moral question";
-    const issueBasis =
-      problem.category === "crossword"
-        ? ["clue"]
-        : problem.category === "proof"
-          ? ["goal"]
-          : ["scenario_fact_1"];
-
-    const reasoningMoves: Array<Record<string, unknown>> =
+    const moralSubjectId = "moral:responsibility";
+    const reasoningMutations: Array<Record<string, unknown>> =
       turnIndex === 1
-        ? [
-            {
-              kind: "claim",
-              subject: issueSubject,
-              value: isClosing
-                ? "Submit the joint resolution now."
-                : `Working hypothesis for "${problem.title}".`,
-              basis: issueBasis,
-            },
-          ]
-        : isClosing
+        ? problem.kind === "crossword_puzzle" && problem.crossword
           ? [
               {
-                kind: "agree",
-                subject: issueSubject,
+                type: "SET",
+                subjectId: `crossword:${problem.crossword.clues[0]!.direction}:${problem.crossword.clues[0]!.number}`,
+                content: problem.crossword.clues[0]!.answer,
               },
             ]
-          : ownTrust < 1 / 3
-            ? [
-                {
-                  kind: "disagree",
-                  subject: issueSubject,
-                  basis: ["Want independent verification before adopting this."],
-                },
-              ]
-            : [
-                {
-                  kind: "agree",
-                  subject: issueSubject,
-                },
-              ];
+          : [
+              {
+                type: "SET",
+                subjectId:
+                  problem.category === "proof" ? "proof:goal" : moralSubjectId,
+                content: `Working hypothesis for "${problem.title}".`,
+                ...(problem.kind === "moral" || problem.moral
+                  ? { subjectLabel: "Responsibility" }
+                  : {}),
+              },
+            ]
+        : turnIndex === 2 && (problem.kind === "moral" || Boolean(problem.moral))
+          ? [
+              {
+                type: "REVISE",
+                subjectId: moralSubjectId,
+                fromVersionId: "pv-1",
+                after: `Qualified working hypothesis for "${problem.title}".`,
+              },
+            ]
+          : [];
 
     const payload: Record<string, unknown> = {
       message,
-      moves: reasoningMoves,
+      mutations: reasoningMutations,
     };
+    if (problem.kind === "moral" || problem.moral) {
+      // Mutual readiness on turns 2–3 (no material change on turn 3), then finalize.
+      payload.readyToFinalize = turnIndex >= 3 && reasoningMutations.length === 0;
+    }
     if (isClosing) {
       const answerText =
         extractFinalAnswerFromText(message) ?? "unresolved";
@@ -177,6 +172,10 @@ export class MockModelClient implements ModelClient {
         text: answerText,
         supportingNodeIds: [],
       };
+      if (problem.kind === "moral" || problem.moral) {
+        payload.finalBasis = ["pv-1"];
+        payload.readyToFinalize = true;
+      }
     }
     const content = JSON.stringify(payload);
 

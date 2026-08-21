@@ -8,17 +8,25 @@ import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import type { CommunicationPolicy } from "../communication/types";
 import { evaluateRun } from "../evaluation/evaluateRun";
 import { syncRunCostFields } from "../experiment/runCost";
-import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "../experiment/transcriptProtocol";
+import { graphMemoryProtocolFor } from "../experiment/transcriptProtocol";
 import type {
   ExperimentRun,
   ProblemConversation,
   RunConfig,
   RunProgress,
 } from "../experiment/types";
+import {
+  assignProblemInformation,
+  buildInformationSplitSeed,
+  createInformationDrawNonce,
+  snapInformationOverlap,
+} from "../information";
 import { createId } from "../lib/id";
 import { emptyUsage } from "../models/usage";
 import { selectProblems } from "../problems/registry";
+import { normalizeMoralSubjectSeeding } from "../problems/adapters/openSubjects";
 import { reasoningSubjectsForProblem } from "../problems/reasoningSubjects";
+import { REASONING_SCHEMA_VERSION } from "../reasoning";
 import type { AgentId } from "../agents/types";
 import type { ConversationMessage } from "../experiment/types";
 import type { ReasoningGraph } from "../reasoning";
@@ -108,6 +116,24 @@ export async function runExperiment(args: {
   };
   const agentPrompts = buildAgentPromptPair(policySnapshot);
 
+  const overlapRequested = snapInformationOverlap(
+    config.informationOverlap ?? 1,
+  );
+  // Fresh random draw each run; realized assignment is snapshotted per conversation.
+  const drawNonce = createInformationDrawNonce();
+  const informationStructure = {
+    overlapRequested,
+    splitSeed: drawNonce,
+    assignmentMode: "balanced-cover" as const,
+    counterbalanced: false,
+    packetDirection: "standard" as const,
+  };
+  const configSnapshot: RunConfig = {
+    ...config,
+    informationOverlap: overlapRequested,
+    informationStructure,
+  };
+
   const client = args.client ?? createModelClient();
   const problems = selectProblems(config.problemCategory, config.problemCount);
   const totalProblems = problems.length;
@@ -115,17 +141,37 @@ export async function runExperiment(args: {
   // Seed conversations up front in stable problem order so the inspector
   // list/selection does not reshuffle as parallel problems start and finish.
   const seededConversations: ProblemConversation[] = problems.map(
-    (problem) => ({
-      problemId: problem.id,
-      problemTitle: problem.title,
-      problemText: problem.text,
-      messages: [],
-      reasoningSubjects: reasoningSubjectsForProblem(problem),
-      reasoningNodes: [],
-      reasoningEvents: [],
-      stoppedReason: "max_turns" as const,
-      status: "running" as const,
-    }),
+    (problem) => {
+      const splitSeed = buildInformationSplitSeed({
+        problemId: problem.id,
+        overlapRequested,
+        drawNonce,
+      });
+      const assigned = assignProblemInformation({
+        problem,
+        overlapRequested,
+        splitSeed,
+      });
+      return {
+        problemId: problem.id,
+        problemTitle: problem.title,
+        problemText: assigned.sharedContext,
+        problemTextByAgent: {
+          agent_a: assigned.problemTextA,
+          agent_b: assigned.problemTextB,
+        },
+        informationAssignment: assigned.assignment,
+        messages: [],
+        reasoningSchemaVersion: REASONING_SCHEMA_VERSION,
+        reasoningSubjects: reasoningSubjectsForProblem(problem, {
+          moralSubjectSeeding: config.moralSubjectSeeding,
+        }),
+        reasoningVersions: [],
+        reasoningEvents: [],
+        stoppedReason: "max_turns" as const,
+        status: "running" as const,
+      };
+    },
   );
 
   const now = new Date().toISOString();
@@ -135,8 +181,10 @@ export async function runExperiment(args: {
     startedAt: now,
     policy: policySnapshot,
     agentPrompts,
-    transcriptProtocol: { ...FULL_HISTORY_TRANSCRIPT_PROTOCOL },
-    config: { ...config },
+    transcriptProtocol: graphMemoryProtocolFor({
+      moralInitialization: normalizeMoralSubjectSeeding(config.moralSubjectSeeding),
+    }),
+    config: configSnapshot,
     conversations: seededConversations.map((c) => ({ ...c })),
     conversationUsage: emptyUsage(),
     conversationCostUsd: null,
@@ -174,7 +222,9 @@ export async function runExperiment(args: {
         status: "running" as const,
         messages: live?.messages?.length ? live.messages : seeded.messages,
         speakingAgentId: live?.speakingAgentId,
-        reasoningNodes: live?.reasoningNodes ?? seeded.reasoningNodes,
+        reasoningSchemaVersion:
+          live?.reasoningSchemaVersion ?? seeded.reasoningSchemaVersion,
+        reasoningVersions: live?.reasoningVersions ?? seeded.reasoningVersions,
         reasoningEvents: live?.reasoningEvents ?? seeded.reasoningEvents,
         reasoningSubjects:
           live?.reasoningSubjects ?? seeded.reasoningSubjects,
@@ -211,7 +261,7 @@ export async function runExperiment(args: {
           problem,
           policy: policySnapshot,
           agentPrompts,
-          config,
+          config: configSnapshot,
           client,
           signal,
           callbacks: {

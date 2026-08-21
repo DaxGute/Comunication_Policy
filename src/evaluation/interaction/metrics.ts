@@ -100,9 +100,7 @@ export function buildDisagreements(
       (event) =>
         event.actor === object.originatingAgent && event.type === "revised",
     );
-    const hasFinalAnswer = view.graph.nodes.some(
-      (node) => node.type === "final_answer",
-    );
+    const hasFinalAnswer = Boolean(view.graph.finalAnswer);
     const challengerAdopted = later.some(
       (event) => event.actor === challenge.actor && event.type === "adopted",
     );
@@ -253,6 +251,8 @@ function adoptionMetrics(
   objects: ReasoningObject[],
   events: InteractionEvent[],
 ): AdoptionMetrics {
+  // Adoption is not a canonical graph fact. These rates stay at zero unless a
+  // separate inferred overlay emits `adopted` / `unsupported_adoption`.
   const oppsA = partnerOriginated(objects, "agent_a").length;
   const oppsB = partnerOriginated(objects, "agent_b").length;
   const a = adoptionBy(events, "agent_a");

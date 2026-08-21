@@ -228,6 +228,33 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
                   onChange={(maxTurns) => onConfigChange({ maxTurns })}
                 />
               </label>
+
+              <label className="slider-field">
+                <div className="slider-field__top">
+                  <span className="slider-field__label">Information overlap</span>
+                  <span className="slider-field__value mono">
+                    {Math.round((config.informationOverlap ?? 1) * 100)}%
+                  </span>
+                </div>
+                <input
+                  className="range"
+                  type="range"
+                  min={50}
+                  max={100}
+                  step={5}
+                  value={Math.round((config.informationOverlap ?? 1) * 100)}
+                  onChange={(e) =>
+                    onConfigChange({
+                      informationOverlap: Number(e.target.value) / 100,
+                    })
+                  }
+                  aria-valuetext={`${Math.round((config.informationOverlap ?? 1) * 100)} percent overlap`}
+                />
+                <span className="slider-field__hint muted">
+                  50% Fully partitioned · 70% Partial overlap · 100% Same
+                  information
+                </span>
+              </label>
             </div>
           ) : null}
         </div>

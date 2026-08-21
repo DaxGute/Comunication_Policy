@@ -1,25 +1,21 @@
 /**
  * Graph invariants for committed reasoning state.
- *
- * These are instrumentation, not runtime rejection. The engine should already
- * prevent most violations; tests assert the remaining ones.
+ * Instrumentation, not runtime rejection.
  */
-import type { AtomicReasoningNode, ReasoningEvent, ReasoningGraph, ReasoningNode } from "./types";
-import {
-  isParaphrase,
-  isCandidateType,
-  validateCommittedProposition,
-} from "./validateProposition";
+import { materializeGraph } from "./graph";
+import { derivedFromCycleIds } from "./provenance";
+import { activeVersion, isStateChangeMutation, type ReasoningGraph } from "./types";
 
 export type GraphInvariantCode =
-  | "ideas_per_turn"
-  | "competing_live_ideas"
-  | "duplicate_active_idea"
-  | "malformed_idea"
+  | "competing_live_values"
   | "revision_missing_ancestry"
-  | "final_without_ancestry"
-  | "final_differs_from_graph"
-  | "orphaned_evidence";
+  | "revision_chain_broken"
+  | "duplicate_version_ids"
+  | "basis_target_missing"
+  | "derived_from_cycle"
+  | "future_basis_reference"
+  | "replay_mismatch"
+  | "duplicate_active_idea";
 
 export type GraphInvariantViolation = {
   code: GraphInvariantCode;
@@ -29,40 +25,11 @@ export type GraphInvariantViolation = {
   subjectId?: string;
 };
 
-function isLive(node: ReasoningNode): boolean {
-  return node.status !== "rejected" && node.status !== "superseded";
-}
-
-function candidateNodes(graph: ReasoningGraph): AtomicReasoningNode[] {
-  return graph.nodes.filter(
-    (node): node is AtomicReasoningNode =>
-      node.type !== "final_answer" && isCandidateType(node.type),
-  );
-}
-
-function liveCandidates(graph: ReasoningGraph): AtomicReasoningNode[] {
-  return candidateNodes(graph).filter(isLive);
-}
-
-function ideasCreatedByTurn(events: ReasoningEvent[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const event of events) {
-    if (!event.accepted || event.stateChanged === false) continue;
-    if (event.operation.type !== "create") continue;
-    const node = event.operation.node;
-    if (!isCandidateType(node.type)) continue;
-    const key = `${event.turnIndex}::${node.subjectId ?? "__unscoped__"}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
-
 export function ideasCreatedPerTurn(graph: ReasoningGraph): number[] {
   const byTurn = new Map<number, number>();
   for (const event of graph.events) {
     if (!event.accepted || event.stateChanged === false) continue;
-    if (event.operation.type !== "create") continue;
-    if (!isCandidateType(event.operation.node.type)) continue;
+    if (event.mutation.type !== "SET") continue;
     byTurn.set(event.turnIndex, (byTurn.get(event.turnIndex) ?? 0) + 1);
   }
   return [...byTurn.entries()]
@@ -73,157 +40,135 @@ export function ideasCreatedPerTurn(graph: ReasoningGraph): number[] {
 export function maxIdeasCreatedOnOneSubjectInOneTurn(
   graph: ReasoningGraph,
 ): number {
-  const counts = ideasCreatedByTurn(graph.events);
+  const counts = new Map<string, number>();
+  for (const event of graph.events) {
+    if (!event.accepted || event.stateChanged === false) continue;
+    if (event.mutation.type !== "SET") continue;
+    const key = `${event.turnIndex}::${event.mutation.subjectId}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
   return counts.size === 0 ? 0 : Math.max(...counts.values());
 }
 
 export function checkGraphInvariants(graph: ReasoningGraph): GraphInvariantViolation[] {
   const violations: GraphInvariantViolation[] = [];
-  const edges = graph.edges ?? [];
-
-  for (const [key, count] of ideasCreatedByTurn(graph.events)) {
-    if (count <= 1) continue;
-    const [turnRaw, subjectId] = key.split("::");
-    violations.push({
-      code: "ideas_per_turn",
-      detail: `${count} competing ideas created for ${subjectId} on turn ${turnRaw}`,
-      turnIndex: Number(turnRaw),
-      subjectId: subjectId === "__unscoped__" ? undefined : subjectId,
-    });
+  const byId = new Map<string, number>();
+  for (const version of graph.versions) {
+    byId.set(version.id, (byId.get(version.id) ?? 0) + 1);
   }
-
-  const liveBySubject = new Map<string, ReasoningNode[]>();
-  for (const node of liveCandidates(graph)) {
-    if (!node.subjectId) continue;
-    const list = liveBySubject.get(node.subjectId) ?? [];
-    list.push(node);
-    liveBySubject.set(node.subjectId, list);
-  }
-  for (const [subjectId, nodes] of liveBySubject) {
-    if (nodes.length <= 1) continue;
-    const identities = nodes.map((node) => {
-      const identity = node.metadata?.candidateIdentity;
-      return typeof identity === "string" ? identity : undefined;
-    });
-    const exclusive = identities.some(Boolean);
-    if (exclusive) {
+  for (const [id, count] of byId) {
+    if (count > 1) {
       violations.push({
-        code: "competing_live_ideas",
-        detail: `${nodes.length} mutually exclusive live ideas for ${subjectId}`,
-        nodeIds: nodes.map((node) => node.id),
-        subjectId,
+        code: "duplicate_version_ids",
+        detail: `${id} appears ${count} times`,
+        nodeIds: [id],
       });
     }
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        if (!isParaphrase(nodes[i]!.text, nodes[j]!.text)) continue;
+  }
+
+  for (const subject of graph.subjects) {
+    const active = graph.versions.filter(
+      (version) => version.subjectId === subject.id && version.status === "active",
+    );
+    if (active.length > 1) {
+      violations.push({
+        code: "competing_live_values",
+        detail: `${subject.id} has ${active.length} active versions`,
+        subjectId: subject.id,
+        nodeIds: active.map((version) => version.id),
+      });
+    }
+  }
+
+  const versions = new Map(graph.versions.map((version) => [version.id, version]));
+  for (const event of graph.events) {
+    if (!event.accepted || !isStateChangeMutation(event.mutation)) continue;
+    if (event.mutation.type === "REVISE" && !event.previousVersionId) {
+      violations.push({
+        code: "revision_missing_ancestry",
+        detail: `REVISE of ${event.mutation.subjectId} is missing previousVersionId`,
+        turnIndex: event.turnIndex,
+        subjectId: event.mutation.subjectId,
+      });
+    }
+  }
+
+  for (const version of graph.versions) {
+    if (version.previousVersionId && !versions.has(version.previousVersionId)) {
+      violations.push({
+        code: "revision_chain_broken",
+        detail: `${version.id} revises missing ${version.previousVersionId}`,
+        nodeIds: [version.id, version.previousVersionId],
+        subjectId: version.subjectId,
+      });
+    }
+    for (const sourceId of version.derivedFromVersionIds ?? []) {
+      const source = versions.get(sourceId);
+      if (!source) {
         violations.push({
-          code: "duplicate_active_idea",
-          detail: `${nodes[i]!.id} paraphrases ${nodes[j]!.id} on ${subjectId}`,
-          nodeIds: [nodes[i]!.id, nodes[j]!.id],
-          subjectId,
+          code: "basis_target_missing",
+          detail: `${version.id} derived_from missing ${sourceId}`,
+          nodeIds: [version.id, sourceId],
+          subjectId: version.subjectId,
+        });
+        continue;
+      }
+      if (source.turn > version.turn) {
+        violations.push({
+          code: "future_basis_reference",
+          detail: `${version.id} derived_from future ${sourceId}`,
+          nodeIds: [version.id, sourceId],
+          turnIndex: version.turn,
         });
       }
     }
+    if (version.status !== "active") continue;
+    const current = activeVersion(graph, version.subjectId);
+    if (current && current.id !== version.id) {
+      violations.push({
+        code: "duplicate_active_idea",
+        detail: `${version.subjectId} has multiple live pointers`,
+        subjectId: version.subjectId,
+        nodeIds: [version.id, current.id],
+      });
+    }
   }
 
-  for (const node of liveCandidates(graph)) {
-    const kind = node.type === "proposal" ? "proposal" : "claim";
-    const validity = validateCommittedProposition(node.text, kind);
-    if (validity.ok) continue;
+  const cyclic = derivedFromCycleIds(graph);
+  if (cyclic.length > 0) {
     violations.push({
-      code: "malformed_idea",
-      detail: `${node.id}: ${validity.reasons.join("; ")}`,
-      nodeIds: [node.id],
-      subjectId: node.subjectId,
-      turnIndex: node.createdAtTurn,
+      code: "derived_from_cycle",
+      detail: `derived_from cycle involving ${cyclic.join(", ")}`,
+      nodeIds: cyclic,
     });
   }
 
-  for (const event of graph.events) {
-    if (!event.accepted || event.operation.type !== "revise") continue;
-    const replacement = event.operation.replacement;
-    const targetId = event.operation.targetId;
-    if (replacement.supersedes !== targetId) {
-      violations.push({
-        code: "revision_missing_ancestry",
-        detail: `${replacement.id} does not supersede ${targetId}`,
-        nodeIds: [replacement.id, targetId],
-        turnIndex: event.turnIndex,
-      });
-    }
-    const revises = edges.some(
-      (edge) =>
-        edge.type === "revises" &&
-        edge.sourceNodeId === replacement.id &&
-        edge.targetNodeId === targetId,
+  const accepted = graph.events.some(
+    (event) =>
+      event.accepted &&
+      event.stateChanged !== false &&
+      isStateChangeMutation(event.mutation),
+  );
+  if (accepted) {
+    const replayed = materializeGraph(
+      graph.events,
+      graph.subjects.filter((subject) => subject.source === "task"),
     );
-    const replacedById =
-      event.operation.type === "revise"
-        ? (event.operation.replacedActiveNodeId ?? targetId)
-        : targetId;
-    const replaced = edges.some(
-      (edge) =>
-        edge.type === "replaced_by" &&
-        edge.sourceNodeId === replacedById &&
-        edge.targetNodeId === replacement.id,
-    );
-    if (!revises || !replaced) {
+    const fingerprint = (version: (typeof graph.versions)[number]) =>
+      [
+        version.id,
+        version.subjectId,
+        version.content,
+        version.status,
+        version.previousVersionId ?? "",
+        ...(version.derivedFromVersionIds ?? []),
+      ].join("|");
+    const live = graph.versions.map(fingerprint).sort().join("\n");
+    const replay = replayed.versions.map(fingerprint).sort().join("\n");
+    if (live !== replay) {
       violations.push({
-        code: "revision_missing_ancestry",
-        detail: `${replacement.id} is missing revises/replaced_by ancestry to ${targetId}`,
-        nodeIds: [replacement.id, targetId],
-        turnIndex: event.turnIndex,
-      });
-    }
-  }
-
-  const finalNode = graph.nodes.find((node) => node.type === "final_answer");
-  if (finalNode?.type === "final_answer") {
-    const liveSupport = finalNode.supportingNodeIds.filter((id) => {
-      const node = graph.nodes.find((item) => item.id === id);
-      return node && isLive(node) && node.type !== "final_answer";
-    });
-    if (liveSupport.length === 0 && finalNode.text.trim()) {
-      violations.push({
-        code: "final_without_ancestry",
-        detail: "final answer cites no surviving graph idea",
-        nodeIds: ["__final_answer__"],
-        turnIndex: finalNode.createdAtTurn,
-      });
-    }
-    if (
-      finalNode.supportErrors.some((error) =>
-        /differs from surviving graph state/.test(error),
-      )
-    ) {
-      violations.push({
-        code: "final_differs_from_graph",
-        detail: finalNode.supportErrors.join("; "),
-        nodeIds: ["__final_answer__"],
-        turnIndex: finalNode.createdAtTurn,
-      });
-    }
-  }
-
-  for (const node of graph.nodes) {
-    if (node.type !== "evidence") continue;
-    if (node.evidenceOrigin === "task") continue;
-    if (!isLive(node)) continue;
-    const attached = edges.some(
-      (edge) =>
-        (edge.sourceNodeId === node.id || edge.targetNodeId === node.id) &&
-        (edge.type === "grounds" ||
-          edge.type === "supports" ||
-          edge.type === "challenges"),
-    );
-    if (!attached) {
-      violations.push({
-        code: "orphaned_evidence",
-        detail: `${node.id} is not attached to a meaningful proposition`,
-        nodeIds: [node.id],
-        subjectId: node.subjectId,
-        turnIndex: node.createdAtTurn,
+        code: "replay_mismatch",
+        detail: "event replay != hydrated state",
       });
     }
   }

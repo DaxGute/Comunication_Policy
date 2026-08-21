@@ -4,32 +4,316 @@ import type { AgentId } from "../agents/types";
 export type ReasoningActor = AgentId | "system";
 
 /**
- * Where an evidence node originated. Task and deterministic nodes are
- * application-created; agent nodes are model-authored observations.
+ * Canonical reasoning schema.
+ * 1 = dense claim/evidence/stance graph (legacy runs; inspect only).
+ * 2 = versioned subject state (SET / REVISE / REMOVE).
  */
-export type EvidenceOrigin = "task" | "deterministic" | "agent";
+export const REASONING_SCHEMA_VERSION = 2 as const;
+export type ReasoningSchemaVersion = 1 | 2;
 
-export type ClaimSelector = "current" | "previous";
+export type PropositionVersionStatus = "active" | "superseded" | "removed";
+
+export type ReasoningSubjectSource = "task" | "agent";
 
 /**
- * Domain-independent reasoning nodes. Task-specific fields belong in
- * optional `metadata`, never in the core protocol.
- *
- * issue: a question or subproblem requiring resolution.
- * proposal: a candidate answer, decision, interpretation, or solution.
- * claim: a proposition asserted as part of the reasoning.
- * evidence: a fact, observation, calculation, constraint, premise, or reason.
- * challenge: legacy-only node label; new objections use typed challenge edges.
+ * One independently revisable unit of reasoning state.
+ * Crossword: a clue. Moral: a consideration. Proof: a goal, assumption, lemma,
+ * or conclusion. Task adapters seed known subjects; agents may conservatively
+ * introduce new ones on SET. The original task prompt and the final answer
+ * are not subjects.
  */
-export type AtomicReasoningNodeType =
-  | "issue"
-  | "proposal"
-  | "claim"
-  | "evidence"
-  | "challenge";
+export type ReasoningSubject = {
+  id: string;
+  label?: string;
+  description?: string;
+  prompt?: string;
+  kind?: "task_defined" | "agent_defined";
+  source: ReasoningSubjectSource;
+  createdAtTurn?: number;
+  createdBy?: ReasoningActor;
+  metadata?: Record<string, unknown>;
+};
 
-export type ReasoningNodeType = AtomicReasoningNodeType | "final_answer";
+/**
+ * Immutable snapshot of a subject's value at a point in the conversation.
+ * Revisions never mutate an existing version.
+ */
+export type PropositionVersion = {
+  id: string;
+  subjectId: string;
+  content: string;
+  agentId: AgentId;
+  turn: number;
+  previousVersionId?: string;
+  /**
+   * Agent-declared provenance: existing versions this commitment was based on.
+   * Reconstructed from the event log. Never inferred from prose.
+   */
+  derivedFromVersionIds?: string[];
+  /**
+   * Task / private evidence provenance (information unit ids).
+   * Separate from derivedFromVersionIds. Never leaked into partner prompts.
+   */
+  sourceInformationIds?: string[];
+  sourceUtteranceTurn: number;
+  sourceMessageId?: string;
+  status: PropositionVersionStatus;
+};
 
+/** Model-authored commitment. Validated deterministically before application. */
+export type ReasoningMutation =
+  | {
+      type: "SET";
+      subjectId: string;
+      subjectLabel?: string;
+      content: string;
+      /**
+       * Agent-authored refs to existing shared versions (`pv-2`).
+       * Legacy `subject@vN` forms remain parseable for historical transcripts.
+       * `private:` ids are reserved and rejected (use sourceInformationIds).
+       */
+      basis?: string[];
+      /**
+       * Task/private evidence ids from the agent's information packet.
+       * Separate from basis. Validated against the speaker's visible units.
+       */
+      sourceInformationIds?: string[];
+    }
+  | {
+      type: "REVISE";
+      subjectId: string;
+      /**
+       * Active version being replaced. Preferred agent-facing staleness check.
+       * Historical mutations may omit this and use `before` instead.
+       */
+      fromVersionId?: string;
+      /**
+       * Canonical content of the replaced version. Derived from the referenced
+       * version on accept. Legacy agent output may still supply it instead of
+       * `fromVersionId`.
+       */
+      before?: string;
+      after: string;
+      basis?: string[];
+      sourceInformationIds?: string[];
+    }
+  | {
+      type: "REMOVE";
+      subjectId: string;
+      before: string;
+    };
+
+/** Speaker-authored mutation or a recoverable malformed entry kept for rejection. */
+export type ParsedMutation =
+  | ReasoningMutation
+  | { type: "invalid"; raw?: unknown };
+
+export type StoredReasoningMutation =
+  | ReasoningMutation
+  | { type: "protocol_failure"; reason: string }
+  | { type: "final_answer"; text?: string }
+  | { type: "invalid"; raw?: unknown };
+
+/**
+ * Append-only event. Replay of accepted SET/REVISE/REMOVE events from an
+ * empty graph reconstructs canonical state. Rejected mutations stay in the
+ * log for diagnostics and are not applied.
+ */
+export type ReasoningEvent = {
+  id: string;
+  seq: number;
+  turnIndex: number;
+  messageId: string;
+  actor: ReasoningActor;
+  mutation: StoredReasoningMutation;
+  accepted: boolean;
+  errors: string[];
+  diagnostics?: string[];
+  /**
+   * False when recorded but canonical state did not change (no-op, stale,
+   * duplicate SET). Absent on historical Aug 19 events; treat missing as
+   * `accepted`.
+   */
+  stateChanged?: boolean;
+  reason?: string;
+  /** Version created by an accepted SET or REVISE. */
+  versionId?: string;
+  /** Version superseded or removed by an accepted REVISE or REMOVE. */
+  previousVersionId?: string;
+  /** Resolved provenance version ids for an accepted SET/REVISE. */
+  basisVersionIds?: string[];
+  /**
+   * Accepted task/private evidence ids for this mutation.
+   * Not serialized into partner-facing graph state text.
+   */
+  sourceInformationIds?: string[];
+};
+
+export type ReasoningGraph = {
+  schemaVersion: ReasoningSchemaVersion;
+  subjects: ReasoningSubject[];
+  versions: PropositionVersion[];
+  events: ReasoningEvent[];
+  finalAnswer?: {
+    text?: string;
+    actor: ReasoningActor;
+    turn: number;
+    messageId: string;
+  };
+};
+
+export type ParsedAgentTurn = {
+  /** Natural-language utterance the partner hears this turn. */
+  message: string;
+  /** Speaker-authored commitments. Empty is a valid turn. */
+  mutations: ParsedMutation[];
+  /**
+   * Set when the turn did not provide a valid envelope. The engine records a
+   * protocol-failure event; `mutations` is empty.
+   */
+  protocolFailure?: string;
+  finalAnswerText?: string;
+  /**
+   * Speaker-declared citations of considerations used in FINAL_ANSWER.
+   * Absent when the field was omitted. Empty array means declared none.
+   */
+  finalBasisRefs?: string[];
+  finalBasisDeclared?: boolean;
+  /** Task/private evidence ids cited alongside FINAL_ANSWER. */
+  finalSourceInformationIds?: string[];
+  /** Exact model output. */
+  raw: string;
+  parsedAsJson: boolean;
+  /**
+   * Speaker declared that this turn adds no persistent reasoning after
+   * reviewing canonical state. Rare escape hatch for moral finalization.
+   */
+  nothingToAdd?: boolean;
+  /**
+   * Protocol metadata: speaker judges the current shared graph ready for
+   * final synthesis. Bound to the graph fingerprint by the controller.
+   * Not graph state. Moral runs only.
+   */
+  readyToFinalize?: boolean;
+  /**
+   * Optional inspection metadata naming consideration ids this turn focused on.
+   * Not canonical graph state. Moral runs only.
+   */
+  focusSubjectIds?: string[];
+  /** True when mutations were recovered from a near-miss JSON shape. */
+  normalizedFromMalformedShape?: boolean;
+  /**
+   * True when the envelope is missing or every listed mutation is malformed.
+   * Never set for a valid `mutations: []` turn. Never used to invent graph changes.
+   */
+  structuredReasoningMissing?: boolean;
+};
+
+export const MUTATION_TYPES = ["SET", "REVISE", "REMOVE"] as const;
+export type MutationType = (typeof MUTATION_TYPES)[number];
+
+export const STATE_CHANGE_MUTATION_TYPES = MUTATION_TYPES;
+
+export function emptyReasoningGraph(
+  subjects: ReasoningSubject[] = [],
+): ReasoningGraph {
+  return {
+    schemaVersion: REASONING_SCHEMA_VERSION,
+    subjects: subjects.map((subject) => ({ ...subject })),
+    versions: [],
+    events: [],
+  };
+}
+
+export function hasStructuredReasoning(value: {
+  reasoningSubjects?: ReasoningSubject[];
+  reasoningVersions?: PropositionVersion[];
+  reasoningEvents?: ReasoningEvent[];
+  reasoningNodes?: unknown[];
+}): boolean {
+  return (
+    Array.isArray(value.reasoningSubjects) ||
+    Array.isArray(value.reasoningVersions) ||
+    Array.isArray(value.reasoningEvents) ||
+    Array.isArray(value.reasoningNodes)
+  );
+}
+
+export function isStateChangeMutation(
+  mutation: StoredReasoningMutation | undefined,
+): mutation is ReasoningMutation {
+  return (
+    mutation?.type === "SET" ||
+    mutation?.type === "REVISE" ||
+    mutation?.type === "REMOVE"
+  );
+}
+
+export function mutationSubjectId(
+  mutation: StoredReasoningMutation | undefined,
+): string | undefined {
+  if (!mutation) return undefined;
+  if (mutation.type === "SET" || mutation.type === "REVISE" || mutation.type === "REMOVE") {
+    return mutation.subjectId;
+  }
+  return undefined;
+}
+
+export function mutationBasis(
+  mutation: StoredReasoningMutation | undefined,
+): string[] {
+  if (!mutation) return [];
+  if (mutation.type === "SET" || mutation.type === "REVISE") {
+    return mutation.basis ?? [];
+  }
+  return [];
+}
+
+export function mutationSourceInformationIds(
+  mutation: StoredReasoningMutation | undefined,
+): string[] {
+  if (!mutation) return [];
+  if (mutation.type === "SET" || mutation.type === "REVISE") {
+    return mutation.sourceInformationIds ?? [];
+  }
+  return [];
+}
+
+export type ProvenanceEdgeKind = "revises" | "derived_from";
+
+export type ProvenanceEdge = {
+  from: string;
+  to: string;
+  kind: ProvenanceEdgeKind;
+};
+
+/** Current value for a subject, if any. */
+export function activeVersion(
+  graph: Pick<ReasoningGraph, "versions">,
+  subjectId: string,
+): PropositionVersion | undefined {
+  return graph.versions.find(
+    (version) => version.subjectId === subjectId && version.status === "active",
+  );
+}
+
+export function versionsForSubject(
+  graph: Pick<ReasoningGraph, "versions">,
+  subjectId: string,
+): PropositionVersion[] {
+  return graph.versions
+    .filter((version) => version.subjectId === subjectId)
+    .sort((a, b) => a.turn - b.turn || a.id.localeCompare(b.id));
+}
+
+export function normalizePropositionContent(text: string): string {
+  return text.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Legacy dense-graph types retained only so old inspector/export code can
+ * mention the retired representation. New runs never produce these.
+ */
 export type ReasoningNodeStatus =
   | "open"
   | "accepted"
@@ -37,94 +321,6 @@ export type ReasoningNodeStatus =
   | "superseded"
   | "unresolved";
 
-export type ReasoningIssueKind = "task_defined" | "emergent";
-
-/**
- * Stable task- or application-defined question that reasoning nodes can
- * concern across turns. Unlike an issue node, a task subject is structural
- * context and has no conversational creation turn.
- */
-export type ReasoningSubject = {
-  id: string;
-  label: string;
-  description?: string;
-  /** New records use task_defined; optional for persisted v1 subjects. */
-  kind?: "task_defined";
-  /** Task-facing wording of the question or subproblem. */
-  prompt?: string;
-  source: "task";
-  metadata?: Record<string, unknown>;
-};
-
-/** A task-defined subject or an emergent issue node, in a common view. */
-export type ReasoningIssue = {
-  id: string;
-  kind: ReasoningIssueKind;
-  label: string;
-  prompt?: string;
-  metadata?: Record<string, unknown>;
-};
-
-export type ReasoningStance = {
-  actor: AgentId;
-  kind: "support" | "challenge" | "accept" | "reject" | "pass";
-  reason?: string;
-  turnIndex: number;
-  messageId: string;
-};
-
-/**
- * Model-facing semantic move. The engine converts these into canonical
- * nodes, ids, edges, revisions, provenance, and events.
- */
-export type ReasoningMove =
-  | {
-      kind: "claim";
-      subject?: string;
-      value?: string;
-      text?: string;
-      basis?: string[];
-      confidence?: number;
-    }
-  | {
-      kind: "evidence";
-      text: string;
-      source?: string;
-      subject?: string;
-    }
-  | {
-      kind: "revise";
-      subject?: string;
-      claim?: string;
-      value?: string;
-      text?: string;
-      basis?: string[];
-      selector?: ClaimSelector;
-      confidence?: number;
-    }
-  | {
-      kind: "agree";
-      subject?: string;
-      claim?: string;
-    }
-  | {
-      kind: "disagree";
-      subject?: string;
-      claim?: string;
-      basis?: string[];
-    }
-  | {
-      kind: "support" | "challenge";
-      source?: string;
-      target?: string;
-      subject?: string;
-      reason?: string;
-    };
-
-/**
- * A conflict is generic protocol input. The producer, not the convergence
- * engine, owns the semantics that made the nodes incompatible.
- */
 export type IssueConflict = {
   issueId: string;
   nodeIds: string[];
@@ -150,15 +346,7 @@ export type IssueConvergenceState = {
   contradictory: boolean;
   reopened: boolean;
   lastChangedTurn?: number;
-  agentStances?: {
-    agentA?: ReasoningStance;
-    agentB?: ReasoningStance;
-  };
   conflicts: IssueConflict[];
-  /**
-   * Task-adapter compatibility of live claims. Independent of agent status:
-   * a claim may be accepted by an agent and incompatible with constraints.
-   */
   claimCompatibility?: Record<string, TaskCompatibility>;
 };
 
@@ -181,375 +369,20 @@ export type ReasoningProgressState = {
   reasons: string[];
 };
 
-export type AtomicReasoningNode = {
+export type ReasoningIssue = {
   id: string;
-  type: AtomicReasoningNodeType;
-  text: string;
-  createdBy: ReasoningActor;
-  createdAtTurn: number;
-  /** Transcript message that created this node. */
-  sourceMessageId?: string;
-  confidence?: number;
-  /** Present on evidence nodes when origin is known. */
-  evidenceOrigin?: EvidenceOrigin;
-  /**
-   * Derived convenience snapshot. Agent stances live in `reasoningEvents`;
-   * this field is recomputed by the reducer and must not be treated as an
-   * independent source of truth.
-   */
-  status: ReasoningNodeStatus;
-  parents: string[];
-  dependencies: string[];
-  /** Stable task subject id or the id of an emergent issue node. */
-  subjectId?: string;
-  supersedes?: string;
+  kind: "task_defined" | "emergent";
+  label: string;
+  prompt?: string;
   metadata?: Record<string, unknown>;
-};
-
-/**
- * Engine-derived terminal node. It is materialized from a final_answer event
- * even when one or more claimed supports are missing or otherwise invalid.
- */
-export type FinalAnswerNode = {
-  id: "__final_answer__";
-  type: "final_answer";
-  text: string;
-  createdBy: ReasoningActor;
-  createdAtTurn: number;
-  sourceMessageId: string;
-  sourceEventId: string;
-  confidence?: number;
-  status: ReasoningNodeStatus;
-  parents: string[];
-  dependencies: string[];
-  supersedes?: string;
-  metadata?: Record<string, unknown>;
-  supportingNodeIds: string[];
-  supportErrors: string[];
-};
-
-export type ReasoningNode = AtomicReasoningNode | FinalAnswerNode;
-
-export type ReasoningEdgeType =
-  | "answers"
-  | "supports"
-  | "challenges"
-  | "depends_on"
-  | "revises"
-  /**
-   * Provenance, not decisive support. Canonical direction is
-   * `evidence|claim --grounds--> claim` ("E1 grounds C4").
-   */
-  | "grounds"
-  /**
-   * Historical, not epistemic: the previous active candidate for an issue
-   * was succeeded by this node. Canonical direction is old → new
-   * (`old --replaced_by--> new`). Distinct from `revises`.
-   */
-  | "replaced_by";
-
-/** A directed semantic relationship with event-level provenance. */
-export type ReasoningEdge = {
-  id: string;
-  type: ReasoningEdgeType;
-  sourceNodeId: string;
-  targetNodeId: string;
-  createdBy: ReasoningActor;
-  createdAtTurn: number;
-  sourceMessageId: string;
-  sourceEventId: string;
-  reason?: string;
-  /** True when reconstructed from an old node field rather than a typed edge intent. */
-  legacy?: boolean;
-};
-
-/**
- * Model-authored reasoning intent. The engine owns ids, actor, provenance,
- * status, supersession, and legality. Partial / malformed intents are still
- * represented so they can become rejected events instead of disappearing.
- */
-export type ReasoningIntent =
-  | {
-      action: "create";
-      nodeType?: string;
-      text?: string;
-      confidence?: number;
-      /** @deprecated Legacy grouping only; ignored for newly applied creates. */
-      parents?: string[];
-      dependencies?: string[];
-      subjectId?: string;
-      /** Turn-local handle; resolved to an engine-allocated id. */
-      localId?: string;
-      metadata?: Record<string, unknown>;
-      /** Resolved grounding sources; engine creates `grounds` edges. */
-      groundsNodeIds?: string[];
-      /** Stronger evidential support; engine creates `supports` edges. */
-      supportsNodeIds?: string[];
-      /** Unresolved semantic basis aliases; engine resolves via the adapter. */
-      basis?: string[];
-    }
-  | {
-      action: "support" | "challenge";
-      sourceNodeId?: string;
-      targetNodeId?: string;
-      /** Legacy alias for targetNodeId. */
-      targetId?: string;
-      subjectId?: string;
-      selector?: ClaimSelector;
-      reason?: string;
-    }
-  | {
-      action: "accept" | "reject" | "pass";
-      targetId?: string;
-      subjectId?: string;
-      selector?: ClaimSelector;
-      reason?: string;
-    }
-  | {
-      action: "revise";
-      targetId?: string;
-      nodeType?: string;
-      text?: string;
-      confidence?: number;
-      /** @deprecated Legacy grouping only; ignored for newly applied revisions. */
-      parents?: string[];
-      dependencies?: string[];
-      subjectId?: string;
-      selector?: ClaimSelector;
-      reason?: string;
-      localId?: string;
-      metadata?: Record<string, unknown>;
-      groundsNodeIds?: string[];
-      supportsNodeIds?: string[];
-      basis?: string[];
-    }
-  | {
-      action: "invalid";
-      raw?: unknown;
-    }
-  | {
-      action: "protocol_failure";
-      reason: string;
-    }
-  | {
-      action: "final_answer";
-      text?: string;
-      supportingNodeIds: string[];
-    };
-
-/**
- * Canonical applied operation stored on the event log. Created by the engine,
- * never by the model. Replay rebuilds graph state from these records.
- */
-export type GroundingLink = {
-  sourceNodeId: string;
-  relation: "grounds" | "supports" | "challenges";
-};
-
-export type ReasoningOperation =
-  | {
-      type: "create";
-      node: AtomicReasoningNode;
-      /**
-       * Previous active claim/proposal on the same issue, when this create
-       * became the new active candidate. Engine-derived history only.
-       */
-      replacedActiveNodeId?: string;
-      grounding?: GroundingLink[];
-    }
-  | {
-      type: "support";
-      actor: ReasoningActor;
-      sourceNodeId?: string;
-      targetNodeId: string;
-      /** Legacy alias retained in stored operations. */
-      targetId: string;
-      reason?: string;
-    }
-  | {
-      type: "challenge";
-      actor: ReasoningActor;
-      sourceNodeId?: string;
-      targetNodeId: string;
-      targetId: string;
-      reason?: string;
-    }
-  | {
-      type: "accept";
-      actor: ReasoningActor;
-      targetId: string;
-      reason?: string;
-    }
-  | {
-      type: "reject";
-      actor: ReasoningActor;
-      targetId: string;
-      reason: string;
-    }
-  | {
-      type: "revise";
-      actor: ReasoningActor;
-      targetId: string;
-      replacement: AtomicReasoningNode;
-      reason?: string;
-      replacedActiveNodeId?: string;
-      grounding?: GroundingLink[];
-    }
-  | {
-      type: "pass";
-      actor: ReasoningActor;
-      targetId: string;
-      reason?: string;
-    }
-  | {
-      type: "invalid";
-      actor: ReasoningActor;
-      targetId?: string;
-    }
-  | {
-      type: "protocol_failure";
-      actor: ReasoningActor;
-      reason: string;
-    }
-  | {
-      type: "final_answer";
-      actor: ReasoningActor;
-      text?: string;
-      supportingNodeIds: string[];
-    };
-
-/**
- * Append-only event. Every attempted intent produces an event. Invalid moves
- * are stored with `accepted: false` so evaluation can see attempted duplicates,
- * cycles, malformed references, and protocol failures.
- *
- * Events are the canonical historical record; node snapshots are derived.
- */
-export type ReasoningEvent = {
-  id: string;
-  seq: number;
-  turnIndex: number;
-  messageId: string;
-  actor: ReasoningActor;
-  intent: ReasoningIntent;
-  operation: ReasoningOperation;
-  accepted: boolean;
-  errors: string[];
-  /**
-   * Non-fatal observations (subjectId normalization, candidate revisits,
-   * transitions without semantic lineage). Never used to reject the event.
-   */
-  diagnostics?: string[];
-  /**
-   * False when the event was recorded but canonical solver state did not
-   * change (duplicate live candidate, same-answer revise, restated support).
-   * Absent on historical events; treat missing as `accepted`.
-   */
-  stateChanged?: boolean;
-};
-
-export type ReasoningGraph = {
-  /** Stable task-defined subjects. Emergent issues remain ordinary issue nodes. */
-  subjects?: ReasoningSubject[];
-  nodes: ReasoningNode[];
-  events: ReasoningEvent[];
-  /** Derived from canonical events; optional only for old in-memory callers. */
-  edges?: ReasoningEdge[];
 };
 
 export type FinalAnswerSupport = {
   text?: string;
-  supportingNodeIds: string[];
-  /** Engine-produced linkage errors. Empty when linkage is valid. */
+  supportingNodeIds?: string[];
+  /** Resolved proposition version ids cited as final-synthesis basis. */
+  basisVersionIds?: string[];
+  /** False when the speaker omitted finalBasis. Empty basis with true means declared none. */
+  declared?: boolean;
   errors: string[];
 };
-
-export type ParsedAgentTurn = {
-  /** Natural-language utterance used as the conversational record. */
-  message: string;
-  /** Tiny semantic moves as the model expressed them (after shape recovery). */
-  moves: ReasoningMove[];
-  intents: ReasoningIntent[];
-  /**
-   * Set when the turn did not provide a valid JSON envelope. The engine
-   * records a protocol-failure event; `intents` is empty.
-   */
-  protocolFailure?: string;
-  finalAnswerSupport?: Omit<FinalAnswerSupport, "errors">;
-  /** Exact model output. */
-  raw: string;
-  parsedAsJson: boolean;
-  /** True when at least one move was recovered from a near-miss JSON shape. */
-  normalizedFromMalformedShape?: boolean;
-  /** True when simple crossword fills were extracted from the message. */
-  extractedFromMessage?: boolean;
-  /**
-   * True when the message looks substantive but no usable move was recorded.
-   * Never used to invent complex semantics.
-   */
-  structuredReasoningMissing?: boolean;
-};
-
-export const REASONING_NODE_TYPES: readonly AtomicReasoningNodeType[] = [
-  "issue",
-  "proposal",
-  "claim",
-  "evidence",
-  "challenge",
-];
-
-export const REASONING_NODE_STATUSES: readonly ReasoningNodeStatus[] = [
-  "open",
-  "accepted",
-  "rejected",
-  "superseded",
-  "unresolved",
-];
-
-export const REASONING_OPERATION_TYPES = [
-  "create",
-  "support",
-  "challenge",
-  "accept",
-  "reject",
-  "revise",
-  "pass",
-  "invalid",
-  "protocol_failure",
-  "final_answer",
-] as const;
-
-export type ReasoningOperationType = (typeof REASONING_OPERATION_TYPES)[number];
-
-export const REASONING_INTENT_ACTIONS = [
-  "create",
-  "support",
-  "challenge",
-  "accept",
-  "reject",
-  "revise",
-  "pass",
-  "invalid",
-  "protocol_failure",
-  "final_answer",
-] as const;
-
-export type ReasoningIntentAction = (typeof REASONING_INTENT_ACTIONS)[number];
-
-export function emptyReasoningGraph(
-  subjects: ReasoningSubject[] = [],
-): ReasoningGraph {
-  return { subjects, nodes: [], events: [], edges: [] };
-}
-
-export function hasStructuredReasoning(value: {
-  reasoningSubjects?: ReasoningSubject[];
-  reasoningNodes?: ReasoningNode[];
-  reasoningEvents?: ReasoningEvent[];
-}): boolean {
-  return (
-    Array.isArray(value.reasoningSubjects) ||
-    Array.isArray(value.reasoningNodes) ||
-    Array.isArray(value.reasoningEvents)
-  );
-}

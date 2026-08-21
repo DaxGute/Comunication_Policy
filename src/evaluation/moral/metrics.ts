@@ -244,10 +244,9 @@ export function computeMoralMetrics(options: {
   const { view, events, messages } = options;
   const ideas = view.ideas.filter((idea) => idea.originatingAgent !== "system");
   const axioms = ideas.filter((idea) => idea.kind === "axiom");
-  const proposals = ideas.filter((idea) => {
-    const node = view.graph.nodes.find((item) => item.id === idea.id);
-    return node?.type === "proposal" || node?.type === "claim";
-  });
+  const proposals = ideas.filter((idea) =>
+    view.evaluable.some((item) => item.id === idea.id),
+  );
   const unique = uniqueIdea(ideas);
   const disagreements = buildDisagreements(view, events);
   const conversationTurns = [...new Set(messages.map((m) => m.turnIndex))]
@@ -401,7 +400,7 @@ function adoptionMetrics(
     const desc = descendantsOf(idea.id, edges);
     downstream[idea.originatingAgent] += desc.size;
     centrality[idea.originatingAgent] += [...desc].filter((id) => {
-      const node = view.graph.nodes.find((item) => item.id === id);
+      const node = view.evaluable.find((item) => item.id === id);
       return node ? isIdeaNode(node) || isAxiomNode(node) : false;
     }).length;
   }
@@ -602,7 +601,7 @@ function efficiencyMetrics(
       event.turnIndex,
       (mutationsByTurn.get(event.turnIndex) ?? 0) + 1,
     );
-    if (event.operation.type === "create" || event.operation.type === "revise") {
+    if (event.mutation.type === "SET" || event.mutation.type === "REVISE") {
       newNodesByTurn.set(
         event.turnIndex,
         (newNodesByTurn.get(event.turnIndex) ?? 0) + 1,
@@ -612,15 +611,8 @@ function efficiencyMetrics(
   const turns = turnCount;
   const explicitReferences = view.graph.events.filter((event) => {
     if (!event.accepted || event.turnIndex <= 0) return false;
-    const op = event.operation;
-    return (
-      op.type === "support" ||
-      op.type === "challenge" ||
-      op.type === "accept" ||
-      op.type === "reject" ||
-      ((op.type === "create" || op.type === "revise") &&
-        (op.grounding?.length ?? 0) > 0)
-    );
+    const mutation = event.mutation;
+    return mutation.type === "REVISE" || mutation.type === "REMOVE";
   }).length;
   const questions = messages.filter((m) => m.content.includes("?")).length;
   return {
@@ -911,15 +903,8 @@ function familiarityMetrics(
   const reuseTurns = new Set<number>();
   for (const event of view.graph.events) {
     if (event.turnIndex <= 0) continue;
-    const op = event.operation;
-    if (
-      op.type === "support" ||
-      op.type === "challenge" ||
-      op.type === "accept" ||
-      op.type === "reject" ||
-      ((op.type === "create" || op.type === "revise") &&
-        (op.grounding?.length ?? 0) > 0)
-    ) {
+    const mutation = event.mutation;
+    if (mutation.type === "REVISE" || mutation.type === "REMOVE") {
       reuseTurns.add(event.turnIndex);
     }
   }
@@ -942,13 +927,8 @@ function familiarityMetrics(
     explicitReferences: frac(
       view.graph.events.filter((event) => {
         if (event.turnIndex <= 0 || !event.accepted) return false;
-        const op = event.operation;
-        return (
-          op.type === "support" ||
-          op.type === "challenge" ||
-          op.type === "accept" ||
-          op.type === "reject"
-        );
+        const mutation = event.mutation;
+        return mutation.type === "REVISE" || mutation.type === "REMOVE";
       }).length,
       graphTurns.length,
     ),

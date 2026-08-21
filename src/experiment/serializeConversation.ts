@@ -14,11 +14,9 @@ import {
 } from "./transcriptProtocol";
 import type { ExperimentRun, ProblemConversation } from "./types";
 import type {
-  ReasoningEdge,
   ReasoningEvent,
-  ReasoningIntent,
-  ReasoningNode,
-  ReasoningOperation,
+  PropositionVersion,
+  ReasoningMutation,
   ReasoningSubject,
 } from "../reasoning/types";
 import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
@@ -52,11 +50,15 @@ export type ConversationExportMessage = {
     system_prompt_characters: number;
     problem_characters: number;
     history_characters: number;
+    graph_subject_count?: number;
+    graph_active_value_count?: number;
+    graph_history_version_count?: number;
+    graph_serialized_chars?: number;
+    previous_utterance_chars?: number;
+    historical_transcript_chars_included?: number;
   };
   raw_content?: string;
-  reasoning_moves?: unknown[];
-  reasoning_intents?: ReasoningIntent[];
-  reasoning_operations?: ReasoningOperation[];
+  reasoning_mutations?: ReasoningMutation[];
 };
 
 export type ConversationExportAgent = {
@@ -88,6 +90,8 @@ export type ConversationExport = {
     title: string;
     problem_set: string;
     prompt: string;
+    prompt_by_agent?: { agent_a: string; agent_b: string };
+    information_assignment?: unknown;
   };
   configuration: {
     run_model: string;
@@ -99,6 +103,8 @@ export type ConversationExport = {
     provider: "mock" | "openai";
     temperature: number;
     max_turns: number;
+    information_overlap?: number;
+    information_structure?: unknown;
     communication_policy: {
       trustA: number;
       trustB: number;
@@ -117,9 +123,9 @@ export type ConversationExport = {
     status: ProblemConversation["stoppedReason"];
   };
   reasoning?: {
+    schema_version: number;
     subjects: ReasoningSubject[];
-    nodes: ReasoningNode[];
-    edges: ReasoningEdge[];
+    versions: PropositionVersion[];
     events: ReasoningEvent[];
     diagnostics?: ReasoningGraphDiagnostics;
   };
@@ -228,6 +234,16 @@ export function serializeConversation(
       title: conversation.problemTitle,
       problem_set: run.config.problemCategory,
       prompt: conversation.problemText,
+      ...(conversation.problemTextByAgent
+        ? {
+            prompt_by_agent: conversation.problemTextByAgent,
+          }
+        : {}),
+      ...(conversation.informationAssignment
+        ? {
+            information_assignment: conversation.informationAssignment,
+          }
+        : {}),
     },
     configuration: {
       run_model: runModel,
@@ -238,6 +254,10 @@ export function serializeConversation(
       provider: run.config.provider,
       temperature: run.config.temperature,
       max_turns: run.config.maxTurns,
+      information_overlap: run.config.informationOverlap ?? 1,
+      ...(run.config.informationStructure
+        ? { information_structure: run.config.informationStructure }
+        : {}),
       communication_policy: {
         trustA: run.policy.trustA,
         trustB: run.policy.trustB,
@@ -293,19 +313,34 @@ export function serializeConversation(
           system_prompt_characters: t.systemPromptCharacters,
           problem_characters: t.problemCharacters,
           history_characters: t.historyCharacters,
+          ...(t.graphSubjectCount !== undefined
+            ? { graph_subject_count: t.graphSubjectCount }
+            : {}),
+          ...(t.graphActiveValueCount !== undefined
+            ? { graph_active_value_count: t.graphActiveValueCount }
+            : {}),
+          ...(t.graphHistoryVersionCount !== undefined
+            ? { graph_history_version_count: t.graphHistoryVersionCount }
+            : {}),
+          ...(t.graphSerializedChars !== undefined
+            ? { graph_serialized_chars: t.graphSerializedChars }
+            : {}),
+          ...(t.previousUtteranceChars !== undefined
+            ? { previous_utterance_chars: t.previousUtteranceChars }
+            : {}),
+          ...(t.historicalTranscriptCharsIncluded !== undefined
+            ? {
+                historical_transcript_chars_included:
+                  t.historicalTranscriptCharsIncluded,
+              }
+            : {}),
         };
       }
       if (message.rawContent) {
         exported.raw_content = message.rawContent;
       }
-      if (message.reasoningMoves && message.reasoningMoves.length > 0) {
-        exported.reasoning_moves = message.reasoningMoves;
-      }
-      if (message.reasoningIntents && message.reasoningIntents.length > 0) {
-        exported.reasoning_intents = message.reasoningIntents;
-      }
-      if (message.reasoningOperations && message.reasoningOperations.length > 0) {
-        exported.reasoning_operations = message.reasoningOperations;
+      if (message.reasoningMutations && message.reasoningMutations.length > 0) {
+        exported.reasoning_mutations = message.reasoningMutations;
       }
       return exported;
     }),
@@ -324,28 +359,29 @@ export function serializeConversation(
             supporting_node_errors: conversation.finalAnswerSupport.errors,
           }
         : {}),
-      ...(conversation.reasoningDiagnostics?.finalSupportCoverage !== undefined
-        ? {
-            final_support_coverage:
-              conversation.reasoningDiagnostics.finalSupportCoverage,
-          }
+      ...(conversation.finalBasisVersionIds?.length
+        ? { final_basis_version_ids: conversation.finalBasisVersionIds }
+        : {}),
+      ...(typeof conversation.finalBasisDeclared === "boolean"
+        ? { final_basis_declared: conversation.finalBasisDeclared }
         : {}),
       status: conversation.stoppedReason,
     },
     ...(Array.isArray(conversation.reasoningSubjects) ||
-    Array.isArray(conversation.reasoningNodes) ||
+    Array.isArray(conversation.reasoningVersions) ||
     Array.isArray(conversation.reasoningEvents)
       ? {
           reasoning: (() => {
             const graph = hydrateReasoningGraph({
+              reasoningSchemaVersion: conversation.reasoningSchemaVersion,
               reasoningSubjects: conversation.reasoningSubjects,
-              reasoningNodes: conversation.reasoningNodes,
+              reasoningVersions: conversation.reasoningVersions,
               reasoningEvents: conversation.reasoningEvents,
             });
             return {
+              schema_version: graph.schemaVersion,
               subjects: graph.subjects ?? [],
-              nodes: graph.nodes,
-              edges: graph.edges ?? [],
+              versions: graph.versions,
               events: graph.events,
               diagnostics: conversation.reasoningDiagnostics,
             };

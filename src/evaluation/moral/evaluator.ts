@@ -56,7 +56,7 @@ export function computeMoralDynamics(options: {
       conversation: {
         ...options.conversation,
         reasoningSubjects: [],
-        reasoningNodes: [],
+        reasoningVersions: [],
         reasoningEvents: [],
       },
     });
@@ -72,11 +72,11 @@ function computeMoralDynamicsUnsafe(options: {
 }): MoralDynamicsEvaluation {
   const graph = hydrateReasoningGraph({
     reasoningSubjects: options.conversation.reasoningSubjects,
-    reasoningNodes: options.conversation.reasoningNodes,
+    reasoningVersions: options.conversation.reasoningVersions,
     reasoningEvents: options.conversation.reasoningEvents,
   });
   const graphMissing =
-    graph.nodes.length === 0 && graph.events.length === 0;
+    graph.versions.length === 0 && graph.events.length === 0;
   const view = buildMoralGraphView(graph);
   const events = graphMissing
     ? []
@@ -123,7 +123,7 @@ function computeMoralDynamicsUnsafe(options: {
       source: "reasoning_graph",
       ideaCount,
       axiomCount,
-      graphNodeCount: graph.nodes.length,
+      graphNodeCount: graph.versions.length,
       graphEventCount: graph.events.length,
       extractionCompleteness: graphMissing
         ? "missing"
@@ -168,7 +168,7 @@ export async function evaluateMoralDynamics(options: {
   if (includeJudge && options.conversation.messages.length > 0) {
     const graph = hydrateReasoningGraph({
       reasoningSubjects: options.conversation.reasoningSubjects,
-      reasoningNodes: options.conversation.reasoningNodes,
+      reasoningVersions: options.conversation.reasoningVersions,
       reasoningEvents: options.conversation.reasoningEvents,
     });
     const view = buildMoralGraphView(graph);

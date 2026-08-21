@@ -35,8 +35,11 @@ export const DEFAULT_RUN_CONFIG: RunConfig = {
   evaluationReasoningEffort: DEFAULT_REASONING_EFFORT,
   evaluationEnabled: true,
   provider: "openai",
-  maxTurns: 8,
+  maxTurns: 16,
   temperature: 0.4,
+  moralSubjectInitialization: "agent-created",
+  moralSubjectSeeding: "agent-created",
+  informationOverlap: 1.0,
 };
 
 export function createInitialExperimentState(

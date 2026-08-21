@@ -65,7 +65,7 @@ export function buildInteractionView(
   const adapter = interactionAdapterFor(category);
   const base = buildMoralGraphView(graph);
   const objects: ReasoningObject[] = base.ideas.map((idea) => {
-    const node = graph.nodes.find((item) => item.id === idea.id);
+    const node = base.evaluable.find((item) => item.id === idea.id);
     const kind: ReasoningObjectKind = node
       ? adapter.objectKind(node)
       : idea.kind === "axiom"

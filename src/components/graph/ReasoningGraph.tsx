@@ -1,38 +1,50 @@
 /**
- * SVG reasoning-graph view for a single conversation.
- *
- * Graph mutation is src/reasoning/graph.ts; this file only lays out and highlights nodes.
+ * Reasoning Graph Inspector: subject lanes, revises + derived_from DAG,
+ * and source-utterance linking.
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AgentId } from "../../agents/types";
 import { agentLabel } from "../../agents/identity";
 import type { ProblemConversation } from "../../experiment/types";
+import type { InformationAssignment } from "../../information/types";
 import {
-  eventsForNode,
-  hasStructuredReasoning,
+  checkGraphInvariants,
+  computeCanonicalReasoningMetrics,
+  computePersistenceDiagnostics,
+  coverageForTurn,
+  deriveReasoningAnalysis,
+  describeRejectedAttempt,
+  eventsForVersion,
   hydrateReasoningGraph,
   layoutReasoningGraph,
-  nodeIdsTouchedByMessage,
-  stancesForNode,
+  graphUsesConsiderationLanes,
+  liveLabel,
+  propositionCommitment,
+  subjectDisplayTitle,
+  versionPublicRef,
+  versionsInCreationOrder,
+  type CollaborationDiagnostics,
   type GraphLayoutEdge,
   type GraphLayoutNode,
+  type MoralSynthesisDiagnostics,
+  type PropositionVersion,
   type ReasoningGraph,
-  type ReasoningNode,
-  type ReasoningNodeStatus,
+  type ReasoningGraphLayoutOptions,
+  type TurnPersistenceCoverage,
 } from "../../reasoning";
+import { formatTurnMemoryForAudit } from "../../runtime/renderModelRequest";
+import { TextPreviewModal } from "../ui/TextPreviewModal";
 
 type Props = {
   conversation?: ProblemConversation;
   speakingAgentId?: AgentId;
   selectedNodeId?: string;
   selectedMessageId?: string;
-  /** Tighter chrome when embedded in the problem inspector. */
   compact?: boolean;
   onSelectNode?: (nodeId: string | undefined, messageId?: string) => void;
-  onOpenSourceTurn?: (messageId: string, nodeId?: string) => void;
 };
 
-const FINAL_ID = "__final_answer__";
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
@@ -41,8 +53,9 @@ function graphFromConversation(
   conversation: ProblemConversation,
 ): ReasoningGraph {
   return hydrateReasoningGraph({
+    reasoningSchemaVersion: conversation.reasoningSchemaVersion,
     reasoningSubjects: conversation.reasoningSubjects,
-    reasoningNodes: conversation.reasoningNodes,
+    reasoningVersions: conversation.reasoningVersions,
     reasoningEvents: conversation.reasoningEvents,
   });
 }
@@ -53,13 +66,61 @@ function truncate(text: string, max: number): string {
   return `${t.slice(0, max - 1).trimEnd()}…`;
 }
 
-function statusClass(status: ReasoningNodeStatus): string {
-  return `reasoning-node--${status}`;
+function versionHitFromTarget(
+  target: EventTarget | null,
+): { nodeId: string; messageId?: string } | undefined {
+  if (!(target instanceof Element)) return undefined;
+  const el = target.closest("[data-version-id]");
+  const nodeId = el?.getAttribute("data-version-id")?.trim();
+  if (!nodeId) return undefined;
+  const messageId = el?.getAttribute("data-message-id")?.trim();
+  return { nodeId, messageId: messageId || undefined };
 }
 
-function ownerClass(createdBy: string): string {
-  if (createdBy === "system") return "reasoning-node--task";
-  return createdBy === "agent_a" ? "reasoning-node--a" : "reasoning-node--b";
+function versionHitFromPointer(
+  event: { target: EventTarget | null; clientX: number; clientY: number },
+): { nodeId: string; messageId?: string } | undefined {
+  return (
+    versionHitFromTarget(event.target) ??
+    versionHitFromTarget(document.elementFromPoint(event.clientX, event.clientY))
+  );
+}
+
+function turnHitFromTarget(target: EventTarget | null): number | undefined {
+  if (!(target instanceof Element)) return undefined;
+  const el = target.closest("[data-turn-index]");
+  const raw = el?.getAttribute("data-turn-index")?.trim();
+  if (!raw) return undefined;
+  const turn = Number(raw);
+  return Number.isFinite(turn) ? turn : undefined;
+}
+
+function turnHitFromPointer(
+  event: { target: EventTarget | null; clientX: number; clientY: number },
+): number | undefined {
+  return (
+    turnHitFromTarget(event.target) ??
+    turnHitFromTarget(document.elementFromPoint(event.clientX, event.clientY))
+  );
+}
+
+function laneProvenance(lane: {
+  source?: string;
+  createdBy?: string;
+  createdAtTurn?: number;
+  subjectId?: string;
+}): string {
+  if (lane.subjectId?.toLowerCase().startsWith("moral:") || lane.source === "agent") {
+    const who =
+      lane.createdBy === "agent_a" || lane.createdBy === "agent_b"
+        ? agentLabel(lane.createdBy)
+        : "an agent";
+    const when =
+      typeof lane.createdAtTurn === "number" ? ` · Turn ${lane.createdAtTurn}` : "";
+    return `Created by ${who}${when}`;
+  }
+  if (lane.source === "task") return "From puzzle / task definition";
+  return "";
 }
 
 export function ReasoningGraphView({
@@ -69,7 +130,6 @@ export function ReasoningGraphView({
   selectedMessageId,
   compact,
   onSelectNode,
-  onOpenSourceTurn,
 }: Props) {
   const prevIdsRef = useRef<Set<string>>(new Set());
   const graphRef = useRef<HTMLDivElement>(null);
@@ -84,231 +144,220 @@ export function ReasoningGraphView({
         scrollLeft: number;
         scrollTop: number;
         moved: boolean;
+        nodeId?: string;
+        messageId?: string;
+        turnIndex?: number;
       }
     | undefined
   >(undefined);
-  const zoomAnchorRef = useRef<
-    | {
-        xRatio: number;
-        yRatio: number;
-        offsetX: number;
-        offsetY: number;
-      }
-    | undefined
-  >(undefined);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [hoverEdge, setHoverEdge] = useState<GraphLayoutEdge | undefined>();
+  const [pickedNodeId, setPickedNodeId] = useState<string | undefined>();
   const live = conversation?.status === "running";
+
+  const graph = useMemo(
+    () =>
+      conversation
+        ? graphFromConversation(conversation)
+        : {
+            schemaVersion: 2 as const,
+            subjects: [],
+            versions: [],
+            events: [],
+          },
+    [conversation],
+  );
+  const considerationGraph = graphUsesConsiderationLanes(graph);
+  const displayedSubjects = graph.subjects;
+  const displayedVersionCount = graph.versions.length;
+  const laneNouns = considerationGraph ? "considerations" : "subjects";
 
   useEffect(() => {
     prevIdsRef.current = new Set();
     setZoom(1);
+    followLiveRef.current = true;
+    setPickedNodeId(undefined);
   }, [conversation?.problemId]);
 
   useEffect(() => {
-    const onFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === graphRef.current);
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
     };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () =>
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [expanded]);
 
-  const graph = useMemo(
-    () => (conversation ? graphFromConversation(conversation) : { nodes: [], events: [] }),
-    [conversation],
-  );
-  const latestTurn = conversation?.messages.at(-1)?.turnIndex;
+  const layoutOptions = useMemo<ReasoningGraphLayoutOptions>(() => {
+    const turns = (conversation?.messages ?? []).map((message) => {
+      const coverage = coverageForTurn(graph, message.turnIndex, message);
+      return {
+        turnIndex: message.turnIndex,
+        agentId: message.agentId,
+        persistentChange: coverage.persistentChange,
+      };
+    });
+    return {
+      turns: turns.length > 0 ? turns : undefined,
+    };
+  }, [conversation, graph]);
 
   const layout = useMemo(
-    () =>
-      layoutReasoningGraph(graph, {
-        throughTurn: latestTurn,
-        finalAnswer: conversation?.finalAnswer
-          ? {
-              text: conversation.finalAnswer,
-              supportingNodeIds:
-                conversation.finalAnswerSupport?.supportingNodeIds ?? [],
-            }
-          : undefined,
-      }),
-    [graph, latestTurn, conversation?.finalAnswer, conversation?.finalAnswerSupport],
+    () => layoutReasoningGraph(graph, layoutOptions),
+    [graph, layoutOptions],
   );
+  const metrics = useMemo(
+    () => computeCanonicalReasoningMetrics(graph),
+    [graph],
+  );
+  const integrity = useMemo(() => checkGraphInvariants(graph), [graph]);
+  const rejected = useMemo(
+    () => graph.events.filter((event) => !event.accepted),
+    [graph],
+  );
+  const selectedTurn = useMemo(() => {
+    if (!conversation || !selectedMessageId) return undefined;
+    return conversation.messages.find((message) => message.id === selectedMessageId)
+      ?.turnIndex;
+  }, [conversation, selectedMessageId]);
+  const persistence = useMemo(
+    () =>
+      computePersistenceDiagnostics(
+        graph,
+        (conversation?.messages ?? []).map((message) => ({
+          id: message.id,
+          turnIndex: message.turnIndex,
+          content: message.content,
+        })),
+      ),
+    [conversation, graph],
+  );
+  const turnCoverage = useMemo(() => {
+    if (!conversation || selectedTurn === undefined) return undefined;
+    const message = conversation.messages.find(
+      (item) => item.turnIndex === selectedTurn,
+    );
+    return coverageForTurn(graph, selectedTurn, message);
+  }, [conversation, graph, selectedTurn]);
 
   const enteringIds = useMemo(() => {
     const prev = prevIdsRef.current;
     const next = new Set(layout.nodes.map((n) => n.id));
     const entering = new Set<string>();
-    if (live) {
-      for (const id of next) {
-        if (!prev.has(id)) entering.add(id);
+    const firstPaint = prev.size === 0;
+    if (live && !firstPaint) {
+      for (const node of layout.nodes) {
+        if (!prev.has(node.id)) entering.add(node.id);
       }
     }
     prevIdsRef.current = next;
     return entering;
   }, [layout, live]);
 
-  const selected = selectedNodeId
-    ? graph.nodes.find((n) => n.id === selectedNodeId)
-    : undefined;
-  const selectedTurn = selectedMessageId
-    ? conversation?.messages.find((message) => message.id === selectedMessageId)
-        ?.turnIndex
-    : undefined;
-  const focusedNodeId =
-    selectedNodeId ??
-    (selectedMessageId
-      ? graph.nodes.find((node) => node.sourceMessageId === selectedMessageId)
-          ?.id ?? nodeIdsTouchedByMessage(graph, selectedMessageId)[0]
-      : undefined);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || (selectedTurn === undefined && !focusedNodeId)) return;
-    const svg = canvas.querySelector("svg");
-    if (!svg) return;
-    const scaleX = svg.clientWidth / layout.width;
-    const scaleY = svg.clientHeight / layout.height;
-    const item = layout.nodes.find((node) => node.id === focusedNodeId);
-    const band = layout.turnBands.find(
-      (candidate) => candidate.turnIndex === selectedTurn,
-    );
-    const targetY = band?.nodeY ?? item?.y;
-    canvas.scrollTo({
-      left: item
-        ? Math.max(
-            0,
-            (item.x + item.width / 2) * scaleX - canvas.clientWidth / 2,
-          )
-        : canvas.scrollLeft,
-      top:
-        targetY === undefined
-          ? canvas.scrollTop
-          : Math.max(0, targetY * scaleY - canvas.clientHeight / 2),
-      behavior: "smooth",
-    });
-  }, [focusedNodeId, layout, selectedTurn]);
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !live || enteringIds.size === 0 || !followLiveRef.current) {
       return;
     }
-    canvas.scrollTo({ top: canvas.scrollHeight, behavior: "smooth" });
-  }, [enteringIds, live]);
+    const newest = [...layout.nodes]
+      .reverse()
+      .find((node) => enteringIds.has(node.id));
+    if (!newest) return;
+    canvas.scrollTo({
+      left: Math.max(0, newest.x * zoom - canvas.clientWidth / 4),
+      top: Math.max(0, newest.y * zoom - canvas.clientHeight / 3),
+      behavior: "smooth",
+    });
+  }, [enteringIds, layout, live, zoom]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const anchor = zoomAnchorRef.current;
-    if (!canvas || !anchor) return;
-    zoomAnchorRef.current = undefined;
-    canvas.scrollLeft =
-      anchor.xRatio * canvas.scrollWidth - anchor.offsetX;
-    canvas.scrollTop =
-      anchor.yRatio * canvas.scrollHeight - anchor.offsetY;
-  }, [zoom]);
+    if (!selectedNodeId) setPickedNodeId(undefined);
+  }, [selectedMessageId, selectedNodeId]);
 
-  const changeZoom = (
-    nextZoom: number,
-    clientPoint?: { x: number; y: number },
-  ) => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const rect = canvas.getBoundingClientRect();
-      const offsetX = clientPoint ? clientPoint.x - rect.left : rect.width / 2;
-      const offsetY = clientPoint ? clientPoint.y - rect.top : rect.height / 2;
-      zoomAnchorRef.current = {
-        xRatio: (canvas.scrollLeft + offsetX) / canvas.scrollWidth,
-        yRatio: (canvas.scrollTop + offsetY) / canvas.scrollHeight,
-        offsetX,
-        offsetY,
-      };
-    }
-    followLiveRef.current = false;
+  const focusedNodeId = selectedNodeId ?? pickedNodeId;
+  const selectedVersion = focusedNodeId
+    ? (layout.nodes.find((node) => node.id === focusedNodeId)?.version ??
+      graph.versions.find((version) => version.id === focusedNodeId))
+    : undefined;
+
+  const selectVersion = (nodeId: string | undefined, messageId?: string) => {
+    setPickedNodeId(nodeId);
+    onSelectNode?.(nodeId, messageId);
+  };
+
+  const changeZoom = (nextZoom: number) => {
     setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom)));
   };
 
-  const toggleFullscreen = async () => {
-    if (document.fullscreenElement === graphRef.current) {
-      await document.exitFullscreen();
-      return;
-    }
-    await graphRef.current?.requestFullscreen();
-  };
+  const frameClass = [
+    "reasoning-graph",
+    considerationGraph ? "reasoning-graph--considerations" : "",
+    compact && !expanded ? "reasoning-graph--compact" : "",
+    expanded ? "reasoning-graph--expanded" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const emptyState = (message: string) => (
+    <div className={frameClass}>
+      <p className="reasoning-graph__placeholder">{message}</p>
+    </div>
+  );
 
   if (!conversation) {
-    return (
-      <div className={compact ? "reasoning-graph reasoning-graph--compact" : "reasoning-graph"}>
-        <div className="reasoning-graph__empty">
-          <p>Select a problem to inspect joint reasoning.</p>
-          <p className="muted">
-            The graph is built during the conversation, in parallel with the
-            transcript.
-          </p>
-        </div>
-      </div>
+    return emptyState("No conversation selected.");
+  }
+
+  if (graph.schemaVersion === 1 || conversation.reasoningSchemaVersion === 1) {
+    return emptyState(
+      "This run used the retired dense graph. Transcript and raw events remain inspectable; they are not converted into versioned proposition state.",
     );
   }
 
-  if (!hasStructuredReasoning(conversation)) {
-    return (
-      <div className={compact ? "reasoning-graph reasoning-graph--compact" : "reasoning-graph"}>
-        <div className="reasoning-graph__empty">
-          <p>No structured reasoning data for this problem.</p>
-          <p className="muted">
-            Legacy transcripts still load in Conversation. New runs record a
-            Reasoning Graph alongside the dialogue.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const empty = layout.nodes.length === 0;
 
-  return (
-    <div
-      ref={graphRef}
-      className={compact ? "reasoning-graph reasoning-graph--compact" : "reasoning-graph"}
-    >
+  const frame = (
+    <div ref={graphRef} className={frameClass}>
       <header className="reasoning-graph__header">
-        {compact ? null : (
-          <div className="reasoning-graph__title-block">
-            <h1>Joint reasoning</h1>
-            <p className="muted">{conversation.problemTitle}</p>
-          </div>
-        )}
+        <div className="reasoning-graph__title-block">
+          <h3>{considerationGraph ? "Considerations" : "Reasoning Graph"}</h3>
+          <p className="muted">
+            {considerationGraph
+              ? "Each lane is one independently revisable consideration."
+              : `${graph.versions.length} version${graph.versions.length === 1 ? "" : "s"} · ${graph.subjects.length} subject${graph.subjects.length === 1 ? "" : "s"}`}
+          </p>
+          {considerationGraph ? (
+            <p className="muted">
+              {displayedVersionCount} version{displayedVersionCount === 1 ? "" : "s"}
+              {" · "}
+              {displayedSubjects.length} {laneNouns}
+            </p>
+          ) : null}
+        </div>
         <div className="reasoning-graph__controls">
-          <ReasoningLegend />
-          <div
-            className="reasoning-graph__zoom-controls"
-            role="group"
-            aria-label="Graph zoom controls"
-          >
+          <div className="reasoning-graph__zoom-controls">
             <button
               type="button"
               className="reasoning-graph__tool"
               aria-label="Zoom out"
-              title="Zoom out"
-              disabled={zoom <= MIN_ZOOM}
               onClick={() => changeZoom(zoom - ZOOM_STEP)}
             >
               −
             </button>
-            <button
-              type="button"
-              className="reasoning-graph__zoom-level"
-              aria-label="Reset graph zoom"
-              title="Reset zoom"
-              onClick={() => changeZoom(1)}
-            >
+            <span className="reasoning-graph__zoom-level">
               {Math.round(zoom * 100)}%
-            </button>
+            </span>
             <button
               type="button"
               className="reasoning-graph__tool"
               aria-label="Zoom in"
-              title="Zoom in"
-              disabled={zoom >= MAX_ZOOM}
               onClick={() => changeZoom(zoom + ZOOM_STEP)}
             >
               +
@@ -316,23 +365,55 @@ export function ReasoningGraphView({
           </div>
           <button
             type="button"
-            className="reasoning-graph__tool reasoning-graph__fullscreen"
-            aria-label={isFullscreen ? "Exit fullscreen" : "View graph fullscreen"}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            onClick={() => void toggleFullscreen()}
+            className="reasoning-graph__expand"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((open) => !open)}
           >
-            {isFullscreen ? (
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
-              </svg>
-            )}
+            <ExpandIcon expanded={expanded} />
+            {expanded ? "Close" : "Expand"}
           </button>
         </div>
       </header>
+
+      {integrity.length > 0 ? (
+        <div className="reasoning-graph__integrity" role="status">
+          Graph integrity: {integrity.map((item) => item.detail).join(" · ")}
+        </div>
+      ) : null}
+
+      {considerationGraph && conversation ? (
+        <section className="reasoning-final-answer" aria-label="Final answer">
+          <h4>Final answer</h4>
+          {conversation.finalAnswer?.trim() ||
+          conversation.stoppedReason === "final_answer" ? (
+            <>
+              <p className="reasoning-final-answer__meta">
+                {conversation.stoppedReason === "final_answer" &&
+                graph.finalAnswer?.turn != null
+                  ? `Turn ${graph.finalAnswer.turn}`
+                  : "Recorded"}
+                {" · "}
+                {(() => {
+                  const basisCount = conversation.finalBasisVersionIds?.length ?? 0;
+                  if (!conversation.finalBasisDeclared) {
+                    return "Basis not explicitly declared";
+                  }
+                  if (basisCount === 0) return "Basis declared empty";
+                  return `${basisCount} consideration${basisCount === 1 ? "" : "s"} in basis`;
+                })()}
+              </p>
+              <p className="reasoning-final-answer__text">
+                {conversation.finalAnswer?.trim() ||
+                  "Final answer marker recorded without extractable text."}
+              </p>
+            </>
+          ) : (
+            <p className="reasoning-final-answer__text muted">
+              Final answer not yet recorded.
+            </p>
+          )}
+        </section>
+      ) : null}
 
       <div className="reasoning-graph__body">
         <div
@@ -340,564 +421,773 @@ export function ReasoningGraphView({
           className={[
             "reasoning-graph__canvas",
             isPanning ? "is-panning" : "",
-            zoom > 1 ? "is-zoomed" : "",
+            zoom !== 1 ? "is-zoomed" : "",
           ]
             .filter(Boolean)
             .join(" ")}
-          aria-label="Reasoning Graph"
           onPointerDown={(event) => {
             if (event.button !== 0) return;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            followLiveRef.current = false;
+            suppressNodeClickRef.current = false;
+            const hit = versionHitFromPointer(event);
+            const turnIndex = turnHitFromPointer(event);
             panRef.current = {
               pointerId: event.pointerId,
               startX: event.clientX,
               startY: event.clientY,
-              scrollLeft: event.currentTarget.scrollLeft,
-              scrollTop: event.currentTarget.scrollTop,
+              scrollLeft: canvas.scrollLeft,
+              scrollTop: canvas.scrollTop,
               moved: false,
+              nodeId: hit?.nodeId,
+              messageId: hit?.messageId,
+              turnIndex,
             };
+            // Capture so pointerup still lands here, but do not treat this as a
+            // pan yet — capturing immediately used to swallow the node click.
+            canvas.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
             const pan = panRef.current;
-            if (!pan || pan.pointerId !== event.pointerId) return;
+            const canvas = canvasRef.current;
+            if (!pan || pan.pointerId !== event.pointerId || !canvas) return;
             const dx = event.clientX - pan.startX;
             const dy = event.clientY - pan.startY;
-            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-              if (!pan.moved) {
-                event.currentTarget.setPointerCapture(event.pointerId);
-                setIsPanning(true);
-              }
+            if (!pan.moved && Math.abs(dx) + Math.abs(dy) > 6) {
               pan.moved = true;
-              suppressNodeClickRef.current = true;
+              setIsPanning(true);
             }
             if (!pan.moved) return;
-            event.currentTarget.scrollLeft = pan.scrollLeft - dx;
-            event.currentTarget.scrollTop = pan.scrollTop - dy;
-            followLiveRef.current = false;
+            canvas.scrollLeft = pan.scrollLeft - dx;
+            canvas.scrollTop = pan.scrollTop - dy;
           }}
           onPointerUp={(event) => {
             const pan = panRef.current;
             if (!pan || pan.pointerId !== event.pointerId) return;
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
+            const { moved, nodeId, messageId, turnIndex } = pan;
             panRef.current = undefined;
-            setIsPanning(false);
-            if (pan.moved) {
-              window.setTimeout(() => {
-                suppressNodeClickRef.current = false;
-              }, 0);
+            canvasRef.current?.releasePointerCapture(event.pointerId);
+            if (moved) {
+              setIsPanning(false);
+              suppressNodeClickRef.current = true;
+              return;
+            }
+            if (nodeId) {
+              suppressNodeClickRef.current = true;
+              selectVersion(nodeId, messageId);
+              return;
+            }
+            if (turnIndex !== undefined && conversation) {
+              const message = conversation.messages.find(
+                (item) => item.turnIndex === turnIndex,
+              );
+              if (message) {
+                suppressNodeClickRef.current = true;
+                selectVersion(undefined, message.id);
+              }
             }
           }}
-          onPointerCancel={() => {
+          onPointerCancel={(event) => {
+            const pan = panRef.current;
+            if (!pan || pan.pointerId !== event.pointerId) return;
             panRef.current = undefined;
-            suppressNodeClickRef.current = false;
             setIsPanning(false);
-          }}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            followLiveRef.current =
-              element.scrollHeight -
-                element.scrollTop -
-                element.clientHeight <
-              80;
+            canvasRef.current?.releasePointerCapture(event.pointerId);
           }}
         >
-          {layout.nodes.length === 0 ? (
-            <div className="reasoning-graph__placeholder muted">
-              {live
-                ? "Waiting for the first substantive reasoning node…"
-                : "No structured reasoning nodes were recorded."}
-            </div>
+          {empty && layout.lanes.length === 0 && layout.turnBands.length === 0 ? (
+            <p className="reasoning-graph__placeholder">
+              {considerationGraph ||
+              (conversation?.problemText &&
+                /Discuss this ethical|Discussion question:/i.test(
+                  conversation.problemText,
+                ))
+                ? "No considerations yet. Lanes appear when an agent SETs a new consideration."
+                : "No proposition versions yet. Zero-mutation turns are valid; the graph fills when agents SET or REVISE."}
+            </p>
           ) : (
             <svg
               className="reasoning-svg"
-              width={layout.width}
-              height={layout.height}
-              style={{
-                width: `${zoom * 100}%`,
-              }}
+              width={layout.width * zoom}
+              height={layout.height * zoom}
               viewBox={`0 0 ${layout.width} ${layout.height}`}
-              preserveAspectRatio="xMidYMin meet"
-              role="img"
-              aria-label="Reasoning graph"
+              preserveAspectRatio="xMinYMin meet"
+              style={{
+                width: layout.width * zoom,
+                height: layout.height * zoom,
+              }}
             >
+              {layout.lanes.map((lane) => (
+                <g
+                  key={lane.subjectId}
+                  className="reasoning-lane"
+                >
+                  <rect
+                    x={8}
+                    y={lane.y}
+                    width={layout.width - 16}
+                    height={lane.height}
+                    rx={8}
+                  />
+                  <text x={18} y={lane.y + 20}>
+                    {truncate(lane.label, considerationGraph ? 32 : 22)}
+                  </text>
+                  {laneProvenance(lane) ? (
+                    <text className="reasoning-lane__origin" x={18} y={lane.y + 36}>
+                      {truncate(laneProvenance(lane), 34)}
+                    </text>
+                  ) : null}
+                </g>
+              ))}
+              {layout.turnBands.map((band) => (
+                <g
+                  key={band.turnIndex}
+                  className={[
+                    "reasoning-turn-guide",
+                    band.persistentChange === false
+                      ? "reasoning-turn-guide--empty"
+                      : "",
+                    selectedTurn === band.turnIndex
+                      ? "reasoning-turn-guide--selected"
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <line
+                    x1={band.x + band.width / 2}
+                    y1={48}
+                    x2={band.x + band.width / 2}
+                    y2={layout.height - 8}
+                  />
+                  <rect
+                    className="reasoning-turn-guide__hit"
+                    data-turn-index={band.turnIndex}
+                    x={band.x - 8}
+                    y={4}
+                    width={band.width + 16}
+                    height={44}
+                    rx={6}
+                    style={{ pointerEvents: "all", cursor: "pointer" }}
+                  />
+                  <text x={band.x} y={18}>
+                    Turn {band.turnIndex}
+                    {band.agentId ? ` · ${agentLabel(band.agentId)}` : ""}
+                  </text>
+                  {band.persistentChange === false ? (
+                    <text className="reasoning-turn-guide__empty" x={band.x} y={34}>
+                      No persistent change
+                    </text>
+                  ) : null}
+                </g>
+              ))}
+              {layout.edges.map((edge) => {
+                if (edge.kind === "final_synthesis") return null;
+                const from = layout.nodes.find((node) => node.id === edge.from);
+                const to = layout.nodes.find((node) => node.id === edge.to);
+                if (!from || !to) return null;
+                const x1 = from.x + from.width;
+                const y1 = from.y + from.height / 2;
+                const x2 = to.x;
+                const y2 = to.y + to.height / 2;
+                const midX = (x1 + x2) / 2;
+                const path =
+                  edge.kind === "derived_from"
+                    ? `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`
+                    : `M ${x1} ${y1} L ${x2} ${y2}`;
+                return (
+                  <g
+                    key={`${edge.kind}:${edge.from}->${edge.to}`}
+                    className={[
+                      "reasoning-edge",
+                      edge.kind === "derived_from"
+                        ? "reasoning-edge--derived-from"
+                        : "reasoning-edge--revises",
+                    ].join(" ")}
+                    onMouseEnter={() => setHoverEdge(edge)}
+                    onMouseLeave={() => setHoverEdge(undefined)}
+                  >
+                    <path d={path} markerEnd="url(#reasoning-arrow)" />
+                    <title>
+                      {edge.kind === "revises"
+                        ? `Revises ${edge.from} → ${edge.to} · turn ${edge.turnIndex ?? "?"}`
+                        : `Derived from ${edge.from} → ${edge.to} · declared by ${edge.declaredBy ? agentLabel(edge.declaredBy as AgentId) : "?"} at turn ${edge.turnIndex ?? "?"}`}
+                    </title>
+                  </g>
+                );
+              })}
               <defs>
                 <marker
-                  id="rg-arrow"
+                  id="reasoning-arrow"
                   viewBox="0 0 10 10"
-                  refX="9"
+                  refX="8"
                   refY="5"
                   markerWidth="7"
                   markerHeight="7"
                   orient="auto-start-reverse"
                 >
-                  <path d="M 0 0 L 10 5 L 0 10 z" className="reasoning-arrow" />
+                  <path d="M 0 0 L 10 5 L 0 10 z" />
                 </marker>
               </defs>
-              <g className="reasoning-turn-guides" aria-hidden="true">
-                {layout.turnBands.map((band) => (
-                  <g
-                    key={band.turnIndex}
-                    className={
-                      band.turnIndex === selectedTurn
-                        ? "reasoning-turn-guide is-selected"
-                        : "reasoning-turn-guide"
-                    }
-                  >
-                    <text x={14} y={band.y + 4}>
-                      {band.turnIndex === 0 ? "Task" : `Turn ${band.turnIndex}`}
-                    </text>
-                    <line
-                      x1={68}
-                      y1={band.y}
-                      x2={layout.width - 22}
-                      y2={band.y}
-                    />
-                  </g>
-                ))}
-              </g>
-              {sortedLayoutEdges(layout.edges).map((edge) => {
-                const from = layout.nodes.find((n) => n.id === edge.from);
-                const to = layout.nodes.find((n) => n.id === edge.to);
-                if (!from || !to) return null;
-                const highlighted =
-                  selectedNodeId === edge.from ||
-                  selectedNodeId === edge.to ||
-                  relatedToMessage(from, to, selectedMessageId);
-                const label = edgeLabel(edge.kind);
-                return (
-                  <Fragment key={`${edge.kind}:${edge.from}->${edge.to}`}>
-                    <path
-                      d={edgePath(from, to)}
-                      className={[
-                        "reasoning-edge",
-                        `reasoning-edge--${edge.kind}`,
-                        highlighted ? "reasoning-edge--hot" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      markerEnd="url(#rg-arrow)"
-                    />
-                    {label ? (
-                      <text
-                        className="reasoning-edge__label"
-                        x={(from.x + from.width / 2 + to.x + to.width / 2) / 2}
-                        y={(from.y + from.height / 2 + to.y + to.height / 2) / 2 - 5}
-                        textAnchor="middle"
-                      >
-                        {label}
-                      </text>
-                    ) : null}
-                  </Fragment>
-                );
-              })}
               {layout.nodes.map((item) => (
-                <ReasoningNodeGlyph
+                <VersionNode
                   key={item.id}
                   item={item}
-                  selected={
-                    selectedNodeId === item.id ||
-                    (Boolean(selectedMessageId) &&
-                      item.node.sourceMessageId === selectedMessageId)
-                  }
-                  entering={enteringIds.has(item.id) && live}
+                  graph={graph}
+                  selected={item.id === focusedNodeId}
                   speaking={
-                    live &&
-                    speakingAgentId === item.node.createdBy &&
-                    item.node.sourceMessageId ===
-                      conversation.messages[conversation.messages.length - 1]?.id
+                    Boolean(speakingAgentId) &&
+                    item.version.agentId === speakingAgentId
                   }
-                  isFinal={item.id === FINAL_ID}
+                  entering={enteringIds.has(item.id)}
+                  inFinalBasis={
+                    conversation?.finalBasisVersionIds?.includes(item.id) === true
+                  }
                   onSelect={() => {
-                    if (suppressNodeClickRef.current) return;
-                    if (item.id === FINAL_ID) {
-                      const last = conversation.messages[conversation.messages.length - 1];
-                      onSelectNode?.(FINAL_ID, last?.id);
+                    if (suppressNodeClickRef.current) {
+                      suppressNodeClickRef.current = false;
                       return;
                     }
-                    onSelectNode?.(item.node.id, item.node.sourceMessageId);
+                    selectVersion(item.id, item.version.sourceMessageId);
                   }}
                 />
               ))}
             </svg>
           )}
         </div>
+        <aside
+          className={[
+            "reasoning-detail",
+            !selectedVersion && selectedTurn === undefined
+              ? "reasoning-detail--empty"
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {selectedVersion ? (
+            <VersionDetail
+              graph={graph}
+              version={selectedVersion}
+              consideration={considerationGraph}
+              assignment={conversation.informationAssignment}
+            />
+          ) : selectedTurn !== undefined ? (
+            <MemoryAtTurn
+              graph={graph}
+              conversation={conversation}
+              turn={selectedTurn}
+              coverage={turnCoverage}
+            />
+          ) : (
+            <p className="muted">
+              {hoverEdge
+                ? hoverEdge.kind === "revises"
+                  ? `Revises ${hoverEdge.from} → ${hoverEdge.to}`
+                  : `Derived from ${hoverEdge.from} → ${hoverEdge.to}`
+                : considerationGraph
+                  ? "Select a consideration version or a turn. Use Memory for the shared-state dump."
+                  : "Select a version or a turn. Use Memory for the shared-state dump."}
+            </p>
+          )}
+        </aside>
+      </div>
 
-        <ReasoningDetail
-          conversation={conversation}
-          graph={graph}
-          node={selected}
-          isFinal={selectedNodeId === FINAL_ID}
-          onJumpToMessage={(messageId) => {
-            onSelectNode?.(selected?.id ?? selectedNodeId, messageId);
-            onOpenSourceTurn?.(messageId, selected?.id ?? selectedNodeId);
-          }}
+      <div className="reasoning-graph__footer">
+        <MetricsStrip
+          laneNoun={laneNouns}
+          subjectCount={displayedSubjects.length}
+          versionCount={displayedVersionCount}
+          metrics={metrics}
+          rejectedCount={rejected.length}
+          persistence={persistence}
+          moralSynthesis={conversation?.reasoningDiagnostics?.moralSynthesis}
+          collaboration={conversation?.reasoningDiagnostics?.collaboration}
         />
+        <InferredAnalysis graph={graph} />
+        {rejected.length > 0 ? (
+          <RejectedList
+            events={
+              selectedTurn !== undefined
+                ? rejected.filter((event) => event.turnIndex === selectedTurn)
+                : rejected
+            }
+            selectedTurn={selectedTurn}
+          />
+        ) : null}
       </div>
     </div>
   );
-}
 
-/**
- * Canonical `replaced_by` is old → new. Chronology is downward, so the
- * visual historical flow matches that canonical direction. Do not invert
- * it in the SVG the way `revises` (new → old) is inverted relative to time.
- */
-function edgeDrawOrder(kind: string): number {
-  if (kind === "answers" || kind === "parent") return 0;
-  if (kind === "grounds") return 1;
-  if (kind === "depends_on" || kind === "dependency") return 2;
-  if (kind === "supports" || kind === "final") return 3;
-  if (kind === "challenges") return 4;
-  if (kind === "revises" || kind === "supersedes") return 5;
-  if (kind === "replaced_by") return 6;
-  return 3;
-}
+  if (!expanded) return frame;
 
-function sortedLayoutEdges(edges: GraphLayoutEdge[]): GraphLayoutEdge[] {
-  return [...edges].sort(
-    (a, b) =>
-      edgeDrawOrder(a.kind) - edgeDrawOrder(b.kind) ||
-      a.from.localeCompare(b.from) ||
-      a.to.localeCompare(b.to),
-  );
-}
-
-function edgeLabel(kind: string): string | undefined {
-  if (kind === "answers") return undefined;
-  if (kind === "grounds") return "grounds";
-  if (kind === "supports" || kind === "final") return "supports";
-  if (kind === "challenges") return "challenges";
-  if (kind === "depends_on" || kind === "dependency") return "depends on";
-  if (kind === "revises" || kind === "supersedes") return "revises";
-  if (kind === "replaced_by") return "replaced by";
-  return undefined;
-}
-
-function relatedToMessage(
-  from: GraphLayoutNode,
-  to: GraphLayoutNode,
-  messageId?: string,
-): boolean {
-  if (!messageId) return false;
   return (
-    from.node.sourceMessageId === messageId ||
-    to.node.sourceMessageId === messageId
+    <>
+      <div className="reasoning-graph reasoning-graph--placeholder" aria-hidden>
+        <p className="muted">Graph open in modal.</p>
+      </div>
+      {createPortal(
+        <div
+          className="reasoning-graph-modal"
+          role="presentation"
+          onClick={() => setExpanded(false)}
+        >
+          <div
+            className="reasoning-graph-modal__dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reasoning graph"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {frame}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
-function edgePath(from: GraphLayoutNode, to: GraphLayoutNode): string {
-  if (from.turnIndex === to.turnIndex) {
-    const leftToRight = from.x <= to.x;
-    const x1 = leftToRight ? from.x + from.width : from.x;
-    const x2 = leftToRight ? to.x : to.x + to.width;
-    const y1 = from.y + from.height / 2;
-    const y2 = to.y + to.height / 2;
-    const bend = Math.max(24, Math.abs(x2 - x1) * 0.35);
-    return `M ${x1} ${y1} C ${x1 + (leftToRight ? bend : -bend)} ${y1 - 24}, ${x2 + (leftToRight ? -bend : bend)} ${y2 - 24}, ${x2} ${y2}`;
-  }
-
-  const downward = from.y < to.y;
-  const x1 = from.x + from.width / 2;
-  const y1 = downward ? from.y + from.height : from.y;
-  const x2 = to.x + to.width / 2;
-  const y2 = downward ? to.y : to.y + to.height;
-  const bend = Math.min(58, Math.max(28, Math.abs(y2 - y1) * 0.35));
-  return `M ${x1} ${y1} C ${x1} ${y1 + (downward ? bend : -bend)}, ${x2} ${y2 + (downward ? -bend : bend)}, ${x2} ${y2}`;
-}
-
-function ReasoningLegend() {
+function ExpandIcon({ expanded }: { expanded: boolean }) {
   return (
-    <ul className="reasoning-legend">
-      <li>
-        <i className="reasoning-swatch reasoning-swatch--a" /> A
-      </li>
-      <li>
-        <i className="reasoning-swatch reasoning-swatch--b" /> B
-      </li>
-      <li>
-        <i className="reasoning-swatch reasoning-swatch--open" /> open
-      </li>
-      <li>
-        <i className="reasoning-swatch reasoning-swatch--accepted" /> accepted
-      </li>
-      <li>
-        <i className="reasoning-swatch reasoning-swatch--rejected" /> rejected
-      </li>
-    </ul>
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      {expanded ? (
+        <path d="M5 3H3v2M11 3h2v2M3 11v2h2M13 11v2h-2" />
+      ) : (
+        <path d="M6 3H3v3M10 3h3v3M3 10v3h3M13 10v3h-3" />
+      )}
+    </svg>
   );
 }
 
-function ReasoningNodeGlyph({
+function VersionNode({
   item,
+  graph,
   selected,
-  entering,
   speaking,
-  isFinal,
+  entering,
+  inFinalBasis,
   onSelect,
 }: {
   item: GraphLayoutNode;
+  graph: ReasoningGraph;
   selected: boolean;
-  entering: boolean;
   speaking: boolean;
-  isFinal: boolean;
+  entering: boolean;
+  inFinalBasis?: boolean;
   onSelect: () => void;
 }) {
-  const { node, x, y, width, height } = item;
-  const taskSubject = node.metadata?.taskDefined === true;
-  const origin =
-    node.type !== "final_answer" ? node.evidenceOrigin : undefined;
-  const owner =
-    isFinal || taskSubject || node.createdBy === "system"
-      ? "·"
-      : node.createdBy === "agent_a"
-        ? "A"
-        : "B";
-  const title = isFinal
-    ? "FINAL ANSWER"
-    : taskSubject
-      ? String(node.metadata?.subjectLabel ?? node.id)
-      : node.id;
-  const kind = isFinal
-    ? "answer"
-    : taskSubject
-      ? "issue anchor"
-      : origin === "task"
-        ? "task evidence"
-        : origin === "deterministic"
-          ? "constraint"
-          : node.type;
-  const conf =
-    !isFinal && typeof node.confidence === "number"
-      ? node.confidence.toFixed(2)
-      : undefined;
-  const classes = [
-    "reasoning-node",
-    ownerClass(node.createdBy),
-    statusClass(node.status),
-    `reasoning-node--${node.type}`,
-    selected ? "is-selected" : "",
-    entering ? "is-entering" : "",
-    speaking ? "is-speaking" : "",
-    isFinal ? "reasoning-node--final" : "",
-    taskSubject ? "reasoning-node--subject-anchor" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
+  const version = item.version;
+  const ownerClass =
+    version.agentId === "agent_a" ? "reasoning-node--a" : "reasoning-node--b";
+  const statusClass =
+    version.status === "superseded"
+      ? "reasoning-node--superseded"
+      : version.status === "removed"
+        ? "reasoning-node--rejected"
+        : "reasoning-node--accepted";
+  const commitment = propositionCommitment(version);
+  const commitmentClass =
+    commitment === "tentative"
+      ? "reasoning-node--tentative"
+      : "reasoning-node--committed";
+  const ordinal =
+    versionsInCreationOrder(graph.versions, version.subjectId).findIndex(
+      (itemVersion) => itemVersion.id === version.id,
+    ) + 1;
+  const subjectLabel = subjectDisplayTitle(
+    item.subject ?? { id: version.subjectId },
+  );
   return (
     <g
-      transform={`translate(${x}, ${y})`}
-      data-reasoning-node-id={item.id}
+      className={[
+        "reasoning-node",
+        ownerClass,
+        statusClass,
+        commitmentClass,
+        selected ? "is-selected" : "",
+        speaking ? "is-speaking" : "",
+        entering ? "is-entering" : "",
+        version.status === "active" ? "is-active" : "",
+        inFinalBasis ? "is-final-basis" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-version-id={version.id}
+      data-message-id={version.sourceMessageId ?? ""}
+      transform={`translate(${item.x} ${item.y})`}
+      style={{ pointerEvents: "all" }}
+      onClick={onSelect}
     >
-      <g
-        className={classes}
-        role={taskSubject ? "img" : "button"}
-        tabIndex={taskSubject ? undefined : 0}
-        onClick={taskSubject ? undefined : onSelect}
-        onKeyDown={(event) => {
-          if (taskSubject) return;
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onSelect();
-          }
-        }}
-      >
-        <rect width={width} height={height} rx={10} />
-        <text className="reasoning-node__id" x={12} y={20}>
-          {title} [{isFinal || taskSubject ? "·" : owner}]
-        </text>
-        <text className="reasoning-node__meta" x={12} y={36}>
-          {kind}
-          {conf ? ` · ${conf}` : ""}
-          {isFinal || taskSubject ? "" : ` · ${node.status}`}
-        </text>
-        <text className="reasoning-node__text" x={12} y={54}>
-          {truncate(node.text, isFinal ? 32 : 26)}
-        </text>
-      </g>
+      <rect width={item.width} height={item.height} rx={6} />
+      <text className="reasoning-node__id" x={12} y={16}>
+        {truncate(subjectLabel, 22)}
+      </text>
+      <text className="reasoning-node__meta" x={12} y={32}>
+        {agentLabel(version.agentId)} · t{version.turn} · v{ordinal || "?"}
+      </text>
+      <text className="reasoning-node__meta" x={12} y={46}>
+        {liveLabel(version.status)}
+        {version.status === "active" ? " [ACTIVE]" : ""}
+        {inFinalBasis ? " · final" : ""}
+        {" · "}
+        {commitment}
+      </text>
+      <text className="reasoning-node__text" x={12} y={64}>
+        {truncate(version.content, 24)}
+      </text>
     </g>
   );
 }
 
-function ReasoningDetail({
-  conversation,
+function VersionDetail({
   graph,
-  node,
-  isFinal,
-  onJumpToMessage,
+  version,
+  consideration,
+  assignment,
 }: {
-  conversation: ProblemConversation;
   graph: ReasoningGraph;
-  node?: ReasoningNode;
-  isFinal: boolean;
-  onJumpToMessage: (messageId: string) => void;
+  version: PropositionVersion;
+  consideration?: boolean;
+  assignment?: InformationAssignment;
 }) {
-  if (isFinal && conversation.finalAnswer) {
-    const last = conversation.messages[conversation.messages.length - 1];
-    return (
-      <aside className="reasoning-detail">
-        <h2>Final answer</h2>
-        <p className="reasoning-detail__text">{conversation.finalAnswer}</p>
-        {conversation.finalAnswerSupport?.supportingNodeIds?.length ? (
-          <p className="muted">
-            Supported by{" "}
-            {conversation.finalAnswerSupport.supportingNodeIds.join(", ")}
-          </p>
-        ) : (
-          <p className="muted">No supporting reasoning nodes cited.</p>
-        )}
-        {conversation.finalAnswerSupport?.errors?.length ? (
-          <p className="reasoning-detail__error">
-            Supporting-node linkage invalid:{" "}
-            {conversation.finalAnswerSupport.errors.join("; ")}
-          </p>
-        ) : null}
-        {last ? (
-          <button
-            type="button"
-            className="reasoning-detail__link"
-            onClick={() => onJumpToMessage(last.id)}
-          >
-            Source turn {last.turnIndex}
-          </button>
-        ) : null}
-      </aside>
-    );
-  }
-
-  if (!node) {
-    return (
-      <aside className="reasoning-detail reasoning-detail--empty">
-        <p className="muted">
-          Select a node to see provenance in the raw conversation.
-        </p>
-      </aside>
-    );
-  }
-
-  const events = eventsForNode(graph, node.id);
-  const stances = stancesForNode(graph, node.id);
-  const source = conversation.messages.find((m) => m.id === node.sourceMessageId);
-  const revisedInto = graph.nodes.find((n) => n.supersedes === node.id);
-  const subjectId =
-    node.type === "final_answer" ? undefined : node.subjectId;
-  const subjectLabel =
-    graph.subjects?.find((subject) => subject.id === subjectId)?.label ??
-    graph.nodes.find(
-      (candidate) => candidate.id === subjectId && candidate.type === "issue",
-    )?.text;
-
+  const events = eventsForVersion(graph, version.id);
+  const subject = graph.subjects.find((item) => item.id === version.subjectId);
+  const sourceIds = version.sourceInformationIds ?? [];
+  const derivedIds = version.derivedFromVersionIds ?? [];
+  const ownershipLabel = (id: string): string => {
+    if (!assignment) return "";
+    if (assignment.sharedUnitIds.includes(id)) return " [shared]";
+    if (assignment.agentAOnlyUnitIds.includes(id)) return " [private to A]";
+    if (assignment.agentBOnlyUnitIds.includes(id)) return " [private to B]";
+    return "";
+  };
   return (
-    <aside className="reasoning-detail">
-      <header className="reasoning-detail__head">
-        <h2>
-          {node.id}{" "}
-          <span className="muted">
-            {node.type} · {node.status}
-          </span>
-        </h2>
-        <p className="reasoning-detail__text">“{node.text}”</p>
-      </header>
+    <>
+      <h3>{versionPublicRef(graph, version)}</h3>
       <dl className="reasoning-detail__meta">
         <div>
-          <dt>Created</dt>
+          <dt>{consideration ? "Consideration" : "Subject"}</dt>
+          <dd>{subjectDisplayTitle(subject ?? { id: version.subjectId })}</dd>
+        </div>
+        <div>
+          <dt>Lane provenance</dt>
           <dd>
-            {node.createdBy === "system" ? "Task" : agentLabel(node.createdBy)}, turn {node.createdAtTurn}
+            {subject
+              ? laneProvenance({
+                  source: subject.source,
+                  createdBy: subject.createdBy,
+                  createdAtTurn: subject.createdAtTurn,
+                  subjectId: subject.id,
+                }) || "—"
+              : "—"}
           </dd>
         </div>
-        {typeof node.confidence === "number" ? (
+        <div>
+          <dt>Agent</dt>
+          <dd>{agentLabel(version.agentId)}</dd>
+        </div>
+        <div>
+          <dt>Turn</dt>
+          <dd>{version.turn}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>
+            {liveLabel(version.status)} · {propositionCommitment(version)}
+          </dd>
+        </div>
+        <div>
+          <dt>Content</dt>
+          <dd>{version.content}</dd>
+        </div>
+        <div>
+          <dt>Source task information</dt>
+          <dd>
+            {sourceIds.length > 0
+              ? sourceIds
+                  .map((id) => `${id}${ownershipLabel(id)}`)
+                  .join(", ")
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt>Derived from graph</dt>
+          <dd>{derivedIds.length > 0 ? derivedIds.join(", ") : "—"}</dd>
+        </div>
+      </dl>
+      {events.length > 0 ? (
+        <details className="reasoning-detail__debug">
+          <summary>Mutation event JSON</summary>
+          <pre className="mono">{JSON.stringify(events, null, 2)}</pre>
+        </details>
+      ) : null}
+    </>
+  );
+}
+
+function MemoryAtTurn({
+  graph,
+  conversation,
+  turn,
+  coverage,
+}: {
+  graph: ReasoningGraph;
+  conversation: ProblemConversation;
+  turn: number;
+  coverage?: TurnPersistenceCoverage;
+}) {
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const message = conversation.messages.find((item) => item.turnIndex === turn);
+  const mutations = message?.reasoningMutations ?? [];
+  const speaker = message ? agentLabel(message.agentId) : "unknown";
+  const mutationSummary =
+    mutations.length > 0
+      ? mutations.map((mutation) => mutation.type).join(", ")
+      : "No persistent mutations";
+  return (
+    <section className="reasoning-memory" aria-label={`Turn ${turn} audit`}>
+      <header className="reasoning-memory__header">
+        <div>
+          <h3>
+            Turn {turn}
+            {message ? ` · ${agentLabel(message.agentId)}` : ""}
+          </h3>
+          <p className="muted">
+            utterance → structured persistence → resulting memory
+            {coverage && !coverage.persistentChange
+              ? " · NO PERSISTENT CHANGE"
+              : ""}
+            {coverage?.persistenceReview ? " · PERSISTENCE REVIEW" : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="transcript__msg-audit"
+          onClick={() => setMemoryOpen(true)}
+        >
+          Memory
+        </button>
+      </header>
+      {message?.content ? (
+        <blockquote className="reasoning-detail__quote">
+          {message.content}
+        </blockquote>
+      ) : (
+        <p className="muted">No utterance for this turn.</p>
+      )}
+      <p className="reasoning-memory__mutations muted">{mutationSummary}</p>
+      {coverage && coverage.rejected > 0 ? (
+        <div className="reasoning-memory__rejected">
+          <p>Attempted this turn</p>
+          <ul>
+            {graph.events
+              .filter(
+                (event) => event.turnIndex === turn && !event.accepted,
+              )
+              .map((event) => (
+                <li key={event.id}>{describeRejectedAttempt(event)}</li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
+      {coverage ? (
+        <dl className="reasoning-memory__coverage">
           <div>
-            <dt>Confidence</dt>
-            <dd>{node.confidence.toFixed(2)}</dd>
+            <dt>Mutations emitted</dt>
+            <dd>{coverage.emitted}</dd>
           </div>
-        ) : null}
-        {subjectId ? (
           <div>
-            <dt>Answers issue</dt>
+            <dt>Accepted</dt>
+            <dd>{coverage.accepted}</dd>
+          </div>
+          <div>
+            <dt>Rejected</dt>
+            <dd>{coverage.rejected}</dd>
+          </div>
+          <div>
+            <dt>
+              {graphUsesConsiderationLanes(graph)
+                ? "Considerations changed"
+                : "Subjects changed"}
+            </dt>
             <dd>
-              {subjectLabel ? `${subjectLabel} · ` : ""}
-              {subjectId}
+              {coverage.subjectsChanged.length > 0
+                ? coverage.subjectsChanged.join(", ")
+                : "—"}
             </dd>
           </div>
-        ) : null}
-        {node.parents.length > 0 ? (
           <div>
-            <dt>Parents</dt>
-            <dd>{node.parents.join(", ")}</dd>
+            <dt>Basis</dt>
+            <dd>
+              {coverage.basisRefs.length > 0 ? coverage.basisRefs.join(", ") : "—"}
+            </dd>
           </div>
-        ) : null}
-        {node.dependencies.length > 0 ? (
-          <div>
-            <dt>Dependencies</dt>
-            <dd>{node.dependencies.join(", ")}</dd>
-          </div>
-        ) : null}
-        {node.supersedes ? (
-          <div>
-            <dt>Supersedes</dt>
-            <dd>{node.supersedes}</dd>
-          </div>
-        ) : null}
-        {revisedInto ? (
-          <div>
-            <dt>Revised into</dt>
-            <dd>{revisedInto.id}</dd>
-          </div>
-        ) : null}
-      </dl>
-      {source ? (
-        <div className="reasoning-detail__source">
-          <h3>Source message</h3>
-          <p className="reasoning-detail__quote">
-            {truncate(source.content, 280)}
-          </p>
-          <button
-            type="button"
-            className="reasoning-detail__link"
-            onClick={() => onJumpToMessage(source.id)}
-          >
-            Show turn {source.turnIndex} in transcript
-          </button>
-        </div>
+        </dl>
       ) : null}
-      {stances.length > 0 ? (
-        <div>
-          <h3>Stances</h3>
-          <ul className="reasoning-detail__events">
-            {stances.map((stance) => (
-              <li key={`${stance.actor}:${stance.kind}`}>
-                {agentLabel(stance.actor)} {stance.kind}
-                {stance.reason ? ` — ${stance.reason}` : ""}
-                <span className="muted"> · turn {stance.turnIndex}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {memoryOpen ? (
+        <TextPreviewModal
+          title={`Memory · turn ${turn} · ${speaker}`}
+          text={formatTurnMemoryForAudit({ graph, conversation, turn })}
+          onClose={() => setMemoryOpen(false)}
+        />
       ) : null}
-      {events.length > 0 ? (
-        <div>
-          <h3>Event history</h3>
-          <ul className="reasoning-detail__events">
-            {events.map((event) => (
-              <li key={event.id}>
-                {event.actor === "system" ? "Task" : agentLabel(event.actor)} {event.intent.action}
-                {event.accepted
-                  ? event.operation.type === "create"
-                    ? ` → ${event.operation.node.id}`
-                    : event.operation.type === "revise"
-                      ? ` → ${event.operation.replacement.id}`
-                      : ""
-                  : " (rejected)"}
-                <span className="muted"> · turn {event.turnIndex}</span>
-                {event.errors.length > 0 ? (
-                  <div className="muted">{event.errors.join("; ")}</div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
+    </section>
+  );
+}
+
+function MetricsStrip({
+  laneNoun,
+  subjectCount,
+  versionCount,
+  metrics,
+  rejectedCount,
+  persistence,
+  moralSynthesis,
+  collaboration,
+}: {
+  laneNoun: string;
+  subjectCount: number;
+  versionCount: number;
+  metrics: ReturnType<typeof computeCanonicalReasoningMetrics>;
+  rejectedCount: number;
+  persistence: ReturnType<typeof computePersistenceDiagnostics>;
+  moralSynthesis?: MoralSynthesisDiagnostics;
+  collaboration?: CollaborationDiagnostics;
+}) {
+  return (
+    <ul className="reasoning-graph__metrics">
+      <li>
+        {laneNoun.charAt(0).toUpperCase() + laneNoun.slice(1)} {subjectCount}
+      </li>
+      <li>Versions {versionCount}</li>
+      <li>SET {persistence.setCount}</li>
+      <li>REVISE {persistence.reviseCount}</li>
+      <li>REMOVE {persistence.removeCount}</li>
+      <li>
+        Persistent turns {persistence.turnsWithPersistentChange}/
+        {persistence.turnsWithPersistentChange +
+          persistence.turnsWithoutPersistentChange}
+      </li>
+      {collaboration ? (
+        <>
+          <li>Turns {collaboration.turnCount}</li>
+          <li>Handoffs {collaboration.handoffCount}</li>
+          <li>
+            Graph-change turns {collaboration.materialGraphChangeTurns}
+          </li>
+          <li>
+            A/B change turns {collaboration.aChangeTurns}/
+            {collaboration.bChangeTurns}
+          </li>
+          <li>
+            Convergence attempts/resets {collaboration.convergenceAttempts}/
+            {collaboration.convergenceResets}
+          </li>
+          <li>
+            Created A/B {collaboration.distinctConsiderationsCreatedA}/
+            {collaboration.distinctConsiderationsCreatedB}
+          </li>
+          <li>
+            Revisions A/B {collaboration.revisionsA}/{collaboration.revisionsB}
+          </li>
+          {collaboration.turnScopes && collaboration.turnScopes.length > 0 ? (
+            <li>
+              Turn-1 touched{" "}
+              {collaboration.turnScopes.find((scope) => scope.turnIndex === 1)
+                ?.considerationsTouched ?? "—"}
+              {" · "}
+              mean touch/turn{" "}
+              {(
+                collaboration.turnScopes.reduce(
+                  (sum, scope) => sum + scope.considerationsTouched,
+                  0,
+                ) / collaboration.turnScopes.length
+              ).toFixed(1)}
+              {" · "}
+              mean msg chars{" "}
+              {(
+                collaboration.turnScopes.reduce(
+                  (sum, scope) => sum + scope.messageChars,
+                  0,
+                ) / collaboration.turnScopes.length
+              ).toFixed(0)}
+            </li>
+          ) : null}
+        </>
       ) : null}
-    </aside>
+      {moralSynthesis ? (
+        <>
+          <li>
+            Final basis {moralSynthesis.finalBasisCount}
+            {moralSynthesis.finalBasisDeclared ? "" : " (undeclared)"}
+          </li>
+          <li>
+            Ref coverage{" "}
+            {moralSynthesis.referenceConsiderationCoverage === null
+              ? "—"
+              : `${(moralSynthesis.referenceConsiderationCoverage * 100).toFixed(0)}%`}
+          </li>
+          <li>Novel {moralSynthesis.novelConsiderationCount}</li>
+          <li>Unused active {moralSynthesis.unusedActiveConsiderationCount}</li>
+        </>
+      ) : null}
+      <li>
+        Tentative/committed {persistence.tentativeStateCount}/
+        {persistence.committedStateCount}
+      </li>
+      <li>
+        Graph/transcript{" "}
+        {persistence.graphToTranscriptRatio === null
+          ? "—"
+          : persistence.graphToTranscriptRatio.toFixed(2)}
+      </li>
+      <li>Mean chars {persistence.meanPropositionChars.toFixed(0)}</li>
+      <li>Max chars {persistence.maxPropositionChars}</li>
+      <li>Rejected {rejectedCount}</li>
+      <li>Basis coverage {(metrics.basisCoverageRate * 100).toFixed(0)}%</li>
+      <li>Review flags {persistence.persistenceReviewTurnCount}</li>
+    </ul>
+  );
+}
+
+function InferredAnalysis({ graph }: { graph: ReasoningGraph }) {
+  const analysis = deriveReasoningAnalysis(graph);
+  return (
+    <details className="reasoning-graph__inferred">
+      <summary>Inferred (not canonical)</summary>
+      <ul>
+        <li>Likely synthesis {analysis.likelySynthesisCount}</li>
+        <li>Likely A→B deference {analysis.likelyDeferenceAB}</li>
+        <li>Likely B→A deference {analysis.likelyDeferenceBA}</li>
+        <li>Partner overwrites {analysis.likelyDisagreementRevisions}</li>
+      </ul>
+    </details>
+  );
+}
+
+function RejectedList({
+  events,
+  selectedTurn,
+}: {
+  events: ReasoningGraph["events"];
+  selectedTurn?: number;
+}) {
+  if (events.length === 0) {
+    return <p className="muted">No rejected mutations.</p>;
+  }
+  return (
+    <details className="reasoning-graph__rejected" open>
+      <summary>
+        Rejected events ({events.length})
+        {selectedTurn !== undefined ? ` · turn ${selectedTurn}` : ""}
+      </summary>
+      <ul>
+        {events.map((event) => (
+          <li key={event.id}>{describeRejectedAttempt(event)}</li>
+        ))}
+      </ul>
+    </details>
   );
 }

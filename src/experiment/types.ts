@@ -4,16 +4,19 @@ import type {
   EvaluationResult,
   MultiAgentEvaluation,
 } from "../evaluation/types";
+import type {
+  InformationAssignment,
+  InformationFlowMetrics,
+  InformationStructureConfig,
+} from "../information/types";
 import type { ModelUsage } from "../models/usage";
 import type { ReasoningEffort } from "../models/modelRegistry";
 import type { ProblemCategory } from "../problems/types";
 import type {
   FinalAnswerSupport,
+  PropositionVersion,
   ReasoningEvent,
-  ReasoningIntent,
-  ReasoningMove,
-  ReasoningNode,
-  ReasoningOperation,
+  ReasoningMutation,
   ReasoningSubject,
 } from "../reasoning/types";
 import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
@@ -56,8 +59,15 @@ export type TranscriptRequestTelemetry = {
   requestCharacters: number;
   systemPromptCharacters: number;
   problemCharacters: number;
-  /** History as sent to the model, including `[Agent X]:` prefixes. */
+  /** History actually included in the model request (previous partner utterance only). */
   historyCharacters: number;
+  graphSubjectCount?: number;
+  graphActiveValueCount?: number;
+  graphHistoryVersionCount?: number;
+  graphSerializedChars?: number;
+  previousUtteranceChars?: number;
+  /** Always 0 in schema v2: older transcript is not model working memory. */
+  historicalTranscriptCharsIncluded?: number;
 };
 
 export type ConversationMessage = {
@@ -89,18 +99,46 @@ export type ConversationMessage = {
    * `content` is always the natural-language utterance.
    */
   rawContent?: string;
-  /** Tiny semantic moves as parsed from the model (pre-engine). */
-  reasoningMoves?: ReasoningMove[];
-  /** Model-emitted reasoning intents for this turn (pre-engine). */
-  reasoningIntents?: ReasoningIntent[];
-  /** Canonical applied operations produced from this turn's events. */
-  reasoningOperations?: ReasoningOperation[];
+  /** Speaker-authored mutations parsed from this turn. */
+  reasoningMutations?: ReasoningMutation[];
+  /**
+   * Speaker declared that the turn adds no persistent reasoning.
+   * Used as a rare, visible moral-finalization escape hatch.
+   */
+  nothingToAdd?: boolean;
+  /**
+   * Protocol metadata: speaker judges shared reasoning ready to finalize.
+   * Bound to graph fingerprint by the controller. Not graph state.
+   */
+  readyToFinalize?: boolean;
+  /**
+   * Optional inspection metadata: consideration ids this turn focused on.
+   * Not graph state.
+   */
+  focusSubjectIds?: string[];
+  /** True when this turn accepted a material SET/REVISE/REMOVE. */
+  materialGraphChange?: boolean;
+  /** True when readiness was cleared because this turn changed the graph. */
+  readinessInvalidated?: boolean;
 };
 
 export type ProblemConversation = {
   problemId: string;
   problemTitle: string;
   problemText: string;
+  /**
+   * Per-agent problem views when information overlap < 1.0 (or whenever
+   * asymmetric packets are constructed). Researcher audit only — partner
+   * prompts never receive the other agent's private packet.
+   */
+  problemTextByAgent?: {
+    agent_a: string;
+    agent_b: string;
+  };
+  /** Realized information partition for this conversation (reproducibility). */
+  informationAssignment?: InformationAssignment;
+  /** Deterministic private-info flow metrics (post-run). */
+  informationFlowMetrics?: InformationFlowMetrics;
   messages: ConversationMessage[];
   finalAnswer?: string;
   /**
@@ -109,14 +147,38 @@ export type ProblemConversation = {
    */
   finalAnswerSupport?: FinalAnswerSupport;
   /**
-   * Structured reasoning snapshot for this problem. `undefined` on legacy
-   * runs that predate the proposal/claim protocol. New runs always persist
-   * arrays (possibly empty) so live graphs can render from the first turn.
+   * Explicit final-synthesis provenance (proposition version ids).
+   * Not a graph mutation. Absent when undeclared.
    */
-  reasoningNodes?: ReasoningNode[];
+  finalBasisVersionIds?: string[];
+  finalBasisDeclared?: boolean;
+  finalBasisErrors?: string[];
+  /**
+   * Task/private evidence ids cited in FINAL_ANSWER support.
+   * Separate from finalBasisVersionIds (graph provenance).
+   */
+  finalSourceInformationIds?: string[];
+  /**
+   * Structured reasoning snapshot. Events are authoritative. Versions are a
+   * cache reproducible by replaying accepted events from empty state.
+   */
+  reasoningSchemaVersion?: 1 | 2;
   reasoningEvents?: ReasoningEvent[];
-  /** Stable task-defined issue anchors used by new reasoning graphs. */
   reasoningSubjects?: ReasoningSubject[];
+  reasoningVersions?: PropositionVersion[];
+  /** Snapshot of canonical state at termination. */
+  finalGraphState?: {
+    subjects: ReasoningSubject[];
+    versions: PropositionVersion[];
+  };
+  /**
+   * Dense-graph records from schema-1 runs. Inspectable, never converted
+   * into versioned proposition state.
+   */
+  legacyReasoningSnapshot?: {
+    nodes?: unknown[];
+    events?: unknown[];
+  };
   /** Deterministic graph-quality measurements computed when the problem ends. */
   reasoningDiagnostics?: ReasoningGraphDiagnostics;
   stoppedReason:
@@ -186,6 +248,28 @@ export type RunConfig = {
   localLoopTurns?: number;
   /** Recent fingerprint window used to detect small state cycles. */
   cycleWindowTurns?: number;
+  /**
+   * Primary moral subject initialization. Default is agent-created (empty graph).
+   */
+  moralSubjectInitialization?: "agent-created";
+  /**
+   * @deprecated Legacy alias. Historical values are normalized to agent-created.
+   * Prefer moralSubjectInitialization.
+   */
+  moralSubjectSeeding?:
+    | "agent-created"
+    | "explicit-task-seeded"
+    | "none"
+    | "explicit-task-only";
+  /**
+   * Information overlap ∈ [0.5, 1.0].
+   * 1.0 = identical packets; 0.5 = fully partitioned when feasible.
+   * Orthogonal to communication policy (trust / authority / familiarity).
+   * Each run draws a fresh random partition (snapshotted on the conversation).
+   */
+  informationOverlap?: number;
+  /** Snapshotted information-structure metadata for the run (includes draw nonce). */
+  informationStructure?: InformationStructureConfig;
 };
 
 export type ExperimentRun = {
@@ -206,8 +290,8 @@ export type ExperimentRun = {
   agentPrompts: AgentPromptPair;
   /**
    * How agent context was constructed for this run. Absent on pre-metadata
-   * snapshots, which still used full-history prefixed-assistant
-   * (`full-history-v1` / prefixed-assistant).
+   * snapshots, which used full-history prefixed-assistant
+   * (`full-history-v1`). Current runs use `graph-memory-v2`.
    */
   transcriptProtocol?: TranscriptProtocol;
   config: RunConfig;

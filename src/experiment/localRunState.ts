@@ -113,3 +113,21 @@ export function mergeIncomingRuns(
   }
   return extras.length === 0 ? incomingFiltered : [...extras, ...incomingFiltered];
 }
+
+/**
+ * Keep locally queued/running rows if a stale poll snapshot omits them.
+ * Persistence remains server-authoritative once the id appears in `incoming`.
+ */
+export function retainInFlightRuns(
+  prev: ExperimentRun[],
+  incoming: ExperimentRun[],
+): ExperimentRun[] {
+  if (prev.length === 0) return incoming;
+  const incomingIds = new Set(incoming.map((run) => run.id));
+  const extras: ExperimentRun[] = [];
+  for (const run of prev) {
+    if (incomingIds.has(run.id)) continue;
+    if (run.status === "queued" || run.status === "running") extras.push(run);
+  }
+  return extras.length === 0 ? incoming : [...extras, ...incoming];
+}

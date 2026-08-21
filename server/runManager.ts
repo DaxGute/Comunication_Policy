@@ -27,7 +27,6 @@ import {
   type ModelRequest,
   type ModelResponse,
 } from "../src/runtime/modelClient.ts";
-import { runExperiment } from "../src/runtime/runExperiment.ts";
 import { isAbortError } from "../src/runtime/abort.ts";
 import {
   generateWithOpenAI,
@@ -74,8 +73,13 @@ export class RunManager {
    * Tombstones for explicitly deleted runs. Late cancel/complete callbacks must
    * not resurrect them into `live` or `.data/runs.json`.
    */
-  private readonly deletedIds = new Set<string>();
+  private deletedIds = new Set<string>();
   private reconciled = false;
+  /**
+   * After SSR HMR replaces this singleton, in-flight callbacks on the orphaned
+   * instance forward here so live run state is not lost.
+   */
+  private successor: RunManager | undefined;
 
   constructor(
     getApiKey: () => string | undefined,
@@ -83,6 +87,16 @@ export class RunManager {
   ) {
     this.getApiKey = getApiKey;
     this.persistence = persistence;
+  }
+
+  /** Move live/in-flight state from a prior HMR instance onto this one. */
+  adoptFrom(previous: RunManager): void {
+    for (const [id, run] of previous.live) this.live.set(id, run);
+    for (const [id, active] of previous.activeRuns) this.activeRuns.set(id, active);
+    for (const [id, active] of previous.activeEvals) this.activeEvals.set(id, active);
+    for (const id of previous.deletedIds) this.deletedIds.add(id);
+    this.reconciled = previous.reconciled;
+    previous.successor = this;
   }
 
   /** On process start: fail any persisted "running"/"queued" with no live handle. */
@@ -170,7 +184,7 @@ export class RunManager {
     );
     for (const [id, live] of this.live) {
       if (this.deletedIds.has(id)) continue;
-      byId.set(id, live);
+      byId.set(id, structuredClone(live) as ExperimentRun);
     }
     for (const id of this.deletedIds) {
       byId.delete(id);
@@ -183,7 +197,8 @@ export class RunManager {
   getRun(runId: string): ExperimentRun | undefined {
     this.reconcileAfterRestart();
     if (this.deletedIds.has(runId)) return undefined;
-    return this.live.get(runId) ?? this.persistence.get(runId);
+    const run = this.live.get(runId) ?? this.persistence.get(runId);
+    return run ? (structuredClone(run) as ExperimentRun) : undefined;
   }
 
   createRun(args: {
@@ -208,7 +223,7 @@ export class RunManager {
     const placeholder = createQueuedRun({ id: runId, policy, config });
 
     this.live.set(runId, placeholder);
-    this.persistLive(runId);
+    this.persistLive(runId, "immediate");
     getRunTreePersistence().update((tree) => prependRunToTree(tree, runId));
 
     const abort = new AbortController();
@@ -240,11 +255,15 @@ export class RunManager {
     }
     // Clear live progress immediately so the UI drops the medallion while
     // in-flight model calls unwind to a cancelled terminal state.
-    this.mutate(runId, (run) => {
-      if (run.status === "queued" || run.status === "running") {
-        run.progress = undefined;
-      }
-    });
+    this.mutate(
+      runId,
+      (run) => {
+        if (run.status === "queued" || run.status === "running") {
+          run.progress = undefined;
+        }
+      },
+      "immediate",
+    );
     return this.getRun(runId);
   }
 
@@ -273,9 +292,13 @@ export class RunManager {
   renameRun(runId: string, title: string): ExperimentRun | undefined {
     const next = title.trim();
     if (!next) return this.getRun(runId);
-    return this.mutate(runId, (run) => {
-      run.title = next;
-    });
+    return this.mutate(
+      runId,
+      (run) => {
+        run.title = next;
+      },
+      "immediate",
+    );
   }
 
   renameProblem(
@@ -285,29 +308,33 @@ export class RunManager {
   ): ExperimentRun | undefined {
     const next = title.trim();
     if (!next) return this.getRun(runId);
-    return this.mutate(runId, (run) => {
-      for (const c of run.conversations) {
-        if (c.problemId === problemId) c.problemTitle = next;
-      }
-      if (run.evaluation) {
-        run.evaluation = {
-          ...run.evaluation,
-          problems: run.evaluation.problems.map((p) =>
-            p.problemId === problemId ? { ...p, problemTitle: next } : p,
-          ),
-        };
-      }
-      if (run.multiAgentEvaluations) {
-        run.multiAgentEvaluations = run.multiAgentEvaluations.map((e) =>
-          e.problemId === problemId
-            ? {
-                ...e,
-                metadata: { ...e.metadata, problemTitle: next },
-              }
-            : e,
-        );
-      }
-    });
+    return this.mutate(
+      runId,
+      (run) => {
+        for (const c of run.conversations) {
+          if (c.problemId === problemId) c.problemTitle = next;
+        }
+        if (run.evaluation) {
+          run.evaluation = {
+            ...run.evaluation,
+            problems: run.evaluation.problems.map((p) =>
+              p.problemId === problemId ? { ...p, problemTitle: next } : p,
+            ),
+          };
+        }
+        if (run.multiAgentEvaluations) {
+          run.multiAgentEvaluations = run.multiAgentEvaluations.map((e) =>
+            e.problemId === problemId
+              ? {
+                  ...e,
+                  metadata: { ...e.metadata, problemTitle: next },
+                }
+              : e,
+          );
+        }
+      },
+      "immediate",
+    );
   }
 
   importRuns(runs: ExperimentRun[]): { imported: number } {
@@ -579,6 +606,11 @@ export class RunManager {
     signal: AbortSignal,
   ): Promise<void> {
     const client = this.createServerModelClient(runId);
+    // Cache-bust so Vite SSR cannot return a pre-asymmetry module instance.
+    const runtime = (await import(
+      /* @vite-ignore */ `../src/runtime/runExperiment.ts?hmr=${MODULE_EPOCH}`
+    )) as typeof import("../src/runtime/runExperiment.ts");
+    const { runExperiment } = runtime;
     try {
       await runExperiment({
         policy,
@@ -589,9 +621,12 @@ export class RunManager {
         callbacks: {
           onRunCreated: (run) => {
             // Replace queued placeholder with the runtime-owned object.
-            if (this.deletedIds.has(runId)) return;
-            this.live.set(runId, run);
-            this.persistLive(runId);
+            if (this.deletedIds.has(runId) || this.successor?.deletedIds.has(runId)) {
+              return;
+            }
+            const target = this.successor ?? this;
+            target.live.set(runId, run);
+            target.persistLive(runId, "immediate");
           },
           onProgress: (progress: RunProgress) => {
             this.mutate(runId, (run) => {
@@ -608,68 +643,80 @@ export class RunManager {
             });
           },
           onSpeaking: (agentId, problemId) => {
-            this.mutate(runId, (run) => {
-              const conv = run.conversations.find(
-                (c) => c.problemId === problemId,
-              );
-              if (conv) {
-                conv.speakingAgentId = agentId;
-                conv.status = "running";
-              }
-            });
+            this.mutate(
+              runId,
+              (run) => {
+                const conv = run.conversations.find(
+                  (c) => c.problemId === problemId,
+                );
+                if (conv) {
+                  conv.speakingAgentId = agentId;
+                  conv.status = "running";
+                }
+              },
+              false,
+            );
           },
           onProblemComplete: (_id, conversation) => {
-            this.mutate(runId, (run) => {
-              this.replaceConversation(run, conversation);
-              syncRunCostFields(run);
-            });
+            this.mutate(
+              runId,
+              (run) => {
+                this.replaceConversation(run, conversation);
+                syncRunCostFields(run);
+              },
+              "immediate",
+            );
           },
           onRunComplete: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
             this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
-            this.persistLive(runId);
+            this.persistLive(runId, "immediate");
           },
           onRunFailed: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
             this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
-            this.persistLive(runId);
+            this.persistLive(runId, "immediate");
           },
           onRunCancelled: (run) => {
             if (this.deletedIds.has(runId)) return;
             run.progress = undefined;
             this.attachSchedulerDiagnostics(run);
             this.live.set(runId, run);
-            this.persistLive(runId);
+            this.persistLive(runId, "immediate");
           },
         },
       });
     } catch (error) {
-      this.mutate(runId, (run) => {
-        if (run.status !== "running" && run.status !== "queued") return;
-        const cancelled = isAbortError(error) || signal.aborted;
-        run.status = cancelled ? "cancelled" : "failed";
-        run.error = cancelled
-          ? "Cancelled"
-          : error instanceof Error
-            ? error.message
-            : String(error);
-        run.finishedAt = new Date().toISOString();
-        run.progress = undefined;
-        this.attachSchedulerDiagnostics(run);
-        for (const c of run.conversations) {
-          if (c.status === "running") {
-            c.status = undefined;
-            c.speakingAgentId = undefined;
-            if (cancelled && c.stoppedReason !== "error") {
-              c.stoppedReason = "cancelled";
+      this.mutate(
+        runId,
+        (run) => {
+          if (run.status !== "running" && run.status !== "queued") return;
+          const cancelled = isAbortError(error) || signal.aborted;
+          run.status = cancelled ? "cancelled" : "failed";
+          run.error = cancelled
+            ? "Cancelled"
+            : error instanceof Error
+              ? error.message
+              : String(error);
+          run.finishedAt = new Date().toISOString();
+          run.progress = undefined;
+          this.attachSchedulerDiagnostics(run);
+          for (const c of run.conversations) {
+            if (c.status === "running") {
+              c.status = undefined;
+              c.speakingAgentId = undefined;
+              if (cancelled && c.stoppedReason !== "error") {
+                c.stoppedReason = "cancelled";
+              }
             }
           }
-        }
-      });
+        },
+        "immediate",
+      );
     }
   }
 
@@ -751,12 +798,18 @@ export class RunManager {
     runId: string,
     evaluation: MultiAgentEvaluation,
   ): void {
-    this.mutate(runId, (run) => {
-      const existing = run.multiAgentEvaluations ?? [];
-      const without = existing.filter((e) => e.id !== evaluation.id);
-      run.multiAgentEvaluations = [...without, evaluation];
-      syncRunCostFields(run);
-    });
+    const terminal =
+      evaluation.status !== "running" && evaluation.status !== "pending";
+    this.mutate(
+      runId,
+      (run) => {
+        const existing = run.multiAgentEvaluations ?? [];
+        const without = existing.filter((e) => e.id !== evaluation.id);
+        run.multiAgentEvaluations = [...without, evaluation];
+        syncRunCostFields(run);
+      },
+      terminal ? "immediate" : "deferred",
+    );
   }
 
   private appendMessage(
@@ -773,8 +826,9 @@ export class RunManager {
         problemText: "",
         messages: [message],
         reasoningSubjects: reasoning?.subjects ?? [],
-        reasoningNodes: reasoning?.nodes ?? [],
+        reasoningVersions: reasoning?.versions ?? [],
         reasoningEvents: reasoning?.events ?? [],
+        reasoningSchemaVersion: reasoning?.schemaVersion,
         stoppedReason: "max_turns",
         status: "running",
       });
@@ -784,8 +838,9 @@ export class RunManager {
     if (existing.messages.some((m) => m.id === message.id)) {
       if (reasoning) {
         existing.reasoningSubjects = reasoning.subjects;
-        existing.reasoningNodes = reasoning.nodes;
+        existing.reasoningVersions = reasoning.versions;
         existing.reasoningEvents = reasoning.events;
+        existing.reasoningSchemaVersion = reasoning.schemaVersion;
       }
       return;
     }
@@ -793,8 +848,9 @@ export class RunManager {
     existing.status = "running";
     if (reasoning) {
       existing.reasoningSubjects = reasoning.subjects;
-      existing.reasoningNodes = reasoning.nodes;
+      existing.reasoningVersions = reasoning.versions;
       existing.reasoningEvents = reasoning.events;
+      existing.reasoningSchemaVersion = reasoning.schemaVersion;
     }
   }
 
@@ -821,8 +877,9 @@ export class RunManager {
         (completed.reasoningEvents?.length ?? 0)
       ) {
         completed.reasoningSubjects = prev.reasoningSubjects;
-        completed.reasoningNodes = prev.reasoningNodes;
+        completed.reasoningVersions = prev.reasoningVersions;
         completed.reasoningEvents = prev.reasoningEvents;
+        completed.reasoningSchemaVersion = prev.reasoningSchemaVersion;
       }
       if (
         prev.problemTitle &&
@@ -850,27 +907,38 @@ export class RunManager {
   private mutate(
     runId: string,
     mutator: (run: ExperimentRun) => void,
+    persist: false | "deferred" | "immediate" = "deferred",
   ): ExperimentRun | undefined {
+    if (this.successor) {
+      return this.successor.mutate(runId, mutator, persist);
+    }
     if (this.deletedIds.has(runId)) return undefined;
     const run = this.live.get(runId) ?? this.persistence.get(runId);
     if (!run) return undefined;
     if (!this.live.has(runId)) {
-      this.live.set(runId, run);
+      this.live.set(runId, structuredClone(run) as ExperimentRun);
     }
     const live = this.live.get(runId)!;
     mutator(live);
-    this.persistLive(runId);
-    return structuredClone(live) as ExperimentRun;
+    if (persist !== false) this.persistLive(runId, persist);
+    return live;
   }
 
-  private persistLive(runId: string): void {
+  private persistLive(
+    runId: string,
+    mode: "deferred" | "immediate" = "deferred",
+  ): void {
+    if (this.successor) {
+      this.successor.persistLive(runId, mode);
+      return;
+    }
     if (this.deletedIds.has(runId)) {
       this.live.delete(runId);
       return;
     }
     const run = this.live.get(runId);
     if (!run) return;
-    this.persistence.save(run);
+    this.persistence.save(run, { immediate: mode === "immediate" });
   }
 }
 
@@ -882,14 +950,37 @@ export class RunsApiError extends Error {
   }
 }
 
-let singleton: RunManager | undefined;
+const RUN_MANAGER_GLOBAL = "__communicationPolicyRunManager";
+const RUN_MANAGER_EPOCH = "__communicationPolicyRunManagerEpoch";
+/** Changes every time this module is evaluated (Vite SSR reload). */
+const MODULE_EPOCH = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+type RunManagerHost = typeof globalThis & {
+  [RUN_MANAGER_GLOBAL]?: RunManager;
+  [RUN_MANAGER_EPOCH]?: string;
+};
 
 export function getRunManager(
   getApiKey: () => string | undefined,
 ): RunManager {
-  if (!singleton) {
-    singleton = new RunManager(getApiKey);
-    singleton.reconcileAfterRestart();
+  // Keep one live manager across ordinary requests, but replace it when this
+  // module reloads under Vite SSR HMR. Otherwise executeRun stays bound to a
+  // stale import graph and features like information asymmetry never apply.
+  const host = globalThis as RunManagerHost;
+  if (
+    !host[RUN_MANAGER_GLOBAL] ||
+    host[RUN_MANAGER_EPOCH] !== MODULE_EPOCH
+  ) {
+    const previous = host[RUN_MANAGER_GLOBAL];
+    const next = new RunManager(getApiKey);
+    host[RUN_MANAGER_EPOCH] = MODULE_EPOCH;
+    host[RUN_MANAGER_GLOBAL] = next;
+    if (previous) {
+      next.adoptFrom(previous);
+      console.info(`[run-manager] reloaded runtime epoch=${MODULE_EPOCH}`);
+    } else {
+      next.reconcileAfterRestart();
+    }
   }
-  return singleton;
+  return host[RUN_MANAGER_GLOBAL]!;
 }

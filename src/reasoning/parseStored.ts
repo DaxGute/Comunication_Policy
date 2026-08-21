@@ -1,21 +1,16 @@
 import type { AgentId } from "../agents/types";
-import { parseReasoningIntent } from "./parseTurn";
+import { parseReasoningMutation } from "./parseTurn";
 import {
-  REASONING_NODE_STATUSES,
-  REASONING_NODE_TYPES,
-  REASONING_OPERATION_TYPES,
-  type AtomicReasoningNodeType,
-  type EvidenceOrigin,
-  type FinalAnswerNode,
-  type GroundingLink,
+  REASONING_SCHEMA_VERSION,
+  type PropositionVersion,
+  type PropositionVersionStatus,
   type ReasoningActor,
   type ReasoningEvent,
   type ReasoningGraph,
-  type ReasoningIntent,
-  type ReasoningNode,
-  type ReasoningNodeStatus,
-  type ReasoningOperation,
+  type ReasoningMutation,
   type ReasoningSubject,
+  type ReasoningSubjectSource,
+  type StoredReasoningMutation,
 } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,46 +25,59 @@ function isReasoningActor(value: unknown): value is ReasoningActor {
   return isAgentId(value) || value === "system";
 }
 
-function parseEvidenceOrigin(value: unknown): EvidenceOrigin | undefined {
-  return value === "task" || value === "deterministic" || value === "agent"
-    ? value
-    : undefined;
-}
-
-function parseGrounding(raw: unknown): GroundingLink[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const links: GroundingLink[] = [];
-  for (const item of raw) {
-    if (!isRecord(item) || typeof item.sourceNodeId !== "string") continue;
-    if (
-      item.relation !== "grounds" &&
-      item.relation !== "supports" &&
-      item.relation !== "challenges"
-    ) {
-      continue;
-    }
-    links.push({ sourceNodeId: item.sourceNodeId, relation: item.relation });
-  }
-  return links.length > 0 ? links : undefined;
-}
-
-function isNodeType(value: unknown): value is AtomicReasoningNodeType {
-  return (
-    typeof value === "string" &&
-    (REASONING_NODE_TYPES as readonly string[]).includes(value)
-  );
-}
-
-function isStatus(value: unknown): value is ReasoningNodeStatus {
-  return (
-    typeof value === "string" &&
-    (REASONING_NODE_STATUSES as readonly string[]).includes(value)
-  );
-}
-
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function mutationType(raw: unknown): "SET" | "REVISE" | "REMOVE" | undefined {
+  if (typeof raw !== "string") return undefined;
+  const upper = raw.trim().toUpperCase();
+  if (upper === "SET" || upper === "REVISE" || upper === "REMOVE") return upper;
+  return undefined;
+}
+
+export function looksLikeLegacyDenseEvent(raw: unknown): boolean {
+  if (!isRecord(raw) || !isRecord(raw.operation)) return false;
+  const type = raw.operation.type;
+  return (
+    typeof type === "string" &&
+    [
+      "create",
+      "support",
+      "challenge",
+      "accept",
+      "reject",
+      "revise",
+      "pass",
+      "invalid",
+      "protocol_failure",
+      "final_answer",
+    ].includes(type)
+  );
+}
+
+export function looksLikeCanonicalMutationEvent(raw: unknown): boolean {
+  if (!isRecord(raw)) return false;
+  if (isRecord(raw.mutation) && mutationType(raw.mutation.type)) return true;
+  if (mutationType(raw.action) && !raw.operation) return true;
+  if (mutationType(raw.type) && (raw.subjectId || raw.subject)) return true;
+  return false;
+}
+
+export function detectReasoningSchema(raw: {
+  reasoningSchemaVersion?: unknown;
+  reasoningEvents?: unknown;
+}): 1 | 2 | undefined {
+  if (raw.reasoningSchemaVersion === 1) return 1;
+  if (raw.reasoningSchemaVersion === 2) return 2;
+  const events = Array.isArray(raw.reasoningEvents) ? raw.reasoningEvents : [];
+  if (events.length === 0) {
+    return raw.reasoningSchemaVersion === undefined ? undefined : 2;
+  }
+  if (events.some(looksLikeCanonicalMutationEvent)) return 2;
+  if (events.some(looksLikeLegacyDenseEvent)) return 1;
+  return undefined;
 }
 
 export function parseReasoningSubject(
@@ -77,252 +85,162 @@ export function parseReasoningSubject(
 ): ReasoningSubject | undefined {
   if (!isRecord(raw)) return undefined;
   if (typeof raw.id !== "string" || !raw.id.trim()) return undefined;
-  if (typeof raw.label !== "string" || !raw.label.trim()) return undefined;
-  if (raw.source !== "task") return undefined;
+  const source: ReasoningSubjectSource =
+    raw.source === "agent" ? "agent" : "task";
   return {
     id: raw.id,
-    label: raw.label,
-    kind: raw.kind === "task_defined" ? "task_defined" : undefined,
+    label: typeof raw.label === "string" ? raw.label : undefined,
+    kind:
+      raw.kind === "agent_defined" || raw.kind === "task_defined"
+        ? raw.kind
+        : undefined,
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     description:
       typeof raw.description === "string" ? raw.description : undefined,
-    source: "task",
+    source,
+    createdAtTurn:
+      typeof raw.createdAtTurn === "number" && Number.isFinite(raw.createdAtTurn)
+        ? Math.max(0, Math.round(raw.createdAtTurn))
+        : undefined,
+    createdBy: isReasoningActor(raw.createdBy) ? raw.createdBy : undefined,
     metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
   };
 }
 
-export function parseReasoningNode(raw: unknown): ReasoningNode | undefined {
+function parseStatus(value: unknown): PropositionVersionStatus | undefined {
+  return value === "active" || value === "superseded" || value === "removed"
+    ? value
+    : undefined;
+}
+
+export function parsePropositionVersion(
+  raw: unknown,
+): PropositionVersion | undefined {
   if (!isRecord(raw)) return undefined;
-  if (typeof raw.id !== "string") return undefined;
-  if (typeof raw.text !== "string") return undefined;
-  if (!isReasoningActor(raw.createdBy)) return undefined;
-  if (typeof raw.createdAtTurn !== "number" || !Number.isFinite(raw.createdAtTurn)) {
-    return undefined;
-  }
-  if (raw.type === "final_answer") {
-    if (
-      raw.id !== "__final_answer__" ||
-      typeof raw.sourceMessageId !== "string" ||
-      typeof raw.sourceEventId !== "string"
-    ) {
-      return undefined;
-    }
-    const finalNode: FinalAnswerNode = {
-      id: "__final_answer__",
-      type: "final_answer",
-      text: raw.text,
-      createdBy: raw.createdBy,
-      createdAtTurn: Math.max(0, Math.round(raw.createdAtTurn)),
-      sourceMessageId: raw.sourceMessageId,
-      sourceEventId: raw.sourceEventId,
-      status: isStatus(raw.status) ? raw.status : "accepted",
-      parents: asStringArray(raw.parents ?? raw.supportingNodeIds),
-      dependencies: [],
-      supportingNodeIds: asStringArray(raw.supportingNodeIds ?? raw.parents),
-      supportErrors: asStringArray(raw.supportErrors),
-    };
-    return finalNode;
-  }
-  if (!isNodeType(raw.type)) return undefined;
+  if (typeof raw.id !== "string" || !raw.id.trim()) return undefined;
+  if (typeof raw.subjectId !== "string" || !raw.subjectId.trim()) return undefined;
+  if (typeof raw.content !== "string") return undefined;
+  if (!isAgentId(raw.agentId)) return undefined;
+  if (typeof raw.turn !== "number" || !Number.isFinite(raw.turn)) return undefined;
+  const status = parseStatus(raw.status);
+  if (!status) return undefined;
   return {
     id: raw.id,
-    type: raw.type,
-    text: raw.text,
-    createdBy: raw.createdBy,
-    createdAtTurn: Math.max(0, Math.round(raw.createdAtTurn)),
+    subjectId: raw.subjectId,
+    content: raw.content,
+    agentId: raw.agentId,
+    turn: Math.max(0, Math.round(raw.turn)),
+    previousVersionId:
+      typeof raw.previousVersionId === "string" ? raw.previousVersionId : undefined,
+    sourceUtteranceTurn:
+      typeof raw.sourceUtteranceTurn === "number" &&
+      Number.isFinite(raw.sourceUtteranceTurn)
+        ? Math.max(0, Math.round(raw.sourceUtteranceTurn))
+        : Math.max(0, Math.round(raw.turn)),
     sourceMessageId:
       typeof raw.sourceMessageId === "string" ? raw.sourceMessageId : undefined,
-    confidence:
-      typeof raw.confidence === "number" && Number.isFinite(raw.confidence)
-        ? raw.confidence
-        : undefined,
-    status: isStatus(raw.status) ? raw.status : "open",
-    parents: asStringArray(raw.parents),
-    dependencies: asStringArray(raw.dependencies),
-    subjectId: typeof raw.subjectId === "string" ? raw.subjectId : undefined,
-    supersedes: typeof raw.supersedes === "string" ? raw.supersedes : undefined,
-    metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
-    evidenceOrigin: parseEvidenceOrigin(raw.evidenceOrigin) ??
-      parseEvidenceOrigin(isRecord(raw.metadata) ? raw.metadata.evidenceOrigin : undefined),
+    status,
+    ...(Array.isArray(raw.derivedFromVersionIds) &&
+    raw.derivedFromVersionIds.every((item) => typeof item === "string")
+      ? {
+          derivedFromVersionIds: [
+            ...new Set(raw.derivedFromVersionIds as string[]),
+          ],
+        }
+      : {}),
+    ...(Array.isArray(raw.sourceInformationIds) &&
+    raw.sourceInformationIds.every((item) => typeof item === "string")
+      ? {
+          sourceInformationIds: [
+            ...new Set(raw.sourceInformationIds as string[]),
+          ],
+        }
+      : {}),
   };
 }
 
-function parseOperation(raw: unknown): ReasoningOperation | undefined {
-  if (!isRecord(raw) || typeof raw.type !== "string") return undefined;
-  if (!(REASONING_OPERATION_TYPES as readonly string[]).includes(raw.type)) {
-    return undefined;
-  }
-  if (raw.type === "create") {
-    const node = parseReasoningNode(raw.node);
-    if (!node || node.type === "final_answer") return undefined;
-    return {
-      type: "create",
-      node,
-      replacedActiveNodeId:
-        typeof raw.replacedActiveNodeId === "string"
-          ? raw.replacedActiveNodeId
-          : undefined,
-      grounding: parseGrounding(raw.grounding),
-    };
-  }
-  if (raw.type === "protocol_failure") {
-    if (!isReasoningActor(raw.actor)) return undefined;
+function parseStoredMutation(raw: unknown): StoredReasoningMutation | undefined {
+  if (!isRecord(raw)) return undefined;
+  const type = typeof raw.type === "string" ? raw.type : undefined;
+  if (type === "protocol_failure") {
     return {
       type: "protocol_failure",
-      actor: raw.actor,
       reason: typeof raw.reason === "string" ? raw.reason : "protocol failure",
     };
   }
-  if (raw.type === "invalid") {
-    if (!isReasoningActor(raw.actor)) return undefined;
-    return {
-      type: "invalid",
-      actor: raw.actor,
-      targetId: typeof raw.targetId === "string" ? raw.targetId : undefined,
-    };
-  }
-  if (raw.type === "final_answer") {
-    if (!isReasoningActor(raw.actor)) return undefined;
+  if (type === "final_answer") {
     return {
       type: "final_answer",
-      actor: raw.actor,
       text: typeof raw.text === "string" ? raw.text : undefined,
-      supportingNodeIds: asStringArray(raw.supportingNodeIds),
     };
   }
-  if (!isReasoningActor(raw.actor)) return undefined;
-  if (raw.type === "support" || raw.type === "challenge") {
-    const targetNodeId =
-      typeof raw.targetNodeId === "string" ? raw.targetNodeId : raw.targetId;
-    if (typeof targetNodeId !== "string") return undefined;
-    return {
-      type: raw.type,
-      actor: raw.actor,
-      sourceNodeId:
-        typeof raw.sourceNodeId === "string" ? raw.sourceNodeId : undefined,
-      targetNodeId,
-      targetId: targetNodeId,
-      reason: typeof raw.reason === "string" ? raw.reason : undefined,
-    };
+  if (type === "invalid") {
+    return { type: "invalid", raw: raw.raw };
   }
-  if (typeof raw.targetId !== "string") return undefined;
-  if (raw.type === "revise") {
-    const replacement = parseReasoningNode(raw.replacement);
-    if (!replacement || replacement.type === "final_answer") return undefined;
-    return {
-      type: "revise",
-      actor: raw.actor,
-      targetId: raw.targetId,
-      replacement,
-      reason: typeof raw.reason === "string" ? raw.reason : undefined,
-      replacedActiveNodeId:
-        typeof raw.replacedActiveNodeId === "string"
-          ? raw.replacedActiveNodeId
-          : undefined,
-      grounding: parseGrounding(raw.grounding),
-    };
-  }
-  if (raw.type === "reject") {
-    if (typeof raw.reason !== "string") return undefined;
-    return {
-      type: "reject",
-      actor: raw.actor,
-      targetId: raw.targetId,
-      reason: raw.reason,
-    };
-  }
-  if (raw.type === "accept" || raw.type === "pass") {
-    return {
-      type: raw.type,
-      actor: raw.actor,
-      targetId: raw.targetId,
-      reason: typeof raw.reason === "string" ? raw.reason : undefined,
-    };
-  }
-  return undefined;
+  const parsed = parseReasoningMutation(raw);
+  if (parsed.type === "invalid") return { type: "invalid", raw: parsed.raw ?? raw };
+  return parsed;
 }
 
-export function parseReasoningOperation(
-  raw: unknown,
-): ReasoningOperation | undefined {
-  return parseOperation(raw);
-}
-
-function intentFromOperation(operation: ReasoningOperation): ReasoningIntent {
-  if (operation.type === "create") {
-    return {
-      action: "create",
-      nodeType: operation.node.type,
-      text: operation.node.text,
-      confidence: operation.node.confidence,
-      parents: operation.node.parents,
-      dependencies: operation.node.dependencies,
-      subjectId: operation.node.subjectId,
-    };
-  }
-  if (operation.type === "revise") {
-    return {
-      action: "revise",
-      targetId: operation.targetId,
-      nodeType: operation.replacement.type,
-      text: operation.replacement.text,
-      confidence: operation.replacement.confidence,
-      parents: operation.replacement.parents,
-      dependencies: operation.replacement.dependencies,
-      subjectId: operation.replacement.subjectId,
-      reason: operation.reason,
-    };
-  }
-  if (operation.type === "protocol_failure") {
-    return { action: "protocol_failure", reason: operation.reason };
-  }
-  if (operation.type === "final_answer") {
-    return {
-      action: "final_answer",
-      text: operation.text,
-      supportingNodeIds: operation.supportingNodeIds,
-    };
-  }
-  if (operation.type === "invalid") {
-    return { action: "invalid" };
-  }
-  return {
-    action: operation.type,
-    ...((operation.type === "support" || operation.type === "challenge")
-      ? {
-          sourceNodeId: operation.sourceNodeId,
-          targetNodeId: operation.targetNodeId,
-        }
-      : {}),
-    targetId: operation.targetId,
-    reason: "reason" in operation ? operation.reason : undefined,
-  };
-}
-
-export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
-  if (!isRecord(raw)) return undefined;
-  const operation = parseOperation(raw.operation);
-  if (!operation) return undefined;
-  if (typeof raw.id !== "string") return undefined;
-  if (!isReasoningActor(raw.actor)) return undefined;
-  if (typeof raw.turnIndex !== "number" || !Number.isFinite(raw.turnIndex)) {
+function mutationFromAug19(raw: Record<string, unknown>): StoredReasoningMutation | undefined {
+  const action = mutationType(raw.action ?? raw.type);
+  if (!action) {
+    if (raw.accepted === false && typeof raw.reason === "string") {
+      return { type: "protocol_failure", reason: raw.reason };
+    }
     return undefined;
   }
-  if (typeof raw.messageId !== "string") return undefined;
-  const intent = raw.intent !== undefined
-    ? parseReasoningIntent(raw.intent)
-    : intentFromOperation(operation);
+  const parsed = parseReasoningMutation({
+    type: action,
+    subjectId: raw.subjectId ?? raw.subject,
+    subjectLabel: raw.subjectLabel,
+    content: raw.after ?? raw.content,
+    before: raw.before,
+    after: raw.after,
+    basis: raw.basis ?? raw.basisVersionIds,
+  });
+  return parsed.type === "invalid" ? undefined : parsed;
+}
+
+/**
+ * Parse a persisted event. Accepts canonical v2 records and Aug 19
+ * `{ action: SET|REVISE|REMOVE, subjectId, before, after }` records.
+ * Dense-graph `operation` events return undefined (not converted).
+ */
+export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (looksLikeLegacyDenseEvent(raw) && !looksLikeCanonicalMutationEvent(raw)) {
+    return undefined;
+  }
+
+  const mutation =
+    parseStoredMutation(raw.mutation) ?? mutationFromAug19(raw);
+  if (!mutation) return undefined;
+
+  const actorRaw = raw.actor ?? raw.agent;
+  if (!isReasoningActor(actorRaw)) return undefined;
+  const turnRaw = raw.turnIndex ?? raw.turn;
+  if (typeof turnRaw !== "number" || !Number.isFinite(turnRaw)) return undefined;
+
+  const id =
+    typeof raw.id === "string" && raw.id.trim()
+      ? raw.id
+      : `re-${Math.max(0, Math.round(turnRaw))}`;
+  const messageId =
+    typeof raw.messageId === "string"
+      ? raw.messageId
+      : `legacy-turn-${Math.max(0, Math.round(turnRaw))}`;
+
   return {
-    id: raw.id,
+    id,
     seq:
       typeof raw.seq === "number" && Number.isFinite(raw.seq)
         ? Math.max(0, Math.round(raw.seq))
         : 0,
-    turnIndex: Math.max(0, Math.round(raw.turnIndex)),
-    messageId: raw.messageId,
-    actor: raw.actor,
-    intent,
-    operation,
+    turnIndex: Math.max(0, Math.round(turnRaw)),
+    messageId,
+    actor: actorRaw,
+    mutation,
     accepted: raw.accepted !== false,
     errors: asStringArray(raw.errors),
     diagnostics:
@@ -330,33 +248,68 @@ export function parseReasoningEvent(raw: unknown): ReasoningEvent | undefined {
         ? asStringArray(raw.diagnostics)
         : undefined,
     ...(raw.stateChanged === false ? { stateChanged: false as const } : {}),
+    reason: typeof raw.reason === "string" ? raw.reason : undefined,
+    versionId: typeof raw.versionId === "string" ? raw.versionId : undefined,
+    previousVersionId:
+      typeof raw.previousVersionId === "string" ? raw.previousVersionId : undefined,
+    ...(Array.isArray(raw.basisVersionIds) &&
+    raw.basisVersionIds.every((item) => typeof item === "string")
+      ? { basisVersionIds: [...new Set(raw.basisVersionIds as string[])] }
+      : {}),
+    ...(Array.isArray(raw.sourceInformationIds) &&
+    raw.sourceInformationIds.every((item) => typeof item === "string")
+      ? {
+          sourceInformationIds: [
+            ...new Set(raw.sourceInformationIds as string[]),
+          ],
+        }
+      : {}),
   };
 }
 
 export function parseReasoningGraph(raw: {
+  reasoningSchemaVersion?: unknown;
   reasoningSubjects?: unknown;
-  reasoningNodes?: unknown;
+  reasoningVersions?: unknown;
   reasoningEvents?: unknown;
 }): ReasoningGraph | undefined {
+  const schema = detectReasoningSchema(raw);
+  if (schema === 1) {
+    return {
+      schemaVersion: 1,
+      subjects: [],
+      versions: [],
+      events: [],
+    };
+  }
   const subjectsRaw = Array.isArray(raw.reasoningSubjects)
     ? raw.reasoningSubjects
     : undefined;
-  const nodesRaw = Array.isArray(raw.reasoningNodes) ? raw.reasoningNodes : undefined;
+  const versionsRaw = Array.isArray(raw.reasoningVersions)
+    ? raw.reasoningVersions
+    : undefined;
   const eventsRaw = Array.isArray(raw.reasoningEvents)
     ? raw.reasoningEvents
     : undefined;
-  if (!subjectsRaw && !nodesRaw && !eventsRaw) return undefined;
+  if (!subjectsRaw && !versionsRaw && !eventsRaw) return undefined;
+  const events = (eventsRaw ?? [])
+    .map(parseReasoningEvent)
+    .filter((event): event is ReasoningEvent => Boolean(event));
   return {
-    subjects: subjectsRaw
-      ? subjectsRaw
-          .map(parseReasoningSubject)
-          .filter((subject): subject is ReasoningSubject => Boolean(subject))
-      : [],
-    nodes: (nodesRaw ?? [])
-      .map(parseReasoningNode)
-      .filter((n): n is ReasoningNode => Boolean(n)),
-    events: (eventsRaw ?? [])
-      .map(parseReasoningEvent)
-      .filter((e): e is ReasoningEvent => Boolean(e)),
+    schemaVersion: REASONING_SCHEMA_VERSION,
+    subjects: (subjectsRaw ?? [])
+      .map(parseReasoningSubject)
+      .filter((subject): subject is ReasoningSubject => Boolean(subject)),
+    versions: (versionsRaw ?? [])
+      .map(parsePropositionVersion)
+      .filter((version): version is PropositionVersion => Boolean(version)),
+    events,
   };
+}
+
+export function parseReasoningMutationRecord(
+  raw: unknown,
+): ReasoningMutation | undefined {
+  const parsed = parseReasoningMutation(raw);
+  return parsed.type === "invalid" ? undefined : parsed;
 }

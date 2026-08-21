@@ -25,9 +25,9 @@ export type ClosureWarningReason =
 export const NO_STATE_CHANGE_PREFIX = "no_state_change";
 
 export const STRUCTURED_REASONING_MISSING_FEEDBACK = [
-  "A prior turn looked like a committed conclusion but no graph move was recorded.",
-  "If you now have a sufficiently justified claim, record it. If you do not,",
-  "empty moves are valid — do not guess to keep the conversation moving.",
+  "A prior turn looked like a committed conclusion but no graph mutation was recorded.",
+  "If you now have a sufficiently justified proposition, emit SET or REVISE.",
+  "If you do not, empty mutations are valid — do not guess to keep the conversation moving.",
 ].join("\n");
 
 export const STRUCTURED_REASONING_STALL_FEEDBACK = [
@@ -35,9 +35,9 @@ export const STRUCTURED_REASONING_STALL_FEEDBACK = [
   "",
   "Recent turns have not improved the committed reasoning state.",
   "",
-  "Inspect the live graph. Revise or challenge an existing idea if you have",
-  "grounds to do so. If you do not yet have a sufficiently justified new",
-  "claim, say so and leave moves empty rather than adding a weak candidate.",
+  "Inspect CURRENT SHARED REASONING STATE. Revise an existing subject if you have",
+  "grounds to do so. If you do not yet have a justified change, say so and leave",
+  "mutations empty rather than adding a weak candidate.",
 ].join("\n");
 
 export function noStateChangeFeedback(detail: string): string {
@@ -103,13 +103,14 @@ export function eventChangedCanonicalState(event: {
   accepted: boolean;
   stateChanged?: boolean;
   diagnostics?: string[];
-  operation: { type: string };
+  mutation: { type: string };
 }): boolean {
   if (!event.accepted) return false;
   if (event.stateChanged === false) return false;
   if (
-    event.operation.type === "invalid" ||
-    event.operation.type === "protocol_failure"
+    event.mutation.type === "invalid" ||
+    event.mutation.type === "protocol_failure" ||
+    event.mutation.type === "final_answer"
   ) {
     return false;
   }
@@ -129,7 +130,7 @@ export function eventChangedCanonicalState(event: {
 export function acceptedGraphMutations(
   events: {
     accepted: boolean;
-    operation: { type: string };
+    mutation: { type: string };
     turnIndex: number;
   }[],
   turnIndex: number,
@@ -138,8 +139,9 @@ export function acceptedGraphMutations(
     (event) =>
       event.accepted &&
       event.turnIndex === turnIndex &&
-      event.operation.type !== "invalid" &&
-      event.operation.type !== "protocol_failure",
+      (event.mutation.type === "SET" ||
+        event.mutation.type === "REVISE" ||
+        event.mutation.type === "REMOVE"),
   ).length;
 }
 
@@ -148,7 +150,7 @@ export function meaningfulStateMutations(
     accepted: boolean;
     stateChanged?: boolean;
     diagnostics?: string[];
-    operation: { type: string };
+    mutation: { type: string };
     turnIndex: number;
   }[],
   turnIndex: number,

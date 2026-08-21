@@ -1,3 +1,5 @@
+import type { InformationUnit } from "../../information/types";
+
 export type MoralDilemmaItem = {
   id: string;
   sourceIndex: number;
@@ -6,6 +8,12 @@ export type MoralDilemmaItem = {
   issues: string[];
   question: string;
   alternateQuestions: string[];
+  /**
+   * Optional authored case facts for asymmetric-information experiments.
+   * When absent, the loader segments `description` deterministically.
+   * Never includes evaluator-only issue labels as agent-facing units.
+   */
+  informationUnits?: InformationUnit[];
 };
 
 export type MoralSubsetFile = {
@@ -29,4 +37,6 @@ export type MoralSpec = {
   question: string;
   source: "reddit_ethics";
   sourceIndex: number;
+  /** Authored or deterministically segmented case facts (splitable units). */
+  informationUnits?: InformationUnit[];
 };

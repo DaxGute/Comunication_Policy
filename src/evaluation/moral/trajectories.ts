@@ -4,6 +4,7 @@
 import { snapshotBeforeTurn } from "../../reasoning";
 import {
   buildMoralGraphView,
+  edgesOf,
   eventChangedState,
   maxGraphDepth,
 } from "./graphView";
@@ -74,7 +75,7 @@ export function computeMoralTrajectories(
       sharedAdoptedIdeas: shared.length,
       graphDepth: maxGraphDepth(
         view.ideas.map((idea) => idea.id),
-        view.graph.edges ?? [],
+        edgesOf(view.graph),
       ),
       graphMutations: mutations,
       survivingFromA,

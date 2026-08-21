@@ -1,6 +1,6 @@
 import { eventChangedCanonicalState } from "./stall";
 import type { ConversationMessage } from "../experiment/types";
-import type { ReasoningGraph } from "./types";
+import { isStateChangeMutation, type ReasoningGraph } from "./types";
 
 export type ReasoningProtocolAudit = {
   acceptedMutationsPerTurn: number;
@@ -20,9 +20,6 @@ export type ReasoningProtocolAudit = {
   protocolStalled: boolean;
 };
 
-/**
- * Deterministic protocol-health snapshot for a finished conversation.
- */
 export function auditReasoningProtocol(args: {
   graph: ReasoningGraph;
   messages: ConversationMessage[];
@@ -38,13 +35,13 @@ export function auditReasoningProtocol(args: {
   for (const event of graph.events) {
     if (event.turnIndex < 1) continue;
     attempted.add(event.turnIndex);
-    if (event.accepted) {
+    if (event.accepted && isStateChangeMutation(event.mutation)) {
       acceptedByTurn.set(
         event.turnIndex,
         (acceptedByTurn.get(event.turnIndex) ?? 0) + 1,
       );
     }
-    if (event.errors.some((error) => /unknown target/.test(error))) {
+    if (event.errors.some((error) => /unknown/.test(error))) {
       unknownTargetErrors += 1;
     }
     if (event.errors.some((error) => /malformed/.test(error))) {
@@ -57,41 +54,20 @@ export function auditReasoningProtocol(args: {
   const emptyMoveSubstantiveTurns = graph.events.filter((event) =>
     event.diagnostics?.includes("structured_reasoning_missing"),
   ).length;
-  const claims = graph.nodes.filter(
-    (node) => node.type === "claim" || node.type === "proposal",
-  );
-  const subjects = new Set((graph.subjects ?? []).map((subject) => subject.id));
-  const attached = claims.filter(
-    (node) => node.type !== "final_answer" && node.subjectId && subjects.has(node.subjectId),
+  const attached = graph.versions.filter((version) =>
+    graph.subjects.some((subject) => subject.id === version.subjectId),
   ).length;
-  const grounded = new Set(
-    (graph.edges ?? [])
-      .filter((edge) => edge.type === "grounds" || edge.type === "supports")
-      .map((edge) => edge.targetNodeId),
-  );
-  const revises = (graph.edges ?? []).filter((edge) => edge.type === "revises").length;
-  const replaced = (graph.edges ?? []).filter((edge) => edge.type === "replaced_by").length;
-  const revisits = graph.events.filter((event) =>
-    event.diagnostics?.some((item) => item.startsWith("candidate_revisit")),
+  const revises = graph.events.filter(
+    (event) => event.accepted && event.mutation.type === "REVISE",
   ).length;
-  const typedEdges = (graph.edges ?? []).filter(
-    (edge) => edge.targetNodeId !== "__final_answer__",
-  );
-  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-  const crossTurn = typedEdges.filter((edge) => {
-    const source = nodeById.get(edge.sourceNodeId);
-    const target = nodeById.get(edge.targetNodeId);
-    return source && target && source.createdAtTurn !== target.createdAtTurn;
-  }).length;
   let stallStreak = 0;
   let current = 0;
   let meaningfulTotal = 0;
   let noOpMutationCount = 0;
   for (const event of graph.events) {
     if (event.turnIndex < 1) continue;
-    if (eventChangedCanonicalState(event)) {
-      meaningfulTotal += 1;
-    } else if (event.accepted && event.operation.type !== "protocol_failure") {
+    if (eventChangedCanonicalState(event)) meaningfulTotal += 1;
+    else if (event.accepted && event.mutation.type !== "protocol_failure") {
       noOpMutationCount += 1;
     }
   }
@@ -117,14 +93,12 @@ export function auditReasoningProtocol(args: {
     emptyMoveSubstantiveTurns,
     unknownTargetErrors,
     malformedIntentErrors,
-    subjectAttachmentRate: claims.length > 0 ? attached / claims.length : 0,
-    groundedClaimRate:
-      claims.length > 0
-        ? claims.filter((claim) => grounded.has(claim.id)).length / claims.length
-        : 0,
-    crossTurnLineageRate: typedEdges.length > 0 ? crossTurn / typedEdges.length : 0,
-    candidateRevisionRate: replaced > 0 ? revises / replaced : revises > 0 ? 1 : 0,
-    candidateRevisitRate: revisits,
+    subjectAttachmentRate:
+      graph.versions.length > 0 ? attached / graph.versions.length : 0,
+    groundedClaimRate: 0,
+    crossTurnLineageRate: 0,
+    candidateRevisionRate: revises > 0 ? 1 : 0,
+    candidateRevisitRate: 0,
     stallStreakLength: stallStreak,
     maxTurnTimeout: stoppedReason === "max_turns",
     protocolStalled: stoppedReason === "reasoning_protocol_stalled",

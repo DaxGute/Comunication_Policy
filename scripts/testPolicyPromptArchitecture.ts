@@ -61,9 +61,10 @@ assert.ok(layersA.identity.includes("You are Agent A"));
 assert.ok(layersA.identity.includes("The other agent is Agent B"));
 assert.ok(layersA.task.includes("share the goal of solving the provided problem"));
 assert.ok(layersA.protocol.includes("You alternate turns."));
-assert.ok(layersA.protocol.includes("FINAL_ANSWER terminates the interaction immediately"));
-assert.ok(layersA.protocol.includes("continued reasoning is no longer producing meaningful improvement"));
-assert.match(layersA.reasoning, /"moves"/);
+assert.ok(layersA.protocol.includes("readyToFinalize"));
+assert.ok(layersA.protocol.includes("FINALIZATION PHASE"));
+assert.ok(layersA.protocol.includes("Broad agreement is not the same as finished reasoning"));
+assert.match(layersA.reasoning, /"mutations"/);
 assert.equal(
   splitAgentPromptLayers(buildAgentPrompt("agent_a", baseline)).reasoning,
   layersA.reasoning,
@@ -86,9 +87,30 @@ assert.doesNotMatch(
   ].join("\n"),
   /crossword|dilemma|proof/i,
 );
-assert.match(layersA.reasoning, /Crossword:/);
-assert.match(layersA.reasoning, /Moral:/);
-assert.match(layersA.reasoning, /Proof:/);
+assert.match(layersA.reasoning, /crossword:across:N/);
+assert.match(layersA.reasoning, /Cite basis using version ids only/);
+assert.match(layersA.reasoning, /readyToFinalize/);
+assert.match(layersA.reasoning, /Proof subjects include/);
+assert.match(layersA.reasoning, /Do not store the dilemma/);
+assert.match(layersA.reasoning, /considerations only/);
+assert.match(layersA.reasoning, /shared moral graph starts empty/);
+assert.match(layersA.reasoning, /LOCAL TURN SCOPE/);
+assert.match(layersA.reasoning, /most important unresolved part/);
+assert.match(layersA.reasoning, /FINAL SYNTHESIS is the first point/);
+assert.match(layersA.reasoning, /typically one short paragraph/);
+assert.match(layersA.reasoning, /focusSubjectIds/);
+assert.match(layersA.protocol, /no minimum turn count/i);
+assert.match(layersA.protocol, /Do not manufacture disagreement/);
+assert.match(layersA.protocol, /sufficiently developed AND there is no specific unresolved issue/i);
+assert.doesNotMatch(layersA.reasoning, /You must challenge|must ask a question|Find something wrong/i);
+assert.match(layersA.reasoning, /finalBasis/);
+assert.match(layersA.reasoning, /fromVersionId/);
+assert.match(layersA.reasoning, /Agreement does not imply/);
+assert.doesNotMatch(layersA.reasoning, /seed the question, stance/);
+assert.doesNotMatch(layersA.reasoning, /starting organizational units/);
+assert.doesNotMatch(layersA.reasoning, /moral:question|moral:stance/);
+assert.match(layersA.reasoning, /Do not use subject@vN forms/);
+assert.match(layersA.reasoning, /Prefer no basis to a weak basis/);
 
 const compiledTwice = compileCommunicationPolicy(baseline);
 assert.equal(
@@ -197,10 +219,10 @@ assert.equal(turn1[1]?.role, "user");
 assert.equal(turn1[1]?.content, "Shared problem:\nCROSSWORD\n1. clue");
 assert.doesNotMatch(turn1[1]?.content ?? "", /Collaborate under/);
 assert.equal(turn1[2]?.role, "user");
-assert.match(turn1[2]?.content ?? "", /CURRENT REASONING STATE/);
+assert.match(turn1[2]?.content ?? "", /CURRENT SHARED REASONING STATE/);
 assert.equal(turn1[3]?.role, "user");
 assert.match(turn1[3]?.content ?? "", /Respond as Agent A/);
-assert.match(turn1[3]?.content ?? "", /"moves"/);
+assert.match(turn1[3]?.content ?? "", /"mutations"/);
 
 const turn2 = renderModelRequest({
   speaker: "agent_b",
@@ -213,8 +235,9 @@ const turn2 = renderModelRequest({
 });
 assert.equal(turn2.length, 5);
 assert.equal(turn2[0]?.content, prompts.agentB);
-assert.equal(turn2[2]?.role, "assistant");
-assert.equal(turn2[2]?.content, "[Agent A]: Candidate for 1-across: ACE");
+assert.equal(turn2[3]?.role, "user");
+assert.match(turn2[3]?.content ?? "", /MOST RECENT PARTNER MESSAGE/);
+assert.match(turn2[3]?.content ?? "", /Candidate for 1-across: ACE/);
 assert.match(turn2[4]?.content ?? "", /Respond as Agent B/);
 
 const turn2Again = renderModelRequest({

@@ -26,6 +26,9 @@ export function proofItemToProblem(item: ProofSolverItem): Problem {
       referenceProof: item.referenceProof,
       source: "proofsolver",
       sourceIndex: item.sourceIndex,
+      ...(item.informationUnits && item.informationUnits.length > 0
+        ? { informationUnits: item.informationUnits }
+        : {}),
     },
   };
 }

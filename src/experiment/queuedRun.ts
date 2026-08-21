@@ -8,7 +8,8 @@ import { buildAgentPromptPair } from "../agents/buildAgentPrompt";
 import { createCommunicationPolicy } from "../communication/policy";
 import type { CommunicationPolicy } from "../communication/types";
 import { emptyUsage } from "../models/usage";
-import { FULL_HISTORY_TRANSCRIPT_PROTOCOL } from "./transcriptProtocol";
+import { normalizeMoralSubjectSeeding } from "../problems/adapters/openSubjects";
+import { graphMemoryProtocolFor } from "./transcriptProtocol";
 import type { ExperimentRun, RunConfig } from "./types";
 
 const CLIENT_RUN_ID = /^run_[a-z0-9]+_[a-z0-9]+$/;
@@ -31,7 +32,9 @@ export function createQueuedRun(args: {
     status: "queued",
     policy,
     agentPrompts: buildAgentPromptPair(policy),
-    transcriptProtocol: { ...FULL_HISTORY_TRANSCRIPT_PROTOCOL },
+    transcriptProtocol: graphMemoryProtocolFor({
+      moralInitialization: normalizeMoralSubjectSeeding(config.moralSubjectSeeding),
+    }),
     config,
     conversations: [],
     conversationUsage: emptyUsage(),

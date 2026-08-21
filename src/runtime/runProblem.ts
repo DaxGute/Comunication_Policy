@@ -11,15 +11,24 @@ import type { AgentPromptPair } from "../agents/types";
 import type { CommunicationPolicy } from "../communication/types";
 import { deriveConversationEfficiency } from "../experiment/conversationEfficiency";
 import type { ProblemConversation, RunConfig } from "../experiment/types";
+import {
+  assignProblemInformation,
+  buildInformationSplitSeed,
+  computeInformationFlowMetrics,
+  createInformationDrawNonce,
+  snapInformationOverlap,
+} from "../information";
 import { calculateModelCost } from "../models/cost";
 import { normalizeUsage, sumUsage } from "../models/usage";
 import { taskReasoningAdapterFor } from "../problems/adapters/registry";
 import type { Problem } from "../problems/types";
 import {
+  computeMoralSynthesisDiagnostics,
   computeReasoningGraphDiagnostics,
   deriveGenericReadiness,
   deriveIssueConvergenceStates,
   deriveReasoningProgress,
+  REASONING_SCHEMA_VERSION,
 } from "../reasoning";
 import {
   runInteractionLoop,
@@ -46,6 +55,32 @@ export async function runProblem(args: {
   const agentA = agentDefinitionFromPrompt("agent_a", prompts.agentA);
   const agentB = agentDefinitionFromPrompt("agent_b", prompts.agentB);
 
+  const overlapRequested = snapInformationOverlap(
+    config.informationOverlap ?? 1,
+  );
+  const drawNonce =
+    config.informationStructure?.splitSeed?.trim() ||
+    createInformationDrawNonce();
+  const splitSeed = buildInformationSplitSeed({
+    problemId: problem.id,
+    overlapRequested,
+    drawNonce,
+  });
+
+  const assigned = assignProblemInformation({
+    problem,
+    overlapRequested,
+    splitSeed,
+  });
+
+  console.info(
+    `[info-asymmetry] problem=${problem.id} overlap=${overlapRequested} ` +
+      `units=${assigned.assignment.totalUnits} shared=${assigned.assignment.sharedUnitIds.length} ` +
+      `aOnly=${assigned.assignment.agentAOnlyUnitIds.length} ` +
+      `bOnly=${assigned.assignment.agentBOnlyUnitIds.length} ` +
+      `realized=${assigned.assignment.overlapRealized.toFixed(2)}`,
+  );
+
   const result = await runInteractionLoop({
     problem,
     agentA,
@@ -58,10 +93,16 @@ export async function runProblem(args: {
     stallFailTurns: config.stallFailTurns,
     localLoopTurns: config.localLoopTurns,
     cycleWindowTurns: config.cycleWindowTurns,
+    moralSubjectSeeding: config.moralSubjectSeeding,
     reasoningEffort: config.runReasoningEffort,
     client,
     signal,
     callbacks,
+    problemTextByAgent: {
+      agent_a: assigned.problemTextA,
+      agent_b: assigned.problemTextB,
+    },
+    informationAssignment: assigned.assignment,
   });
 
   const conversationUsage = sumUsage(
@@ -84,13 +125,12 @@ export async function runProblem(args: {
     }
     conversationCostUsd = anyPriced ? sum : null;
   }
-  const adapter = taskReasoningAdapterFor(problem);
+  const adapter = taskReasoningAdapterFor(problem, {
+    moralSubjectSeeding: config.moralSubjectSeeding,
+  });
   const conflicts = adapter.deriveConflicts?.(problem, result.reasoning) ?? [];
-  const deterministicSignals =
-    adapter.deriveDeterministicEvidence?.(problem, result.reasoning) ?? [];
   const issueStates = deriveIssueConvergenceStates(result.reasoning, {
     conflicts,
-    deterministicSignals,
     currentTurn: result.messages.length,
   });
   const genericReadiness = deriveGenericReadiness(issueStates);
@@ -107,20 +147,70 @@ export async function runProblem(args: {
   const conversation: ProblemConversation = {
     problemId: problem.id,
     problemTitle: problem.title,
-    problemText: problem.text,
+    // Shared public framing for inspector headers; per-agent packets below.
+    problemText: assigned.sharedContext,
+    problemTextByAgent: {
+      agent_a: assigned.problemTextA,
+      agent_b: assigned.problemTextB,
+    },
+    informationAssignment: assigned.assignment,
     messages: result.messages,
     finalAnswer: result.finalAnswer,
-    finalAnswerSupport: result.finalAnswerSupport,
+    finalBasisVersionIds: result.finalBasisVersionIds,
+    finalBasisDeclared: result.finalBasisDeclared,
+    finalBasisErrors: result.finalBasisErrors,
+    finalSourceInformationIds: result.finalSourceInformationIds,
+    finalAnswerSupport:
+      result.finalBasisDeclared === true ||
+      (result.finalBasisVersionIds?.length ?? 0) > 0 ||
+      (result.finalBasisErrors?.length ?? 0) > 0
+        ? {
+            text: result.finalAnswer,
+            basisVersionIds: result.finalBasisVersionIds,
+            declared: result.finalBasisDeclared,
+            errors: result.finalBasisErrors ?? [],
+          }
+        : undefined,
+    reasoningSchemaVersion: REASONING_SCHEMA_VERSION,
     reasoningSubjects: result.reasoning.subjects,
-    reasoningNodes: result.reasoning.nodes,
+    reasoningVersions: result.reasoning.versions,
     reasoningEvents: result.reasoning.events,
+    finalGraphState: {
+      subjects: result.reasoning.subjects,
+      versions: result.reasoning.versions,
+    },
     reasoningDiagnostics: computeReasoningGraphDiagnostics(result.reasoning, {
       turnCount: result.messages.length,
       finalAnswer: result.finalAnswer,
+      messages: result.messages.map((message) => ({
+        id: message.id,
+        turnIndex: message.turnIndex,
+        content: message.content,
+        agentId: message.agentId,
+        nothingToAdd: message.nothingToAdd,
+        readyToFinalize: message.readyToFinalize,
+        materialGraphChange: message.materialGraphChange,
+        readinessInvalidated: message.readinessInvalidated,
+        focusSubjectIds: message.focusSubjectIds,
+      })),
       issueStates,
       genericReadiness,
       progress,
       protocolStallStreak: result.solverProgress?.unchangedStreak,
+      persistenceRepairCount: result.persistenceRepairCount,
+      stoppedReason: result.stoppedReason,
+      convergenceAttempts: result.moralConvergence?.convergenceAttempts,
+      convergenceResets: result.moralConvergence?.convergenceResets,
+      materialGraphChangeTurns: result.moralConvergence?.materialGraphChangeTurns,
+      lastMaterialChangeTurn: result.moralConvergence?.lastMaterialChangeTurn,
+      moralSynthesis:
+        problem.category === "moral_philosophical"
+          ? computeMoralSynthesisDiagnostics(result.reasoning, {
+              finalBasisVersionIds: result.finalBasisVersionIds,
+              finalBasisDeclared: result.finalBasisDeclared,
+              referenceConsiderations: problem.moral?.issues,
+            })
+          : undefined,
       solverProgress: result.solverProgress
         ? {
             rawMutationCount: result.solverProgress.rawMutationCount,
@@ -196,5 +286,7 @@ export async function runProblem(args: {
   };
   conversation.conversationEfficiency =
     deriveConversationEfficiency(conversation);
+  conversation.informationFlowMetrics =
+    computeInformationFlowMetrics(conversation);
   return conversation;
 }

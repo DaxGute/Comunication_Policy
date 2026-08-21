@@ -28,6 +28,9 @@ export function moralItemToProblem(item: MoralDilemmaItem): Problem {
       question: item.question,
       source: "reddit_ethics",
       sourceIndex: item.sourceIndex,
+      ...(item.informationUnits && item.informationUnits.length > 0
+        ? { informationUnits: item.informationUnits }
+        : {}),
     },
   };
 }

@@ -36,7 +36,7 @@ function emptyEvaluation(
   extra: Partial<InteractionEvaluation["metadata"]>,
 ): InteractionEvaluation {
   const view = buildInteractionView(
-    { nodes: [], events: [], edges: [], subjects: [] },
+    { schemaVersion: 2, subjects: [], versions: [], events: [] },
     problemType,
   );
   const events: InteractionEvaluation["events"] = [];
@@ -145,10 +145,10 @@ export function computeInteractionDynamics(options: {
   try {
     const graph = hydrateReasoningGraph({
       reasoningSubjects: options.conversation.reasoningSubjects,
-      reasoningNodes: options.conversation.reasoningNodes,
+      reasoningVersions: options.conversation.reasoningVersions,
       reasoningEvents: options.conversation.reasoningEvents,
     });
-    const graphMissing = graph.nodes.length === 0 && graph.events.length === 0;
+    const graphMissing = graph.versions.length === 0 && graph.events.length === 0;
     const view = buildInteractionView(graph, options.problemType);
     const events = graphMissing
       ? []

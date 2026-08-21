@@ -1,7 +1,10 @@
 /**
  * Universal interaction events from the reasoning graph + transcript cues.
  *
- * Same event types for crossword fills, proof lemmas, and moral claims.
+ * Canonical graph facts only:
+ *   A introduced X, B revised X, B derived Y from A's X, A removed Z.
+ * Do not translate partner REVISE into accepted/adopted, or missing basis
+ * into unsupported adoption. Stronger labels belong in inferred overlays.
  */
 import type { ConversationMessage } from "../../experiment/types";
 import type { ReasoningEvent } from "../../reasoning/types";
@@ -10,9 +13,6 @@ import {
   eventChangedState,
   groundingSourceIds,
   isAgent,
-  isEvaluableNode,
-  isSynthesisNode,
-  operationTargetId,
   otherAgent,
   type InteractionGraphView,
 } from "./objects";
@@ -72,14 +72,6 @@ export function collectInteractionEvents(
 ): InteractionEvent[] {
   eventSeq = 0;
   const events: InteractionEvent[] = [];
-  const adopted = new Set<string>();
-  const justifiedBy = new Map<InteractionAgentId, Set<string>>([
-    ["agent_a", new Set()],
-    ["agent_b", new Set()],
-  ]);
-
-  const originOf = (id: string | undefined) =>
-    id ? view.byId.get(id)?.originatingAgent : undefined;
 
   for (const event of view.graph.events) {
     if (event.turnIndex <= 0 || !isAgent(event.actor)) continue;
@@ -98,155 +90,52 @@ export function collectInteractionEvents(
       if (!eventChangedState(event)) continue;
     }
 
-    const op = event.operation;
-    if (op.type === "create") {
-      if (!isEvaluableNode(op.node)) continue;
-      const object = view.byId.get(op.node.id);
+    const mutation = event.mutation;
+    if (mutation.type === "SET") {
+      const objectId = event.versionId;
       events.push(
         base("introduced", event, event.actor, {
-          objectId: op.node.id,
-          relatedObjectIds: object?.parentIds,
+          objectId,
+          relatedObjectIds: groundingSourceIds(event),
         }),
       );
-      const parentIds = object?.parentIds ?? groundingSourceIds(event);
-      if (object && isSynthesisNode(parentIds, view.originById)) {
-        events.push(
-          base("synthesized", event, event.actor, {
-            objectId: op.node.id,
-            relatedObjectIds: parentIds,
-          }),
-        );
-      }
-      for (const parentId of parentIds) {
-        const origin = originOf(parentId);
-        if (!origin || origin === "system") continue;
-        events.push(
-          base("referenced", event, event.actor, {
-            objectId: parentId,
-            targetAgent: isAgent(origin) ? origin : undefined,
-          }),
-        );
-        if (origin !== event.actor) {
-          justifiedBy.get(event.actor)?.add(parentId);
-        }
-      }
-      continue;
-    }
-
-    if (op.type === "revise") {
+    } else if (mutation.type === "REVISE") {
+      const replacementId = event.versionId;
+      const targetId = event.previousVersionId;
       events.push(
         base("revised", event, event.actor, {
-          objectId: op.replacement.id,
-          relatedObjectIds: [op.targetId],
+          objectId: replacementId,
+          relatedObjectIds: targetId ? [targetId] : undefined,
         }),
       );
-      events.push(
-        base("superseded", event, event.actor, {
-          objectId: op.targetId,
-          relatedObjectIds: [op.replacement.id],
-        }),
-      );
-      const parents = view.byId.get(op.replacement.id)?.parentIds ?? [];
-      if (isSynthesisNode(parents, view.originById)) {
+      if (targetId) {
         events.push(
-          base("synthesized", event, event.actor, {
-            objectId: op.replacement.id,
-            relatedObjectIds: parents,
-          }),
-        );
-      }
-      maybeConcession(events, view, event, op.targetId);
-      continue;
-    }
-
-    if (op.type === "support" || op.type === "accept") {
-      const targetId = operationTargetId(event);
-      const object = targetId ? view.byId.get(targetId) : undefined;
-      if (!object || !isAgent(object.originatingAgent)) continue;
-      if (op.type === "support") {
-        events.push(
-          base("supported", event, event.actor, {
+          base("superseded", event, event.actor, {
             objectId: targetId,
-            relatedObjectIds: op.sourceNodeId ? [op.sourceNodeId] : undefined,
+            relatedObjectIds: replacementId ? [replacementId] : undefined,
           }),
         );
-        events.push(
-          base("referenced", event, event.actor, {
-            objectId: targetId,
-            targetAgent: isAgent(object.originatingAgent)
-              ? object.originatingAgent
-              : undefined,
-          }),
-        );
-        if (op.sourceNodeId && originOf(op.sourceNodeId) === event.actor) {
-          justifiedBy.get(event.actor)?.add(targetId!);
-        }
       }
-      if (object.originatingAgent !== event.actor) {
-        maybeAdoption(events, view, event, object.id, adopted, justifiedBy);
-      }
-      continue;
-    }
-
-    if (op.type === "challenge") {
-      const targetId = op.targetNodeId;
-      const object = view.byId.get(targetId);
-      if (!object) continue;
+    } else if (mutation.type === "REMOVE") {
       events.push(
-        base("challenged", event, event.actor, {
-          targetAgent: isAgent(object.originatingAgent)
-            ? object.originatingAgent
-            : undefined,
-          objectId: targetId,
+        base("withdrawn", event, event.actor, {
+          objectId: event.previousVersionId,
         }),
       );
-      continue;
+    } else if (mutation.type === "final_answer") {
+      events.push(base("finalized", event, event.actor));
     }
 
-    if (op.type === "reject") {
-      const object = view.byId.get(op.targetId);
-      if (!object) continue;
-      events.push(
-        base("rejected", event, event.actor, {
-          targetAgent: isAgent(object.originatingAgent)
-            ? object.originatingAgent
-            : undefined,
-          objectId: op.targetId,
-        }),
-      );
-      if (isAgent(object.originatingAgent) && event.actor === object.originatingAgent) {
-        events.push(
-          base("withdrawn", event, event.actor, { objectId: op.targetId }),
-        );
-      }
-      maybeConcession(events, view, event, op.targetId);
-      continue;
-    }
-
-    if (op.type === "final_answer") {
-      events.push(
-        base("finalized", event, event.actor, {
-          relatedObjectIds: op.supportingNodeIds,
-        }),
-      );
-    }
-  }
-
-  for (const event of view.graph.events) {
-    if (!event.accepted || !eventChangedState(event) || !isAgent(event.actor)) {
-      continue;
-    }
     const created = createdNodeId(event);
     for (const sourceId of groundingSourceIds(event)) {
       const source = view.byId.get(sourceId);
       if (!source || !isAgent(source.originatingAgent)) continue;
-      if (source.originatingAgent === event.actor) continue;
-      const key = `${event.actor}:${sourceId}:use`;
-      if (adopted.has(key)) continue;
-      adopted.add(key);
       events.push(
-        base("adopted", event, event.actor, {
-          targetAgent: source.originatingAgent,
+        base("referenced", event, event.actor, {
+          targetAgent:
+            source.originatingAgent !== event.actor
+              ? source.originatingAgent
+              : undefined,
           objectId: sourceId,
           relatedObjectIds: created ? [created] : undefined,
         }),
@@ -271,95 +160,4 @@ export function collectInteractionEvents(
   }
 
   return events.sort((a, b) => a.turn - b.turn);
-}
-
-function maybeAdoption(
-  events: InteractionEvent[],
-  view: InteractionGraphView,
-  event: ReasoningEvent,
-  objectId: string,
-  adopted: Set<string>,
-  justifiedBy: Map<InteractionAgentId, Set<string>>,
-): void {
-  if (!isAgent(event.actor)) return;
-  const object = view.byId.get(objectId);
-  if (!object || !isAgent(object.originatingAgent)) return;
-  if (object.originatingAgent === event.actor) return;
-  const key = `${event.actor}:${objectId}`;
-  if (adopted.has(key)) return;
-  adopted.add(key);
-
-  const independent =
-    justifiedBy.get(event.actor)?.has(objectId) === true ||
-    groundingSourceIds(event).some((sourceId) => {
-      const source = view.graph.nodes.find((node) => node.id === sourceId);
-      return source?.createdBy === event.actor;
-    });
-
-  events.push(
-    base("adopted", event, event.actor, {
-      targetAgent: object.originatingAgent,
-      objectId,
-    }),
-  );
-  events.push(
-    base("accepted", event, event.actor, {
-      targetAgent: object.originatingAgent,
-      objectId,
-    }),
-  );
-  if (independent) {
-    events.push(
-      base("independently_derived", event, event.actor, {
-        targetAgent: object.originatingAgent,
-        objectId,
-      }),
-    );
-    events.push(
-      base("verified", event, event.actor, {
-        targetAgent: object.originatingAgent,
-        objectId,
-      }),
-    );
-  } else {
-    events.push(
-      base("unsupported_adoption", event, event.actor, {
-        targetAgent: object.originatingAgent,
-        objectId,
-      }),
-    );
-  }
-}
-
-function maybeConcession(
-  events: InteractionEvent[],
-  view: InteractionGraphView,
-  event: ReasoningEvent,
-  targetId: string,
-): void {
-  if (!isAgent(event.actor)) return;
-  const object = view.byId.get(targetId);
-  if (!object || object.originatingAgent !== event.actor) return;
-  const challenged = view.graph.events.some(
-    (prior) =>
-      prior.accepted &&
-      prior.turnIndex <= event.turnIndex &&
-      prior.operation.type === "challenge" &&
-      isAgent(prior.actor) &&
-      prior.actor !== event.actor &&
-      (prior.operation.targetNodeId === targetId ||
-        prior.operation.targetId === targetId),
-  );
-  if (!challenged) return;
-  events.push(
-    base("conceded", event, event.actor, {
-      targetAgent: otherAgent(event.actor),
-      objectId: targetId,
-    }),
-  );
-  if (event.operation.type === "revise") {
-    events.push(
-      base("corrected", event, event.actor, { objectId: targetId }),
-    );
-  }
 }

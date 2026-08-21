@@ -4,8 +4,9 @@
  * Source: agentlans/reddit-ethics (Hugging Face, CC-BY-4.0)
  *   https://huggingface.co/datasets/agentlans/reddit-ethics
  *
- * Gold answers / resolutions are intentionally NOT included in the
- * problem prompts — these items are open-ended.
+ * Uses the full post `text` as the scenario body (not the short
+ * `description` summary). Gold answers / resolutions are intentionally
+ * NOT included in the problem prompts — these items are open-ended.
  *
  * Usage:
  *   node scripts/curateMoralSubset.mjs
@@ -21,15 +22,23 @@ const INPUT = join(ROOT, "data/moral/train.jsonl");
 const OUTPUT = join(ROOT, "src/problems/data/reddit_ethics_subset.json");
 
 const MAX_TOTAL = 80;
-const MAX_DESC = 500;
 const MAX_TITLE = 120;
+/** Full Reddit post body — keep intact up to a generous prompt budget. */
+const MAX_SCENARIO = 12_000;
+const MIN_SCENARIO = 200;
+
+function scenarioText(obj) {
+  const raw = typeof obj?.text === "string" ? obj.text.trim() : "";
+  return raw;
+}
 
 function isUsable(obj) {
-  if (!obj?.title || !obj?.description || !Array.isArray(obj.questions)) {
+  if (!obj?.title || !Array.isArray(obj.questions)) return false;
+  if (obj.questions.length === 0) return false;
+  const scenario = scenarioText(obj);
+  if (scenario.length < MIN_SCENARIO || scenario.length > MAX_SCENARIO) {
     return false;
   }
-  if (obj.questions.length === 0) return false;
-  if (obj.description.length < 40 || obj.description.length > 900) return false;
   if (obj.title.length < 8 || obj.title.length > 160) return false;
   return true;
 }
@@ -69,11 +78,13 @@ async function main() {
   for (let i = 0; i < candidates.length && selected.length < MAX_TOTAL; i += step) {
     const { sourceIndex: idx, obj } = candidates[i];
     const question = String(obj.questions[0]).trim();
+    const scenario = scenarioText(obj);
     selected.push({
       id: `reddit_ethics_${String(selected.length + 1).padStart(4, "0")}`,
       sourceIndex: idx,
       title: truncate(obj.title, MAX_TITLE),
-      description: truncate(obj.description, MAX_DESC),
+      // Stored as `description` for the app schema; content is the full post.
+      description: scenario.length <= MAX_SCENARIO ? scenario : truncate(scenario, MAX_SCENARIO),
       issues: (obj.issues ?? []).slice(0, 4).map(String),
       question,
       // Kept for research inspectability only — never used as gold scoring.
@@ -89,7 +100,7 @@ async function main() {
       license: "cc-by-4.0",
       url: "https://huggingface.co/datasets/agentlans/reddit-ethics",
       note:
-        "Curated open-ended ethical dilemmas. Sample answers/resolutions from the source are not used as gold labels.",
+        "Curated open-ended ethical dilemmas. Scenario text is the full source post (`text`), not the short summary. Sample answers/resolutions are not used as gold labels.",
     },
     curatedAt: new Date().toISOString().slice(0, 10),
     count: selected.length,

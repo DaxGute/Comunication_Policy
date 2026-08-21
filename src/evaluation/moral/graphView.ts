@@ -1,25 +1,46 @@
 /**
- * Evaluation view over the live reasoning graph.
- *
- * Does not mutate graph protocol types. Classifies agent-created claims /
- * proposals as ideas and agent-created evidence as axioms, then computes
- * ancestry, adoption, and final-position membership.
+ * Evaluation view over canonical versioned state.
+ * Derived only — never rewrites conversation history.
  */
-import { normalizeNodeText, snapshotBeforeTurn } from "../../reasoning";
+import { snapshotBeforeTurn } from "../../reasoning";
+import { isStateChangeMutation, normalizePropositionContent } from "../../reasoning/types";
 import type {
+  PropositionVersion,
   ReasoningActor,
-  ReasoningEdge,
   ReasoningEvent,
   ReasoningGraph,
-  ReasoningNode,
 } from "../../reasoning/types";
 import type { MoralAgentId, MoralIdeaRecord } from "./types";
 
-const JUSTIFICATION_IN: ReadonlySet<string> = new Set(["supports", "grounds"]);
-const JUSTIFICATION_OUT: ReadonlySet<string> = new Set([
-  "depends_on",
-  "revises",
-]);
+export type EvalNode = {
+  id: string;
+  type: "claim";
+  text: string;
+  createdBy: ReasoningActor;
+  createdAtTurn: number;
+  subjectId: string;
+  status: string;
+  supersedes?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export function evalNodesFromGraph(graph: ReasoningGraph): EvalNode[] {
+  return graph.versions.map((version) => ({
+    id: version.id,
+    type: "claim" as const,
+    text: version.content,
+    createdBy: version.agentId,
+    createdAtTurn: version.turn,
+    subjectId: version.subjectId,
+    status:
+      version.status === "removed"
+        ? "rejected"
+        : version.status === "active"
+          ? "open"
+          : "superseded",
+    supersedes: version.previousVersionId,
+  }));
+}
 
 export function isAgent(actor: ReasoningActor | undefined): actor is MoralAgentId {
   return actor === "agent_a" || actor === "agent_b";
@@ -29,66 +50,57 @@ export function otherAgent(agent: MoralAgentId): MoralAgentId {
   return agent === "agent_a" ? "agent_b" : "agent_a";
 }
 
-export function isIdeaNode(node: ReasoningNode): boolean {
-  return node.type === "claim" || node.type === "proposal";
+export function isIdeaNode(node: EvalNode): boolean {
+  return node.type === "claim";
 }
 
-export function isAxiomNode(node: ReasoningNode): boolean {
-  if (node.type !== "evidence") return false;
-  if (!isAgent(node.createdBy)) return false;
-  if (node.evidenceOrigin === "task") return false;
-  const seeded = node.metadata?.seeded;
-  if (seeded === true) return false;
-  return true;
+export function isAxiomNode(_node: EvalNode): boolean {
+  return false;
 }
 
-export function isEvaluableNode(node: ReasoningNode): boolean {
-  return isIdeaNode(node) || isAxiomNode(node);
+export function isEvaluableNode(node: EvalNode): boolean {
+  return isIdeaNode(node);
 }
 
 export function canonicalText(text: string): string {
-  return normalizeNodeText(text);
+  return normalizePropositionContent(text).toLowerCase();
 }
 
-export function edgesOf(graph: ReasoningGraph): ReasoningEdge[] {
-  return graph.edges ?? [];
+export function edgesOf(graph: ReasoningGraph): Array<{
+  type: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+}> {
+  return graph.versions
+    .filter((version) => version.previousVersionId)
+    .map((version) => ({
+      type: "revises",
+      sourceNodeId: version.id,
+      targetNodeId: version.previousVersionId!,
+    }));
 }
 
 export function parentIdsOf(
   nodeId: string,
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
 ): string[] {
-  const ids = new Set<string>();
-  for (const edge of edges) {
-    if (JUSTIFICATION_IN.has(edge.type) && edge.targetNodeId === nodeId) {
-      ids.add(edge.sourceNodeId);
-    }
-    if (JUSTIFICATION_OUT.has(edge.type) && edge.sourceNodeId === nodeId) {
-      ids.add(edge.targetNodeId);
-    }
-  }
-  return [...ids];
+  return edges
+    .filter((edge) => edge.sourceNodeId === nodeId)
+    .map((edge) => edge.targetNodeId);
 }
 
 export function childIdsOf(
   nodeId: string,
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
 ): string[] {
-  const ids = new Set<string>();
-  for (const edge of edges) {
-    if (JUSTIFICATION_IN.has(edge.type) && edge.sourceNodeId === nodeId) {
-      ids.add(edge.targetNodeId);
-    }
-    if (JUSTIFICATION_OUT.has(edge.type) && edge.targetNodeId === nodeId) {
-      ids.add(edge.sourceNodeId);
-    }
-  }
-  return [...ids];
+  return edges
+    .filter((edge) => edge.targetNodeId === nodeId)
+    .map((edge) => edge.sourceNodeId);
 }
 
 export function ancestorsOf(
   nodeId: string,
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
 ): Set<string> {
   const out = new Set<string>();
   const stack = [...parentIdsOf(nodeId, edges)];
@@ -103,7 +115,7 @@ export function ancestorsOf(
 
 export function descendantsOf(
   nodeId: string,
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
 ): Set<string> {
   const out = new Set<string>();
   const stack = [...childIdsOf(nodeId, edges)];
@@ -118,7 +130,7 @@ export function descendantsOf(
 
 export function nodeDepth(
   nodeId: string,
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
   cache = new Map<string, number>(),
   visiting = new Set<string>(),
 ): number {
@@ -136,7 +148,10 @@ export function nodeDepth(
   return depth;
 }
 
-export function maxGraphDepth(nodeIds: string[], edges: ReasoningEdge[]): number | null {
+export function maxGraphDepth(
+  nodeIds: string[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
+): number | null {
   if (nodeIds.length === 0) return null;
   const cache = new Map<string, number>();
   let max = 0;
@@ -146,7 +161,10 @@ export function maxGraphDepth(nodeIds: string[], edges: ReasoningEdge[]): number
   return max;
 }
 
-export function meanGraphDepth(nodeIds: string[], edges: ReasoningEdge[]): number | null {
+export function meanGraphDepth(
+  nodeIds: string[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
+): number | null {
   if (nodeIds.length === 0) return null;
   const cache = new Map<string, number>();
   const sum = nodeIds.reduce((acc, id) => acc + nodeDepth(id, edges, cache), 0);
@@ -155,7 +173,7 @@ export function meanGraphDepth(nodeIds: string[], edges: ReasoningEdge[]): numbe
 
 export function branchingFactor(
   nodeIds: string[],
-  edges: ReasoningEdge[],
+  edges: Array<{ type: string; sourceNodeId: string; targetNodeId: string }>,
 ): number | null {
   const withChildren = nodeIds
     .map((id) => childIdsOf(id, edges).length)
@@ -165,29 +183,16 @@ export function branchingFactor(
   return Number((sum / withChildren.length).toFixed(4));
 }
 
-export function finalAnswerNode(graph: ReasoningGraph): ReasoningNode | undefined {
-  return graph.nodes.find((node) => node.type === "final_answer");
+export function finalAnswerNode(
+  graph: ReasoningGraph,
+): { text?: string } | undefined {
+  return graph.finalAnswer;
 }
 
 export function finalSeedIds(graph: ReasoningGraph): string[] {
-  const final = finalAnswerNode(graph);
-  if (final && final.type === "final_answer") {
-    return final.supportingNodeIds.filter(Boolean);
-  }
-  const accepted = graph.nodes.filter(
-    (node) =>
-      isEvaluableNode(node) &&
-      node.status === "accepted",
-  );
-  if (accepted.length > 0) return accepted.map((node) => node.id);
-  return graph.nodes
-    .filter(
-      (node) =>
-        isEvaluableNode(node) &&
-        node.status !== "rejected" &&
-        node.status !== "superseded",
-    )
-    .map((node) => node.id);
+  return graph.versions
+    .filter((version) => version.status === "active")
+    .map((version) => version.id);
 }
 
 export function finalClosureIds(graph: ReasoningGraph): Set<string> {
@@ -204,19 +209,7 @@ export function eventTouchesNode(
   event: ReasoningEvent,
   nodeId: string,
 ): boolean {
-  const op = event.operation;
-  if (op.type === "create") return op.node.id === nodeId;
-  if (op.type === "revise") {
-    return op.targetId === nodeId || op.replacement.id === nodeId;
-  }
-  if (op.type === "support" || op.type === "challenge") {
-    return op.sourceNodeId === nodeId || op.targetNodeId === nodeId;
-  }
-  if (op.type === "final_answer") {
-    return op.supportingNodeIds.includes(nodeId);
-  }
-  if ("targetId" in op) return op.targetId === nodeId;
-  return false;
+  return event.versionId === nodeId || event.previousVersionId === nodeId;
 }
 
 export function subsequentTurnsFor(
@@ -233,79 +226,47 @@ export function subsequentTurnsFor(
 }
 
 export function supportingAgentsOf(
-  graph: ReasoningGraph,
-  nodeId: string,
-  origin: ReasoningActor,
+  _graph: ReasoningGraph,
+  _nodeId: string,
+  _origin: ReasoningActor,
 ): MoralAgentId[] {
-  const agents = new Set<MoralAgentId>();
-  for (const event of graph.events) {
-    if (!event.accepted) continue;
-    if (!isAgent(event.actor) || event.actor === origin) continue;
-    const op = event.operation;
-    if (
-      (op.type === "support" || op.type === "accept") &&
-      (("targetId" in op && op.targetId === nodeId) ||
-        ("targetNodeId" in op && op.targetNodeId === nodeId))
-    ) {
-      agents.add(event.actor);
-    }
-  }
-  return [...agents];
+  return [];
 }
 
 export function challengingAgentsOf(
-  graph: ReasoningGraph,
-  nodeId: string,
-  origin: ReasoningActor,
+  _graph: ReasoningGraph,
+  _nodeId: string,
+  _origin: ReasoningActor,
 ): MoralAgentId[] {
-  const agents = new Set<MoralAgentId>();
-  for (const event of graph.events) {
-    if (!event.accepted) continue;
-    if (!isAgent(event.actor) || event.actor === origin) continue;
-    const op = event.operation;
-    if (
-      (op.type === "challenge" || op.type === "reject") &&
-      (("targetId" in op && op.targetId === nodeId) ||
-        ("targetNodeId" in op && op.targetNodeId === nodeId))
-    ) {
-      agents.add(event.actor);
-    }
-  }
-  return [...agents];
+  return [];
 }
 
 export function supersededByOf(
   graph: ReasoningGraph,
   nodeId: string,
 ): string[] {
-  return graph.nodes
-    .filter((node) => node.supersedes === nodeId)
-    .map((node) => node.id);
+  return graph.versions
+    .filter((version) => version.previousVersionId === nodeId)
+    .map((version) => version.id);
 }
 
-export function isUnsupported(node: ReasoningNode, parentIds: string[]): boolean {
-  return isIdeaNode(node) && parentIds.length === 0;
+export function isUnsupported(_node: EvalNode, parentIds: string[]): boolean {
+  return parentIds.length === 0;
 }
 
 export function isSynthesisNode(
-  parentIds: string[],
-  originById: Map<string, ReasoningActor>,
+  _parentIds: string[],
+  _originById: Map<string, ReasoningActor>,
 ): boolean {
-  if (parentIds.length < 2) return false;
-  const origins = new Set<MoralAgentId>();
-  for (const parentId of parentIds) {
-    const origin = originById.get(parentId);
-    if (isAgent(origin)) origins.add(origin);
-  }
-  return origins.has("agent_a") && origins.has("agent_b");
+  return false;
 }
 
-export function buildCanonicalMap(nodes: ReasoningNode[]): Map<string, string> {
+export function buildCanonicalMap(nodes: EvalNode[]): Map<string, string> {
   const firstByText = new Map<string, string>();
   const byId = new Map<string, string>();
-  const ordered = [...nodes]
-    .filter(isEvaluableNode)
-    .sort((a, b) => a.createdAtTurn - b.createdAtTurn || a.id.localeCompare(b.id));
+  const ordered = [...nodes].sort(
+    (a, b) => a.createdAtTurn - b.createdAtTurn || a.id.localeCompare(b.id),
+  );
   for (const node of ordered) {
     const key = canonicalText(node.text);
     const existing = firstByText.get(key);
@@ -326,14 +287,14 @@ export type MoralGraphView = {
   canonicalById: Map<string, string>;
   originById: Map<string, ReasoningActor>;
   finalClosure: Set<string>;
-  evaluable: ReasoningNode[];
+  evaluable: EvalNode[];
 };
 
 export function buildMoralGraphView(graph: ReasoningGraph): MoralGraphView {
   const edges = edgesOf(graph);
-  const evaluable = graph.nodes.filter(isEvaluableNode);
+  const evaluable = evalNodesFromGraph(graph);
   const originById = new Map<string, ReasoningActor>();
-  for (const node of graph.nodes) originById.set(node.id, node.createdBy);
+  for (const node of evaluable) originById.set(node.id, node.createdBy);
   const canonicalById = buildCanonicalMap(evaluable);
   const finalClosure = finalClosureIds(graph);
 
@@ -343,20 +304,19 @@ export function buildMoralGraphView(graph: ReasoningGraph): MoralGraphView {
     return {
       id: node.id,
       canonicalId: canonicalById.get(node.id) ?? node.id,
-      kind: isAxiomNode(node) ? "axiom" : "idea",
+      kind: "idea",
       text: node.text,
       originatingAgent: isAgent(node.createdBy) ? node.createdBy : "system",
       firstTurn: node.createdAtTurn,
       subsequentTurns: subsequentTurnsFor(graph, node.id, node.createdAtTurn),
-      supportingAgents: supportingAgentsOf(graph, node.id, node.createdBy),
-      challengingAgents: challengingAgentsOf(graph, node.id, node.createdBy),
+      supportingAgents: [],
+      challengingAgents: [],
       supersedes: node.supersedes,
       supersededBy: supersededByOf(graph, node.id),
       parentIds,
       childIds,
       inFinalPosition: finalClosure.has(node.id),
       status: node.status,
-      confidence: node.confidence,
       unsupported: isUnsupported(node, parentIds),
     };
   });
@@ -383,38 +343,27 @@ export function graphAtOrBeforeTurn(
 export function eventChangedState(event: ReasoningEvent): boolean {
   if (!event.accepted) return false;
   if (event.stateChanged === false) return false;
-  if (
-    event.diagnostics?.some(
-      (item) =>
-        item === "no_state_change" || item.startsWith("no_state_change:"),
-    )
-  ) {
-    return false;
-  }
-  return true;
+  return isStateChangeMutation(event.mutation);
 }
 
 export function operationTargetId(event: ReasoningEvent): string | undefined {
-  const op = event.operation;
-  if (op.type === "create") return op.node.id;
-  if (op.type === "revise") return op.replacement.id;
-  if (op.type === "support" || op.type === "challenge") return op.targetNodeId;
-  if ("targetId" in op) return op.targetId;
-  return undefined;
+  return event.versionId ?? event.previousVersionId;
 }
 
 export function createdNodeId(event: ReasoningEvent): string | undefined {
-  const op = event.operation;
-  if (op.type === "create") return op.node.id;
-  if (op.type === "revise") return op.replacement.id;
+  if (event.mutation.type === "SET" || event.mutation.type === "REVISE") {
+    return event.versionId;
+  }
   return undefined;
 }
 
 export function groundingSourceIds(event: ReasoningEvent): string[] {
-  const op = event.operation;
-  if (op.type === "create" || op.type === "revise") {
-    return (op.grounding ?? []).map((link) => link.sourceNodeId);
-  }
-  if (op.type === "support" && op.sourceNodeId) return [op.sourceNodeId];
-  return [];
+  return event.basisVersionIds ?? [];
+}
+
+export function versionById(
+  graph: ReasoningGraph,
+  id: string,
+): PropositionVersion | undefined {
+  return graph.versions.find((version) => version.id === id);
 }

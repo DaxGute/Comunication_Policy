@@ -73,7 +73,7 @@ export function MoralOpenMetrics({
   return (
     <div className="results-open-metrics mono">
       <div>
-        Stance reached:{" "}
+        Final answer recorded:{" "}
         {evaluation.details?.stanceReached === true ? "Yes" : "No"}
       </div>
       <div>Tension signals: {tension !== undefined ? tension : "—"}</div>
@@ -91,10 +91,10 @@ export function MoralResultDetails({ evaluation }: { evaluation: ProblemEvaluati
     <div className="transcript__result-details">
       {evaluation.finalAnswer ? (
         <div className="mono results-answer">
-          stance: {evaluation.finalAnswer}
+          Final synthesis: {evaluation.finalAnswer}
         </div>
       ) : (
-        <div className="muted">No joint stance recorded.</div>
+        <div className="muted">No final synthesis recorded.</div>
       )}
       {evaluation.notes ? (
         <div className="muted">{evaluation.notes}</div>
