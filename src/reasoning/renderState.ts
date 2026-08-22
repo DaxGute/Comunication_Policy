@@ -2,7 +2,8 @@
  * Lossless, compact serialization of canonical state for the model.
  * Current value first, declared provenance, then revision history.
  *
- * Moral graphs present every lane as a consideration. Crossword and proof
+ * Moral graphs present every lane as a consideration. Crossword and Hidden
+ * Profile share the same SET/REVISE/REMOVE kernel; Hidden Profile starts empty.
  * keep subject titles. The original task and the final answer are not rows.
  *
  * Agent-facing rows expose stable version ids. Do not copy display chrome
@@ -147,7 +148,8 @@ export function formatReasoningState(
   }
 
   // Moral/consideration graphs must never expose empty pre-created lanes.
-  // Crossword/proof may still list task-defined subjects with Current: (none).
+  // Crossword may still list task-defined subjects with Current: (none).
+  // Hidden Profile / Moral omit empty lanes until agents create them.
   const looksMoral = allSubjects.every((subject) =>
     subject.id.trim().replace(/\s+/g, "").toLowerCase().startsWith("moral:"),
   );

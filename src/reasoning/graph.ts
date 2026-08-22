@@ -280,7 +280,7 @@ function resolveSubjectId(
   const normalized = normalizeSubjectId(trimmed);
   if (!isValidSubjectId(normalized)) {
     return {
-      error: `invalid subjectId "${trimmed}"; use a stable id such as moral:responsibility or proof:lemma:1`,
+      error: `invalid subjectId "${trimmed}"; use a stable id such as moral:responsibility or decision:leading_option`,
     };
   }
   return { id: normalized, created: true, label: trimmed };

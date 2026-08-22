@@ -40,16 +40,15 @@ const moralAdapter: InteractionAdapter = {
   },
 };
 
-const proofAdapter: InteractionAdapter = {
-  category: "proof",
+const hiddenProfileAdapter: InteractionAdapter = {
+  category: "hidden_profile",
   objectKind() {
     return "claim";
   },
   taskGrounding(node) {
     return {
-      kind: "proof_step",
+      kind: "decision_claim",
       subjectId: node.subjectId,
-      theoremComponent: node.subjectId,
     };
   },
 };
@@ -58,6 +57,6 @@ export function interactionAdapterFor(
   category: ProblemCategory | string | undefined,
 ): InteractionAdapter {
   if (category === "crossword") return crosswordAdapter;
-  if (category === "proof") return proofAdapter;
+  if (category === "hidden_profile") return hiddenProfileAdapter;
   return moralAdapter;
 }

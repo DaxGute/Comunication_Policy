@@ -2,8 +2,8 @@ import type { Problem } from "../types";
 import { crosswordReasoningAdapter } from "./crosswordAdapter";
 import {
   DEFAULT_MORAL_SUBJECT_SEEDING,
+  hiddenProfileSubjectsForProblem,
   moralSubjectsForProblem,
-  proofSubjectsForProblem,
   reservedMoralSubjectError,
   type MoralSubjectSeeding,
 } from "./openSubjects";
@@ -29,10 +29,10 @@ function moralReasoningAdapter(
   };
 }
 
-const proofReasoningAdapter: TaskReasoningAdapter = {
-  category: "proof",
+const hiddenProfileReasoningAdapter: TaskReasoningAdapter = {
+  category: "hidden_profile",
   getInitialIssues(problem) {
-    return proofSubjectsForProblem(problem);
+    return hiddenProfileSubjectsForProblem(problem);
   },
 };
 
@@ -48,5 +48,5 @@ export function taskReasoningAdapterFor(
       options?.moralSubjectSeeding ?? DEFAULT_MORAL_SUBJECT_SEEDING,
     );
   }
-  return proofReasoningAdapter;
+  return hiddenProfileReasoningAdapter;
 }

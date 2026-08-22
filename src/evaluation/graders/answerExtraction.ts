@@ -35,10 +35,10 @@ function looksLikeCrosswordBlock(lines: string[]): boolean {
   });
 }
 
-function looksLikeMultiLineProof(text: string, lines: string[]): boolean {
+function looksLikeMultiLineAnswer(text: string, lines: string[]): boolean {
   if (text.length < 80) return false;
   const nonEmpty = lines.filter((l) => l.trim().length > 0);
-  // Proofs are long write-ups: either multiple lines or one long paragraph.
+  // Long write-ups: either multiple lines or one long paragraph.
   return nonEmpty.length >= 2 || text.length >= 160;
 }
 
@@ -61,8 +61,8 @@ function cleanExtractedAnswer(raw: string): string | undefined {
     return parts.slice(0, end).join("\n\n").trim();
   }
 
-  if (looksLikeMultiLineProof(text, lines)) {
-    // Preserve paragraph structure for collaborative proofs.
+  if (looksLikeMultiLineAnswer(text, lines)) {
+    // Preserve paragraph structure for long collaborative answers.
     return text;
   }
 

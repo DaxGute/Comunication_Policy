@@ -95,7 +95,7 @@ import { parseAgentTurn, parseReasoningMutation } from "../src/reasoning";
     JSON.stringify({
       message: "Bad array entry.",
       mutations: [
-        { type: "SET", subjectId: "proof:goal", content: "G" },
+        { type: "SET", subjectId: "decision:goal", content: "G" },
         { type: "REVISE" },
       ],
     }),

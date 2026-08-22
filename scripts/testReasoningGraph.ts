@@ -46,7 +46,7 @@ import { MOCK_MODEL_ID } from "../src/runtime/models";
 import type { AgentId } from "../src/agents/types";
 import type { Problem } from "../src/problems/types";
 
-const SUBJECT = "proof:lemma:1";
+const SUBJECT = "decision:lemma:1";
 const SEED = [
   {
     id: SUBJECT,
@@ -508,7 +508,7 @@ function canonicalSnapshot(graph: ReasoningGraph) {
   assert.match(request.messages[0]?.content ?? "", /COMMUNICATION POLICY/);
   assert.match(blob, /Shared problem:\nProve the claim/);
   assert.match(blob, /CURRENT SHARED REASONING STATE/);
-  assert.match(blob, /proof:lemma:1/);
+  assert.match(blob, /decision:lemma:1/);
   assert.match(blob, /\bX\b/);
   assert.match(blob, /MOST RECENT PARTNER MESSAGE/);
   assert.match(blob, /TURN3_UNIQUE_UTTERANCE/);
@@ -575,7 +575,7 @@ const policy = createCommunicationPolicy({
 const prompts = buildAgentPromptPair(policy);
 const config = normalizeRunConfig(
   {
-    problemCategory: "proof",
+    problemCategory: "hidden_profile",
     problemCount: 1,
     runModel: MOCK_MODEL_ID,
     maxTurns: 4,
@@ -585,9 +585,9 @@ const config = normalizeRunConfig(
 );
 const problem: Problem = {
   id: "graph-memory",
-  category: "proof",
+  category: "hidden_profile",
   title: "Graph memory",
-  text: "Prove that X survives only through the graph.",
+  text: "Show that X survives only through the graph.",
   kind: "generic",
 };
 
@@ -606,7 +606,7 @@ class ScriptedClient implements ModelClient {
     const payloads: Record<number, unknown> = {
       1: {
         message: "TURN1_SECRET_UTTERANCE introducing X",
-        mutations: [{ type: "SET", subjectId: "proof:root", content: "PERSISTENT_X" }],
+        mutations: [{ type: "SET", subjectId: "decision:root", content: "PERSISTENT_X" }],
       },
       2: {
         message: "TURN2_PARTNER asking a question about the lemma.",
@@ -645,7 +645,7 @@ assert.equal(currentValue(
     reasoningSubjects: conversation.reasoningSubjects,
     reasoningEvents: conversation.reasoningEvents,
   }),
-  "proof:root",
+  "decision:root",
 ), "PERSISTENT_X");
 assert.equal(conversation.messages.length, 4);
 assert.match(conversation.messages[0]!.content, /TURN1_SECRET_UTTERANCE/);
@@ -710,7 +710,7 @@ const fromExport = materializeGraph(
     .filter((subject): subject is NonNullable<typeof subject> => Boolean(subject))
     .filter((subject) => subject.source === "task"),
 );
-assert.equal(currentValue(fromExport, "proof:root"), "PERSISTENT_X");
+assert.equal(currentValue(fromExport, "decision:root"), "PERSISTENT_X");
 assert.equal(
   materializeGraph(
     live.events.filter((event) => event.accepted),
@@ -984,7 +984,7 @@ console.log("✓ source of truth: stripping older messages from model context st
     JSON.stringify({
       message: "Trying a bad mutation.",
       mutations: [
-        { type: "SET", subjectId: "proof:goal", content: "G" },
+        { type: "SET", subjectId: "decision:goal", content: "G" },
         { notAMutation: true },
       ],
     }),
@@ -994,7 +994,7 @@ console.log("✓ source of truth: stripping older messages from model context st
   assert.equal(parsed.mutations.length, 2);
   assert.equal(parsed.mutations[1]?.type, "invalid");
   const applied = apply(
-    emptyReasoningGraph([{ id: "proof:goal", label: "Goal", source: "task" }]),
+    emptyReasoningGraph([{ id: "decision:goal", label: "Goal", source: "task" }]),
     parsed.mutations,
     "agent_a",
     1,
@@ -1017,7 +1017,7 @@ console.log("✓ source of truth: stripping older messages from model context st
   assert.equal(parsed.mutations.length, 0);
   assert.equal(parsed.protocolFailure, undefined);
   const applied = applyReasoningMutations(
-    emptyReasoningGraph([{ id: "proof:goal", label: "Goal", source: "task" }]),
+    emptyReasoningGraph([{ id: "decision:goal", label: "Goal", source: "task" }]),
     parsed.mutations,
     {
       actor: "agent_b",

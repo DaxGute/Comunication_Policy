@@ -48,7 +48,7 @@ function policy(partial: Partial<CommunicationPolicy> = {}): CommunicationPolicy
 function mockConfig(overrides: Partial<typeof DEFAULT_RUN_CONFIG> = {}) {
   return normalizeRunConfig(
     {
-      problemCategory: "proof",
+      problemCategory: "hidden_profile",
       problemCount: 1,
       runModel: MOCK_MODEL_ID,
       maxTurns: 8,
@@ -62,7 +62,7 @@ function mockConfig(overrides: Partial<typeof DEFAULT_RUN_CONFIG> = {}) {
 function problem(id: string, secret: string): Problem {
   return {
     id,
-    category: "proof",
+    category: "hidden_profile",
     title: `Title ${id}`,
     text: `Solve the marked problem. TOKEN=${secret}`,
     kind: "generic",

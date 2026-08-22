@@ -29,14 +29,6 @@ export const DEFAULT_MORAL_SUBJECT_INITIALIZATION: MoralSubjectInitialization =
 /** @deprecated Use DEFAULT_MORAL_SUBJECT_INITIALIZATION. */
 export const DEFAULT_MORAL_SUBJECT_SEEDING: MoralSubjectSeeding = "agent-created";
 
-function subject(partial: Omit<ReasoningSubject, "source" | "kind">): ReasoningSubject {
-  return {
-    ...partial,
-    kind: "task_defined",
-    source: "task",
-  };
-}
-
 export function parseMoralSubjectSeeding(
   raw: unknown,
 ): MoralSubjectSeeding | undefined {
@@ -89,38 +81,14 @@ export function moralSubjectsForProblem(
   return [];
 }
 
-export function proofSubjectsForProblem(problem: Problem): ReasoningSubject[] {
-  const prompt = problem.proof?.question ?? problem.text;
-  return [
-    subject({
-      id: "proof:goal",
-      label: "Goal",
-      prompt,
-      description: prompt,
-      metadata: { role: "goal" },
-    }),
-    subject({
-      id: "proof:assumption:1",
-      label: "Assumption 1",
-      prompt: "A standing assumption of the argument.",
-      description: "A standing assumption of the argument.",
-      metadata: { role: "assumption", index: 1 },
-    }),
-    subject({
-      id: "proof:lemma:1",
-      label: "Lemma 1",
-      prompt: "An intermediate claim that can vary independently of the goal.",
-      description: "An intermediate claim that can vary independently of the goal.",
-      metadata: { role: "lemma", index: 1 },
-    }),
-    subject({
-      id: "proof:conclusion",
-      label: "Conclusion",
-      prompt: "The claimed result of the proof.",
-      description: "The claimed result of the proof.",
-      metadata: { role: "conclusion" },
-    }),
-  ];
+/**
+ * Hidden Profile conversations start with an empty agent-created graph —
+ * same rule as Moral. Do not seed options, evidence lanes, or evaluator tags.
+ */
+export function hiddenProfileSubjectsForProblem(
+  _problem: Problem,
+): ReasoningSubject[] {
+  return [];
 }
 
 export function isLegacyMoralGraphSubject(subject: ReasoningSubject): boolean {

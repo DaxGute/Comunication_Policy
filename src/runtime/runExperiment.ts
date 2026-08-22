@@ -19,7 +19,7 @@ import {
   assignProblemInformation,
   buildInformationSplitSeed,
   createInformationDrawNonce,
-  snapInformationOverlap,
+  snapOverlapForCategory,
 } from "../information";
 import { createId } from "../lib/id";
 import { emptyUsage } from "../models/usage";
@@ -116,11 +116,16 @@ export async function runExperiment(args: {
   };
   const agentPrompts = buildAgentPromptPair(policySnapshot);
 
-  const overlapRequested = snapInformationOverlap(
+  const isHiddenProfile = config.problemCategory === "hidden_profile";
+  const overlapRequested = snapOverlapForCategory(
     config.informationOverlap ?? 1,
+    config.problemCategory,
   );
-  // Fresh random draw each run; realized assignment is snapshotted per conversation.
-  const drawNonce = createInformationDrawNonce();
+  // Fresh draw nonce each run (information partition / HP promotion order).
+  // Not a user-facing seed — snapshotted on informationStructure for replay.
+  const drawNonce =
+    config.informationStructure?.splitSeed?.trim() ||
+    createInformationDrawNonce();
   const informationStructure = {
     overlapRequested,
     splitSeed: drawNonce,
@@ -128,15 +133,20 @@ export async function runExperiment(args: {
     counterbalanced: false,
     packetDirection: "standard" as const,
   };
+
+  const client = args.client ?? createModelClient();
+  // Random sample unless problemIds is explicitly locked (scripts / paired sweeps).
+  const problems = selectProblems(config.problemCategory, config.problemCount, {
+    problemIds: config.problemIds,
+  });
+  const totalProblems = problems.length;
+
   const configSnapshot: RunConfig = {
     ...config,
     informationOverlap: overlapRequested,
     informationStructure,
+    problemIds: problems.map((p) => p.id),
   };
-
-  const client = args.client ?? createModelClient();
-  const problems = selectProblems(config.problemCategory, config.problemCount);
-  const totalProblems = problems.length;
 
   // Seed conversations up front in stable problem order so the inspector
   // list/selection does not reshuffle as parallel problems start and finish.
@@ -146,11 +156,20 @@ export async function runExperiment(args: {
         problemId: problem.id,
         overlapRequested,
         drawNonce,
+        nestAcrossOverlap: isHiddenProfile,
       });
       const assigned = assignProblemInformation({
         problem,
         overlapRequested,
         splitSeed,
+        promotionSeed: isHiddenProfile
+          ? buildInformationSplitSeed({
+              problemId: problem.id,
+              overlapRequested,
+              drawNonce,
+              nestAcrossOverlap: true,
+            })
+          : undefined,
       });
       return {
         problemId: problem.id,

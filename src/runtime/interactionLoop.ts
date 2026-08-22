@@ -4,8 +4,8 @@
  * Persistent agent memory is the canonical reasoning graph.
  * conversation.messages is the full transcript for inspection only.
  *
- * Moral runs: conversation length emerges from mutual readyToFinalize
- * against a stable graph fingerprint, then a distinct FINALIZATION phase.
+ * Moral and Hidden Profile runs: conversation length emerges from mutual
+ * readyToFinalize against a stable graph fingerprint, then FINALIZATION.
  */
 import { otherAgentId } from "../agents/identity";
 import type { AgentDefinition, AgentId } from "../agents/types";
@@ -243,6 +243,9 @@ export async function runInteractionLoop(args: {
   let persistenceRepairCount = 0;
   let moralConvergence = emptyMoralConvergenceState();
   const isMoral = problem.category === "moral_philosophical";
+  /** Moral + Hidden Profile share endogenous readyToFinalize convergence. */
+  const usesEndogenousFinalization =
+    isMoral || problem.category === "hidden_profile";
 
   if (isMoral) {
     const init = normalizeMoralSubjectSeeding(moralSubjectSeeding);
@@ -292,7 +295,9 @@ export async function runInteractionLoop(args: {
       reasoning: graph,
       solverProgress: snapshotSolverProgress(solverProgress),
       persistenceRepairCount,
-      moralConvergence: isMoral ? moralConvergence : undefined,
+      moralConvergence: usesEndogenousFinalization
+        ? moralConvergence
+        : undefined,
       stoppedReason: reason,
       error,
     };
@@ -307,7 +312,7 @@ export async function runInteractionLoop(args: {
 
     let agentId = order[(turn - 1) % 2];
     if (
-      isMoral &&
+      usesEndogenousFinalization &&
       moralConvergence.phase === "finalization" &&
       moralConvergence.finalizerId
     ) {
@@ -345,8 +350,10 @@ export async function runInteractionLoop(args: {
       maxTurns,
       reasoningGraph: graph,
       protocolFeedback,
-      moralPhase: isMoral ? moralConvergence.phase : undefined,
-      readyToFinalizeHint: isMoral,
+      moralPhase: usesEndogenousFinalization
+        ? moralConvergence.phase
+        : undefined,
+      readyToFinalizeHint: usesEndogenousFinalization,
     });
 
     if (isMoral && turn === 1) {
@@ -410,7 +417,7 @@ export async function runInteractionLoop(args: {
     graph = applied.graph;
     callbacks?.onReasoning?.(graph);
 
-    if (isMoral) {
+    if (usesEndogenousFinalization) {
       for (const subject of graph.subjects) {
         if (
           subject.source === "agent" &&
@@ -419,7 +426,7 @@ export async function runInteractionLoop(args: {
             !subject.createdBy)
         ) {
           throw new Error(
-            `moral subject ${subject.id} lacks agent provenance (createdAtTurn/createdBy)`,
+            `agent-created subject ${subject.id} lacks provenance (createdAtTurn/createdBy)`,
           );
         }
       }
@@ -453,7 +460,7 @@ export async function runInteractionLoop(args: {
 
     let readinessInvalidated = false;
     let justConverged = false;
-    if (isMoral) {
+    if (usesEndogenousFinalization) {
       const reduced = reduceMoralConvergence(moralConvergence, {
         turn,
         speaker: agentId,
@@ -537,7 +544,11 @@ export async function runInteractionLoop(args: {
     });
     solverProgress = progressTurn.state;
 
-    if (justConverged && isMoral && moralConvergence.finalizerId) {
+    if (
+      justConverged &&
+      usesEndogenousFinalization &&
+      moralConvergence.finalizerId
+    ) {
       protocolFeedback = finalizationPhaseCue(moralConvergence.finalizerId);
     }
 
@@ -558,7 +569,9 @@ export async function runInteractionLoop(args: {
         })),
         extractedFinalAnswer: finalAnswer,
         persistenceRepairDelivered,
-        convergence: isMoral ? moralConvergence : undefined,
+        convergence: usesEndogenousFinalization
+          ? moralConvergence
+          : undefined,
         currentFingerprint: fingerprint,
       });
       if (!gate.ok) {
@@ -609,10 +622,10 @@ export async function runInteractionLoop(args: {
         }
         return stop("final_answer");
       }
-    } else if (!(justConverged && isMoral)) {
+    } else if (!(justConverged && usesEndogenousFinalization)) {
       protocolFeedback = progressTurn.protocolFeedback;
     } else if (
-      isMoral &&
+      usesEndogenousFinalization &&
       moralConvergence.phase === "finalization" &&
       moralConvergence.finalizerId === agentId &&
       !finalAnswer

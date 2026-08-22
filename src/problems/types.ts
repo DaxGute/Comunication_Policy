@@ -1,16 +1,16 @@
 import type { CrosswordSpec } from "./crossword/types";
+import type { HiddenProfileSpec } from "./hidden_profile/types";
 import type { MoralSpec } from "./moral/types";
-import type { ProofSpec } from "./proof/types";
 
 export type ProblemCategory =
   | "crossword"
   | "moral_philosophical"
-  | "proof";
+  | "hidden_profile";
 
 export type ProblemKind =
   | "crossword_puzzle"
   | "moral"
-  | "proof"
+  | "hidden_profile"
   | "generic";
 
 export type Problem = {
@@ -25,8 +25,11 @@ export type Problem = {
   crossword?: CrosswordSpec;
   /** Present when kind === "moral". Open-ended; no gold answer. */
   moral?: MoralSpec;
-  /** Present when kind === "proof". Collaborative prove-that; reference is eval-only. */
-  proof?: ProofSpec;
+  /**
+   * Present when kind === "hidden_profile".
+   * Gold answer + evaluatorMetadata are eval/research only — never agent-facing.
+   */
+  hiddenProfile?: HiddenProfileSpec;
 };
 
 export type ProblemCategoryMeta = {

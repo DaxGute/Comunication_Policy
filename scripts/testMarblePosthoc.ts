@@ -72,7 +72,7 @@ const run = {
   agentPrompts: { agentA: "You are A", agentB: "You are B" },
   config: normalizeRunConfig(
     {
-      problemCategory: "proof",
+      problemCategory: "hidden_profile",
       problemCount: 1,
       runModel: "gpt-5.6-terra",
       maxTurns: 4,

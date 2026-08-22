@@ -47,7 +47,7 @@ const run: ExperimentRun = {
   agentPrompts: { agentA: "A", agentB: "B" },
   config: normalizeRunConfig(
     {
-      problemCategory: "proof",
+      problemCategory: "hidden_profile",
       problemCount: 1,
       runModel: "mock-deterministic",
       maxTurns: 6,

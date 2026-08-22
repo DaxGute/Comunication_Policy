@@ -18,7 +18,7 @@ import { formatReasoningState } from "../src/reasoning/renderState";
 import { applyReasoningMutations, emptyReasoningGraph } from "../src/reasoning";
 import { MORAL_PHILOSOPHICAL_PROBLEMS } from "../src/problems/moralPhilosophical";
 import { loadCrosswordBenchProblems } from "../src/problems/crossword/loadCrosswordBench";
-import { loadProofSolverProblems } from "../src/problems/proof/loadProofSolver";
+import { loadHiddenProfileProblems } from "../src/problems/hidden_profile/loadHiddenProfile";
 import { buildTurnRequestForAgent } from "../src/runtime/renderModelRequest";
 
 function section(title: string) {
@@ -278,26 +278,59 @@ section("moral: private statements absent from partner prompt; not graph-seeded"
   );
 }
 
-section("proof: private lemmas absent from partner prompt");
+section("hidden profile: authored private units absent from partner prompt");
 {
-  const problem = loadProofSolverProblems()[0]!;
+  const problem = loadHiddenProfileProblems()[0]!;
   const units = getInformationUnits(problem);
-  assert.ok(units.length >= 2, "expected segmented proof units");
-  const assigned = assignProblemInformation({
+  assert.ok(units.length >= 4, "expected authored hidden-profile units");
+  const distributed = assignProblemInformation({
     problem,
-    overlapRequested: 0.5,
+    overlapRequested: 0,
     splitSeed: buildInformationSplitSeed({
       problemId: problem.id,
-      overlapRequested: 0.5,
-      drawNonce: "proof",
+      overlapRequested: 0,
+      drawNonce: "hp-distributed",
+      nestAcrossOverlap: true,
     }),
   });
-  for (const id of assigned.assignment.agentAOnlyUnitIds) {
+  assert.ok(
+    distributed.assignment.diagnostics?.warnings.some((w) =>
+      w.includes("authored_distributed") || w.includes("AUTHORED DISTRIBUTED"),
+    ),
+  );
+  for (const id of distributed.assignment.agentAOnlyUnitIds) {
     const unit = units.find((u) => u.id === id)!;
-    assert.ok(assigned.problemTextA.includes(unit.text));
-    assert.ok(!assigned.problemTextB.includes(unit.text));
+    assert.ok(distributed.problemTextA.includes(unit.text));
+    assert.ok(!distributed.problemTextB.includes(unit.text));
   }
-  assert.ok(getSharedContext(problem).includes("Statement to prove"));
+  for (const id of distributed.assignment.agentBOnlyUnitIds) {
+    const unit = units.find((u) => u.id === id)!;
+    assert.ok(distributed.problemTextB.includes(unit.text));
+    assert.ok(!distributed.problemTextA.includes(unit.text));
+  }
+  assert.ok(!distributed.problemTextA.includes(problem.hiddenProfile!.goldAnswer) ||
+    problem.hiddenProfile!.options.some((o) =>
+      distributed.problemTextA.includes(o),
+    ));
+  // Gold must not appear as evaluator metadata dump.
+  assert.ok(!distributed.problemTextA.includes("evidenceStructure"));
+  assert.ok(!distributed.problemTextB.includes("decisiveInformationIds"));
+
+  const full = assignProblemInformation({
+    problem,
+    overlapRequested: 1,
+    splitSeed: buildInformationSplitSeed({
+      problemId: problem.id,
+      overlapRequested: 1,
+      drawNonce: "hp-full",
+    }),
+  });
+  assert.equal(full.assignment.agentAOnlyUnitIds.length, 0);
+  assert.equal(full.assignment.agentBOnlyUnitIds.length, 0);
+  for (const unit of units) {
+    assert.ok(full.problemTextA.includes(unit.text));
+    assert.ok(full.problemTextB.includes(unit.text));
+  }
 }
 
 section("sourceInformationIds privacy gate");

@@ -2,7 +2,7 @@
  * Universal interaction evaluator.
  *
  * Consumes the live reasoning graph (task-grounded by a thin adapter) and
- * produces one behavioral record for crossword, proof, and moral tasks.
+ * produces one behavioral record for crossword, hidden profile, and moral tasks.
  */
 import { hydrateReasoningGraph } from "../../reasoning";
 import type { ProblemConversation } from "../../experiment/types";

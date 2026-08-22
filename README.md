@@ -57,7 +57,7 @@ Domain logic lives outside React components:
 | `src/communication/` | Canonical policy object + NL compilation |
 | `src/agents/` | Minimal agent definitions + prompt assembly |
 | `src/runtime/` | Model client + alternating interaction loop |
-| `src/problems/` | Category registry (crossword, moral, proof) |
+| `src/problems/` | Category registry (crossword, moral, hidden_profile) |
 | `src/evaluation/` | Task graders + post-hoc multi-agent evaluation (MARBLE + belief dynamics) |
 | `src/experiment/` | Current config vs immutable completed runs |
 | `src/components/policy/` | Communication-policy controls and prompt inspection |
@@ -111,22 +111,24 @@ Curated subset of [agentlans/reddit-ethics](https://huggingface.co/datasets/agen
 npm run curate:moral
 ```
 
-### Proof
+### Hidden Profile
 
-Curated subset of [WilhelmH/proofsolver-1300](https://huggingface.co/datasets/WilhelmH/proofsolver-1300) (MIT).
+Official [HiddenBench](https://github.com/Yassellee/HiddenBench_ICML) full benchmark ([paper](https://arxiv.org/abs/2505.11556), HF [YuxuanLi1225/HiddenBench](https://huggingface.co/datasets/YuxuanLi1225/HiddenBench), MIT).
 
-- Vendored: `src/problems/data/proofsolver_subset.json` (80 prove-that / with-proof items)
-- Agents co-author a joint proof; `FINAL_ANSWER` is the full write-up
-- Reference solutions are stored for inspectability only and are **not** used as gold scores
-- Evaluator records proof submitted + lightweight proof-structure signals
+- Vendored: `src/problems/data/hiddenbench_benchmark.json` (65 tasks from `data/benchmark.json`, not `benchmark_short.json`)
+- Adapter maps N-agent `hidden_information` onto two agents by round-robin A/B assignment (union preserves every official private fact)
+- Same problem supports FULL (overlap 100%) and DISTRIBUTED (overlap &lt; 100%)
+- Gold answer + rationale + evidence-structure metadata are evaluator-only
+- Graph starts empty (agent-created considerations), like Moral
+- A separate 4-item diagnostic JSON remains for local smoke tooling only and is **not** the selectable pool
 
 ```bash
-npm run curate:proof
-npm run test:proof-grader
+npm run test:hidden-profile
+npm run test:information
 ```
 
 ## Current status
 
-- Fully implemented: layout, policy sliders, live prompt inspection, mock + OpenAI runs, transcript inspector, CrossWordBench full puzzles + Reddit Ethics + ProofSolver collaborative proofs
+- Fully implemented: layout, policy sliders, live prompt inspection, mock + OpenAI runs, transcript inspector, CrossWordBench full puzzles + Reddit Ethics + HiddenBench Hidden Profile decisions
 - OpenAI: `ConfigurableModelClient` → local `/api/generate` proxy → `gpt-4o-mini`
 - Smoke test: `npm run smoke:openai`

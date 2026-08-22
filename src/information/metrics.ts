@@ -5,6 +5,7 @@
 
 import type { AgentId } from "../agents/types";
 import type { ProblemConversation } from "../experiment/types";
+import type { Problem } from "../problems/types";
 import type { PropositionVersion, ReasoningEvent } from "../reasoning/types";
 import type {
   InformationAssignment,
@@ -100,8 +101,99 @@ function finalCitedSources(conversation: ProblemConversation): Set<string> {
   return out;
 }
 
+function firstRevealTurn(
+  events: ReasoningEvent[] | undefined,
+  agentId: AgentId,
+  privateIds: readonly string[],
+): number | null {
+  const wanted = new Set(privateIds);
+  if (wanted.size === 0) return null;
+  let earliest: number | null = null;
+  for (const event of events ?? []) {
+    if (!event.accepted || event.actor !== agentId) continue;
+    const cited = [
+      ...citedIdsFromMutation(event.mutation),
+      ...(event.sourceInformationIds ?? []),
+    ];
+    if (!cited.some((id) => wanted.has(id))) continue;
+    const turn = event.turnIndex;
+    if (typeof turn !== "number") continue;
+    if (earliest === null || turn < earliest) earliest = turn;
+  }
+  return earliest;
+}
+
+function firstPartnerUptakeTurn(
+  events: ReasoningEvent[] | undefined,
+  versions: PropositionVersion[] | undefined,
+  assignment: InformationAssignment,
+): number | null {
+  const aPrivate = new Set(assignment.agentAOnlyUnitIds);
+  const bPrivate = new Set(assignment.agentBOnlyUnitIds);
+  const byId = versionSourceIds(versions);
+  let earliest: number | null = null;
+  for (const event of events ?? []) {
+    if (!event.accepted) continue;
+    if (event.actor !== "agent_a" && event.actor !== "agent_b") continue;
+    const versionId =
+      event.versionId ??
+      (event.mutation && typeof event.mutation === "object"
+        ? (event.mutation as { afterVersionId?: string }).afterVersionId
+        : undefined);
+    const version = versionId ? byId.get(versionId) : undefined;
+    const sources = new Set([
+      ...citedIdsFromMutation(event.mutation),
+      ...(event.sourceInformationIds ?? []),
+      ...(version?.sources ?? []),
+    ]);
+    for (const parentId of version
+      ? (versions ?? []).find((v) => v.id === versionId)?.derivedFromVersionIds ??
+        []
+      : []) {
+      const parent = byId.get(parentId);
+      if (!parent) continue;
+      for (const id of parent.sources) sources.add(id);
+    }
+    const uptake =
+      (event.actor === "agent_b" && [...sources].some((id) => aPrivate.has(id))) ||
+      (event.actor === "agent_a" && [...sources].some((id) => bPrivate.has(id)));
+    if (!uptake) continue;
+    const turn = event.turnIndex;
+    if (typeof turn !== "number") continue;
+    if (earliest === null || turn < earliest) earliest = turn;
+  }
+  return earliest;
+}
+
+function crossAgentRevisionCount(
+  events: ReasoningEvent[] | undefined,
+  versions: PropositionVersion[] | undefined,
+): number {
+  const ownerBySubject = new Map<string, AgentId>();
+  for (const version of versions ?? []) {
+    if (!ownerBySubject.has(version.subjectId)) {
+      ownerBySubject.set(version.subjectId, version.agentId);
+    }
+  }
+  let count = 0;
+  for (const event of events ?? []) {
+    if (!event.accepted) continue;
+    if (event.actor !== "agent_a" && event.actor !== "agent_b") continue;
+    const mutation = event.mutation;
+    if (!mutation || typeof mutation !== "object") continue;
+    const type = (mutation as { type?: string }).type;
+    if (type !== "REVISE" && type !== "revise") continue;
+    const subjectId = (mutation as { subjectId?: string }).subjectId;
+    if (!subjectId) continue;
+    const owner = ownerBySubject.get(subjectId);
+    if (owner && owner !== event.actor) count += 1;
+  }
+  return count;
+}
+
 export function computeInformationFlowMetrics(
   conversation: ProblemConversation,
+  problem?: Problem,
 ): InformationFlowMetrics | undefined {
   const assignment = conversation.informationAssignment;
   if (!assignment || assignment.totalUnits === 0) return undefined;
@@ -167,6 +259,23 @@ export function computeInformationFlowMetrics(
   const transferCount = transfers.AtoB.size + transfers.BtoA.size;
   const transferable = privateDenom;
 
+  const decisiveIds =
+    problem?.hiddenProfile?.evaluatorMetadata.decisiveInformationIds ?? [];
+  const decisiveCoverage =
+    decisiveIds.length === 0
+      ? null
+      : decisiveIds.filter((id) => finalSources.has(id) || graphCited.has(id))
+          .length / decisiveIds.length;
+
+  const finalCoverageA =
+    aPrivate.length === 0
+      ? 1
+      : aPrivate.filter((id) => finalSources.has(id)).length / aPrivate.length;
+  const finalCoverageB =
+    bPrivate.length === 0
+      ? 1
+      : bPrivate.filter((id) => finalSources.has(id)).length / bPrivate.length;
+
   return {
     privateUnitsA: aPrivate.length,
     privateUnitsB: bPrivate.length,
@@ -186,6 +295,38 @@ export function computeInformationFlowMetrics(
     unusedPrivateInfoCount: unused.length,
     distortedPrivateInfoCount: 0,
     privateInfoBypass,
+    privateInformationCountA: aPrivate.length,
+    privateInformationCountB: bPrivate.length,
+    privateInformationRevealedA: communicatedA.length,
+    privateInformationRevealedB: communicatedB.length,
+    privateInformationWithheldA: aPrivate.length - communicatedA.length,
+    privateInformationWithheldB: bPrivate.length - communicatedB.length,
+    timeToRevealA: firstRevealTurn(
+      conversation.reasoningEvents,
+      "agent_a",
+      aPrivate,
+    ),
+    timeToRevealB: firstRevealTurn(
+      conversation.reasoningEvents,
+      "agent_b",
+      bPrivate,
+    ),
+    partnerPrivateInformationUsedA: transfers.BtoA.size,
+    partnerPrivateInformationUsedB: transfers.AtoB.size,
+    timeToPartnerUptake: firstPartnerUptakeTurn(
+      conversation.reasoningEvents,
+      conversation.reasoningVersions,
+      assignment,
+    ),
+    crossAgentRevisionCount: crossAgentRevisionCount(
+      conversation.reasoningEvents,
+      conversation.reasoningVersions,
+    ),
+    AtoBInfluence: transfers.AtoB.size,
+    BtoAInfluence: transfers.BtoA.size,
+    finalCoverageOfAPrivateInformation: finalCoverageA,
+    finalCoverageOfBPrivateInformation: finalCoverageB,
+    decisiveInformationCoverage: decisiveCoverage,
   };
 }
 
@@ -198,4 +339,104 @@ export function unitVisibleToAgent(
   const ids =
     agentId === "agent_a" ? assignment.agentAUnitIds : assignment.agentBUnitIds;
   return ids.includes(unitId);
+}
+
+/**
+ * Per-unit information-flow timeline for researcher inspectability.
+ * Does not invent ACCEPT/REJECT labels — only timestamps supported by events.
+ */
+export type PrivateInformationFlowRow = {
+  unitId: string;
+  initially: "A only" | "B only" | "shared";
+  firstCommunicatedTurn: number | null;
+  firstCommunicatedBy: AgentId | null;
+  enteredGraphVersionId: string | null;
+  firstUsedByPartnerTurn: number | null;
+  usedInFinalAnswer: boolean;
+};
+
+export function buildPrivateInformationFlowTable(
+  conversation: ProblemConversation,
+): PrivateInformationFlowRow[] {
+  const assignment = conversation.informationAssignment;
+  if (!assignment) return [];
+
+  const rows: PrivateInformationFlowRow[] = [];
+  const catalog = [
+    ...assignment.sharedUnitIds.map((id) => ({ id, initially: "shared" as const })),
+    ...assignment.agentAOnlyUnitIds.map((id) => ({
+      id,
+      initially: "A only" as const,
+    })),
+    ...assignment.agentBOnlyUnitIds.map((id) => ({
+      id,
+      initially: "B only" as const,
+    })),
+  ];
+
+  const finalSources = finalCitedSources(conversation);
+  const versions = conversation.reasoningVersions ?? [];
+  const events = conversation.reasoningEvents ?? [];
+
+  for (const entry of catalog) {
+    if (entry.initially === "shared") continue;
+    let firstCommunicatedTurn: number | null = null;
+    let firstCommunicatedBy: AgentId | null = null;
+    let enteredGraphVersionId: string | null = null;
+    let firstUsedByPartnerTurn: number | null = null;
+
+    for (const event of events) {
+      if (!event.accepted) continue;
+      if (event.actor !== "agent_a" && event.actor !== "agent_b") continue;
+      const cited = [
+        ...citedIdsFromMutation(event.mutation),
+        ...(event.sourceInformationIds ?? []),
+      ];
+      if (!cited.includes(entry.id)) continue;
+      const turn = event.turnIndex;
+      if (typeof turn !== "number") continue;
+      const ownerOk =
+        (entry.initially === "A only" && event.actor === "agent_a") ||
+        (entry.initially === "B only" && event.actor === "agent_b");
+      if (
+        ownerOk &&
+        (firstCommunicatedTurn === null || turn < firstCommunicatedTurn)
+      ) {
+        firstCommunicatedTurn = turn;
+        firstCommunicatedBy = event.actor;
+      }
+      const partnerOk =
+        (entry.initially === "A only" && event.actor === "agent_b") ||
+        (entry.initially === "B only" && event.actor === "agent_a");
+      if (
+        partnerOk &&
+        (firstUsedByPartnerTurn === null || turn < firstUsedByPartnerTurn)
+      ) {
+        firstUsedByPartnerTurn = turn;
+      }
+    }
+
+    for (const version of versions) {
+      if (!(version.sourceInformationIds ?? []).includes(entry.id)) continue;
+      if (!enteredGraphVersionId) enteredGraphVersionId = version.id;
+      const partnerOk =
+        (entry.initially === "A only" && version.agentId === "agent_b") ||
+        (entry.initially === "B only" && version.agentId === "agent_a");
+      if (partnerOk && firstUsedByPartnerTurn === null) {
+        firstUsedByPartnerTurn = version.createdAtTurn ?? null;
+      }
+    }
+
+    rows.push({
+      unitId: entry.id,
+      initially: entry.initially,
+      firstCommunicatedTurn,
+      firstCommunicatedBy,
+      enteredGraphVersionId,
+      firstUsedByPartnerTurn,
+      usedInFinalAnswer: finalSources.has(entry.id),
+    });
+  }
+
+  return rows;
 }

@@ -3,7 +3,7 @@ import type { Problem, ProblemCategory } from "../../problems/types";
 import { extractFinalAnswerFromMessages } from "../graders/answerExtraction";
 import { gradeCrosswordPuzzle } from "../graders/crosswordGrader";
 import { gradeMoralConversation } from "../graders/moralGrader";
-import { gradeProofConversation } from "../graders/proofGrader";
+import { gradeHiddenProfileDecision } from "../graders/hiddenProfileGrader";
 import type { ProblemEvaluation } from "../types";
 
 function normalizeLoose(text: string): string {
@@ -125,7 +125,7 @@ function evaluateMoral(
   };
 }
 
-function evaluateProof(
+function evaluateHiddenProfile(
   conversation: ProblemConversation,
   problem: Problem | undefined,
 ): ProblemEvaluation {
@@ -133,29 +133,39 @@ function evaluateProof(
     conversation.finalAnswer ??
     extractFinalAnswerFromMessages(conversation.messages);
 
-  const grade = gradeProofConversation({
-    finalAnswer,
-    messages: conversation.messages,
+  const spec = problem?.hiddenProfile;
+  if (!spec) {
+    return {
+      ...baseFields(conversation, finalAnswer),
+      label: "no_answer",
+      notes: "Hidden Profile problem missing spec; cannot grade.",
+      details: { grader: "hidden_profile" },
+    };
+  }
+
+  const grade = gradeHiddenProfileDecision({
+    predicted: finalAnswer,
+    goldAnswer: spec.goldAnswer,
+    options: spec.options,
   });
 
   return {
     ...baseFields(conversation, finalAnswer),
+    score: grade.correct ? 1 : 0,
     label: grade.label,
     notes: grade.notes,
     details: {
-      grader: "proof_collaborative",
-      hasGoldAnswer: false,
-      proofSubmitted: grade.label === "proof_submitted",
-      proofMarkerCount: grade.proofMarkerCount,
-      question: problem?.proof?.question,
-      source: problem?.proof?.source,
-      sourceIndex: problem?.proof?.sourceIndex,
-      // Truncated reference for research inspectability only.
-      referenceProofPreview: problem?.proof?.referenceProof
-        ? `${problem.proof.referenceProof.slice(0, 280)}${
-            problem.proof.referenceProof.length > 280 ? "…" : ""
-          }`
-        : undefined,
+      grader: "hidden_profile",
+      hasGoldAnswer: true,
+      selected: grade.selected,
+      goldAnswer: grade.goldAnswer,
+      correct: grade.correct,
+      evidenceStructure: spec.evaluatorMetadata.evidenceStructure,
+      decisiveInformationIds: spec.evaluatorMetadata.decisiveInformationIds,
+      question: spec.question,
+      options: spec.options,
+      source: spec.source,
+      sourceId: spec.sourceId,
     },
   };
 }
@@ -238,11 +248,11 @@ export function evaluateProblem(
       evaluation = evaluateCrossword(conversation, problem);
     }
   } else if (
-    category === "proof" ||
-    problem?.kind === "proof" ||
-    problem?.proof
+    category === "hidden_profile" ||
+    problem?.kind === "hidden_profile" ||
+    problem?.hiddenProfile
   ) {
-    evaluation = evaluateProof(conversation, problem);
+    evaluation = evaluateHiddenProfile(conversation, problem);
   } else {
     evaluation = scoreWithExpected(conversation, problem);
   }

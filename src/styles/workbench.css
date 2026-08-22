@@ -1394,6 +1394,14 @@ body.is-rotating-plot * {
   min-width: 0;
 }
 
+.reasoning-graph--canvas-only .reasoning-graph__body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.reasoning-graph--canvas-only .reasoning-graph__canvas {
+  max-height: clamp(28rem, 72vh, 56rem);
+}
+
 .reasoning-graph__canvas {
   min-width: 0;
   min-height: 16rem;
@@ -1449,6 +1457,22 @@ body.is-rotating-plot * {
   font-size: 8px !important;
   font-weight: 450 !important;
   fill: var(--text-muted) !important;
+}
+
+.reasoning-turn-guide--freeze {
+  color: var(--warn, #b58900);
+  opacity: 1;
+}
+
+.reasoning-turn-guide--freeze .reasoning-turn-guide__hit {
+  stroke: var(--warn, #b58900);
+  fill: color-mix(in srgb, var(--warn, #b58900) 12%, var(--bg-0));
+}
+
+.reasoning-turn-guide__freeze {
+  font-size: 8px !important;
+  font-weight: 600 !important;
+  fill: var(--warn, #b58900) !important;
 }
 
 .reasoning-node.is-active rect {
@@ -1743,15 +1767,15 @@ body.is-rotating-plot * {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: 1.25rem;
+  padding: 0.75rem;
   background: rgba(10, 14, 11, 0.72);
   backdrop-filter: blur(4px);
 }
 
 .reasoning-graph-modal__dialog {
-  width: min(1280px, 100%);
+  width: min(1600px, 100%);
   height: 100%;
-  max-height: min(92vh, 980px);
+  max-height: min(96vh, 1100px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1776,6 +1800,10 @@ body.is-rotating-plot * {
   grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
 }
 
+.reasoning-graph--expanded.reasoning-graph--canvas-only .reasoning-graph__body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .reasoning-graph--expanded.reasoning-graph--split .reasoning-graph__body {
   grid-template-columns: minmax(0, 1.4fr) minmax(180px, 240px) minmax(220px, 280px);
 }
@@ -1786,6 +1814,10 @@ body.is-rotating-plot * {
   max-height: none;
   min-height: 0;
   overflow: auto;
+}
+
+.reasoning-graph--expanded.reasoning-graph--canvas-only .reasoning-graph__canvas {
+  flex: 1;
 }
 
 .reasoning-legend {
@@ -4979,6 +5011,77 @@ body.is-rotating-plot * {
   color: var(--text);
 }
 
+/* —— Hidden Profile researcher preview —— */
+.hidden-profile-preview {
+  margin: 0.5rem 0 0.65rem;
+  max-height: 28rem;
+  overflow-y: auto;
+  padding: 0.55rem 0.65rem;
+  background: var(--bg-1);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.hidden-profile-preview__section + .hidden-profile-preview__section {
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.hidden-profile-preview__section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, #666);
+}
+
+.hidden-profile-preview__section p,
+.hidden-profile-preview__section ul {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.hidden-profile-preview__section ul {
+  padding-left: 1.1rem;
+}
+
+.hidden-profile-preview__final .mono {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.information-flow-inspector__summary {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.information-flow-inspector {
+  margin-top: 0.85rem;
+}
+
+.information-flow-inspector h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+}
+
+.information-flow-inspector__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.information-flow-inspector__table th,
+.information-flow-inspector__table td {
+  border: 1px solid var(--border-soft);
+  padding: 0.28rem 0.35rem;
+  text-align: left;
+  vertical-align: top;
+}
+
 .crossword-board {
   margin: 0;
 }
@@ -5752,6 +5855,10 @@ body.is-rotating-plot * {
 .info-assignment__warn {
   color: #c9a227;
   margin: 0.35rem 0 0;
+}
+.info-assignment__badge {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
 }
 .info-assignment__section h4 {
   margin: 0 0 0.35rem;

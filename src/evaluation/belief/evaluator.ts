@@ -30,7 +30,7 @@ function hasObjectiveGold(problem?: Problem): boolean {
   return Boolean(
     problem?.expectedAnswer ||
       problem?.crossword ||
-      problem?.proof?.referenceProof,
+      problem?.hiddenProfile?.goldAnswer,
   );
 }
 

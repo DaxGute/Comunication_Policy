@@ -876,7 +876,7 @@ export function InteractionSection({
     <section className="mae-section">
       <h4>Interaction Dynamics</h4>
       <p className="mae-canon-label">
-        Universal behavioral metrics — same taxonomy for crossword, proof, and
+        Universal behavioral metrics — same taxonomy for crossword, hidden profile, and
         philosophy. Task correctness is scored separately.
       </p>
       {notes.length > 0 ? (

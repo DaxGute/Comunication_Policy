@@ -2,7 +2,7 @@
  * Universal interaction ontology for post-hoc evaluation.
  *
  * Task adapters ground utterances into these objects/events. The evaluator
- * measures agent interaction identically across crossword, proof, and moral
+ * measures agent interaction identically across crossword, hidden profile, and moral
  * tasks. Task-specific fields live only on `taskGrounding`.
  */
 import type { AgentId } from "../../agents/types";

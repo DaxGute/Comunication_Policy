@@ -1,8 +1,8 @@
 /**
  * Category-specific metric chips and analysis-tab details for a single problem.
  *
- * Live crossword grading is crosswordDetails.ts. Open-ended moral/proof views
- * are display-only.
+ * Live crossword grading is crosswordDetails.ts. Open-ended moral / Hidden
+ * Profile views are display-only (Hidden Profile also has objective accuracy).
  */
 import type { ProblemEvaluation } from "../../evaluation/types";
 import type { ConversationMessage } from "../../experiment/types";
@@ -103,7 +103,7 @@ export function MoralResultDetails({ evaluation }: { evaluation: ProblemEvaluati
   );
 }
 
-export function ProofOpenMetrics({
+export function HiddenProfileMetrics({
   evaluation,
   messages,
 }: {
@@ -112,30 +112,31 @@ export function ProofOpenMetrics({
 }) {
   const { totalDurationMs, totalTokens, hasDuration, hasTokens } =
     conversationTotals(messages);
-  const markers =
-    typeof evaluation.details?.proofMarkerCount === "number"
-      ? evaluation.details.proofMarkerCount
+  const selected =
+    typeof evaluation.details?.selected === "string"
+      ? evaluation.details.selected
       : undefined;
-  const reference =
-    typeof evaluation.details?.referenceProofPreview === "string"
-      ? evaluation.details.referenceProofPreview
+  const gold =
+    typeof evaluation.details?.goldAnswer === "string"
+      ? evaluation.details.goldAnswer
       : undefined;
 
   return (
     <div className="results-open-metrics mono">
+      <div>Selected: {selected ?? "—"}</div>
+      <div>Gold: {gold ?? "—"}</div>
       <div>
-        Proof submitted:{" "}
-        {evaluation.details?.proofSubmitted === true ? "Yes" : "No"}
+        Correct:{" "}
+        {evaluation.details?.correct === true
+          ? "yes"
+          : evaluation.details?.correct === false
+            ? "no"
+            : "—"}
       </div>
       <div>
-        Proof-structure signals: {markers !== undefined ? markers : "—"}
+        Accuracy score:{" "}
+        {typeof evaluation.score === "number" ? evaluation.score : "—"}
       </div>
-      <div>Objective score: none (collaborative proof)</div>
-      {reference ? (
-        <div className="results-open-metrics__reference">
-          Reference (inspect only): {reference}
-        </div>
-      ) : null}
       <div className="results-open-metrics__summary">
         <div>Time: {hasDuration ? formatDuration(totalDurationMs) : "—"}</div>
         <div>Tokens: {hasTokens ? formatTokenCount(totalTokens) : "—"}</div>
@@ -144,16 +145,31 @@ export function ProofOpenMetrics({
   );
 }
 
-export function ProofResultDetails({ evaluation }: { evaluation: ProblemEvaluation }) {
+export function HiddenProfileResultDetails({
+  evaluation,
+}: {
+  evaluation: ProblemEvaluation;
+}) {
   return (
     <div className="transcript__result-details">
-      {evaluation.finalAnswer ? (
-        <div className="mono results-answer">
-          joint proof: {evaluation.finalAnswer}
-        </div>
-      ) : (
-        <div className="muted">No joint proof recorded.</div>
-      )}
+      <div className="mono results-answer">
+        Gold:{" "}
+        {typeof evaluation.details?.goldAnswer === "string"
+          ? evaluation.details.goldAnswer
+          : "—"}
+        {" · "}
+        Selected:{" "}
+        {typeof evaluation.details?.selected === "string"
+          ? evaluation.details.selected
+          : evaluation.finalAnswer ?? "—"}
+        {" · "}
+        Correct:{" "}
+        {evaluation.details?.correct === true
+          ? "yes"
+          : evaluation.details?.correct === false
+            ? "no"
+            : "—"}
+      </div>
       {evaluation.notes ? (
         <div className="muted">{evaluation.notes}</div>
       ) : null}
@@ -182,3 +198,4 @@ export function ProblemResultDetails({
     </div>
   );
 }
+

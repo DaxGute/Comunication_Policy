@@ -223,6 +223,14 @@ export const ConversationInspector = memo(function ConversationInspector({
                       )?.moral
                     : undefined
                 }
+                hiddenProfile={
+                  selectedRun.config.problemCategory === "hidden_profile"
+                    ? getProblemById(
+                        selectedRun.config.problemCategory,
+                        selectedConversation.problemId,
+                      )?.hiddenProfile
+                    : undefined
+                }
               />
             )}
           </>

@@ -9,12 +9,19 @@ import type { CrosswordClue, CrosswordPuzzle } from "../problems/crossword/types
 import { findCrosswordCrossings } from "../problems/crossword/geometry";
 import type { Problem } from "../problems/types";
 import type {
+  HiddenProfileOverlapTreatment,
   InformationAssignment,
+  InformationOriginalOwner,
   InformationPacketDirection,
+  InformationRealizedVisibility,
   InformationStructureConfig,
   InformationUnit,
   ProblemInformationStructure,
 } from "./types";
+import {
+  buildHiddenProfilePromotionSeed,
+  splitHiddenProfileUnits,
+} from "./hiddenProfileOverlap";
 import {
   splitInformationUnits,
   validateInformationSplit,
@@ -227,100 +234,38 @@ function moralUnits(problem: Problem): InformationUnit[] {
 }
 
 /**
- * Deterministic extraction of supporting proof fragments from the reference
- * write-up for split experiments. The theorem statement stays shared; the
- * reference itself is never shown verbatim as a complete solution packet.
+ * Authored Hidden Profile packets. Never include goldAnswer or evaluatorMetadata.
+ *
+ * informationOverlap semantics for this family (private-promotion dose):
+ * - 0.0 → authored HiddenBench distributed profile
+ * - (0,1) → progressively promote originally-private units into shared
+ * - 1.0 → FULL INFORMATION (both agents see every unit)
+ * Never randomly re-partitions or demotes authored shared units.
  */
-export function segmentProofInformationUnits(
-  referenceProof: string,
-  options?: { idPrefix?: string },
-): InformationUnit[] {
-  const prefix = options?.idPrefix ?? "lemma";
-  const normalized = referenceProof.replace(/\s+/g, " ").trim();
-  if (!normalized) return [];
-
-  const lines = referenceProof
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  const blocks: string[] = [];
-  let current = "";
-  for (const line of lines) {
-    const startsStep =
-      /^(lemma|theorem|claim|proof|step|assumption|definition|corollary)\b/i.test(
-        line,
-      ) || /^\d+[.)]\s+/.test(line);
-    if (startsStep && current) {
-      blocks.push(current.trim());
-      current = line;
-    } else {
-      current = current ? `${current} ${line}` : line;
-    }
-  }
-  if (current.trim()) blocks.push(current.trim());
-
-  let source = blocks.filter((block) => block.length >= 24);
-  if (source.length < 2) {
-    // Continuous prose proofs: split into sentence-sized supporting units.
-    source = normalized
-      .split(/(?<=[.!?;])\s+(?=[A-Z])/)
-      .map((part) => part.trim())
-      .filter((part) => part.length >= 20);
-  }
-  if (source.length < 2 && normalized.length >= 40) {
-    // Last resort: split roughly in half so asymmetry remains feasible.
-    const mid = Math.floor(normalized.length / 2);
-    const cut = normalized.indexOf(" ", mid);
-    const at = cut > 0 ? cut : mid;
-    source = [normalized.slice(0, at).trim(), normalized.slice(at).trim()].filter(
-      Boolean,
-    );
-  }
-
-  return source.slice(0, 12).map((text, index) => ({
-    id: `${prefix}_${index + 1}`,
-    type: index === 0 ? ("definition" as const) : ("lemma" as const),
-    text,
-  }));
+function hiddenProfileSharedContext(problem: Problem): string {
+  return problem.text;
 }
 
-function proofSharedContext(problem: Problem): string {
-  const question = problem.proof?.question ?? problem.text;
-  return [
-    "Conduct this proof together.",
-    "You are co-authors: propose definitions, lemmas, strategies, and checks across turns.",
-    "Build one shared rigorous proof — do not each write a separate complete proof in isolation.",
-    "",
-    "Statement to prove:",
-    question,
-    "",
-    "Supporting lemmas, assumptions, and intermediate results may appear in your",
-    "information packets (SHARED / PRIVATE). You may not see every supporting piece;",
-    "your partner may hold material you lack. Communicate what you need.",
-    "",
-    "Work the argument jointly: surface gaps, challenge unjustified steps, and converge on a single write-up.",
-    "FINAL_ANSWER ends the interaction immediately. Emit it when the joint proof is ready, or when further reasoning is not improving the argument.",
-    "When ready, report the finished proof as a multi-line block:",
-    "FINAL_ANSWER:",
-    "<full joint proof>",
-  ].join("\n");
-}
-
-function proofUnits(problem: Problem): InformationUnit[] {
-  const authored = problem.proof?.informationUnits;
-  if (authored && authored.length > 0) {
-    return authored.map((unit) => ({
+function hiddenProfileUnits(problem: Problem): InformationUnit[] {
+  const info = problem.hiddenProfile?.information ?? [];
+  return info.map((unit) => {
+    const originalVisibility = unit.visibility as InformationRealizedVisibility;
+    const originalOwner: InformationOriginalOwner =
+      unit.visibility === "a_private"
+        ? "A"
+        : unit.visibility === "b_private"
+          ? "B"
+          : "shared";
+    return {
       id: unit.id,
       text: unit.text,
-      type: unit.type ?? "lemma",
-      visibilityCategory: unit.visibilityCategory,
-    }));
-  }
-  const reference = problem.proof?.referenceProof ?? "";
-  if (!reference.trim()) return [];
-  return segmentProofInformationUnits(reference, {
-    idPrefix: `${problem.id.replace(/[^a-zA-Z0-9]+/g, "_")}_lemma`,
+      type: unit.type ?? "fact",
+      visibilityCategory: unit.visibility,
+      originalOwner,
+      originalVisibility,
+      // Realized visibility is stamped after the overlap treatment.
+      realizedVisibility: originalVisibility,
+    };
   });
 }
 
@@ -332,8 +277,11 @@ export function getSharedContext(problem: Problem): string {
   if (problem.kind === "moral" || problem.category === "moral_philosophical") {
     return moralSharedContext(problem);
   }
-  if (problem.kind === "proof" || problem.category === "proof") {
-    return proofSharedContext(problem);
+  if (
+    problem.kind === "hidden_profile" ||
+    problem.category === "hidden_profile"
+  ) {
+    return hiddenProfileSharedContext(problem);
   }
   return problem.text;
 }
@@ -346,8 +294,11 @@ export function getInformationUnits(problem: Problem): InformationUnit[] {
   if (problem.kind === "moral" || problem.category === "moral_philosophical") {
     return moralUnits(problem);
   }
-  if (problem.kind === "proof" || problem.category === "proof") {
-    return proofUnits(problem);
+  if (
+    problem.kind === "hidden_profile" ||
+    problem.category === "hidden_profile"
+  ) {
+    return hiddenProfileUnits(problem);
   }
   return [];
 }
@@ -418,6 +369,9 @@ export function buildAgentProblemText(args: {
 /**
  * Build per-agent problem views + assignment snapshot.
  * Throws in development-style validation when union coverage fails.
+ *
+ * Hidden Profile: overlap ∈ [0,1] promotes originally-private units into
+ * shared (nested, stratified). Never randomly re-partitions authored evidence.
  */
 export function assignProblemInformation(args: {
   problem: Problem;
@@ -426,6 +380,11 @@ export function assignProblemInformation(args: {
   packetDirection?: InformationPacketDirection;
   assignmentMode?: InformationStructureConfig["assignmentMode"];
   counterbalanced?: boolean;
+  /**
+   * Nesting-stable promotion seed for Hidden Profile. When omitted, derived
+   * from splitSeed by stripping any `|o=…` segment.
+   */
+  promotionSeed?: string;
   /** When true (default), throw if A ∪ B ≠ all units. */
   failOnIncompleteUnion?: boolean;
 }): {
@@ -437,12 +396,35 @@ export function assignProblemInformation(args: {
   const structure = getProblemInformationStructure(args.problem);
   const unitIds = structure.units.map((unit) => unit.id);
   const direction = args.packetDirection ?? "standard";
-  const split = splitInformationUnits({
-    unitIds,
-    overlap: args.overlapRequested,
-    seed: args.splitSeed,
-    packetDirection: direction,
-  });
+  const isHiddenProfile =
+    args.problem.category === "hidden_profile" ||
+    args.problem.kind === "hidden_profile" ||
+    Boolean(args.problem.hiddenProfile);
+
+  const promotionSeed =
+    args.promotionSeed?.trim() ||
+    (isHiddenProfile
+      ? args.splitSeed.replace(/\|o=[^|]+/g, "")
+      : args.splitSeed);
+
+  let treatment: HiddenProfileOverlapTreatment | undefined;
+  const split = isHiddenProfile
+    ? (() => {
+        const hp = splitHiddenProfileUnits({
+          units: structure.units,
+          overlapRequested: args.overlapRequested,
+          packetDirection: direction,
+          promotionSeed,
+        });
+        treatment = hp.treatment;
+        return hp;
+      })()
+    : splitInformationUnits({
+        unitIds,
+        overlap: args.overlapRequested,
+        seed: args.splitSeed,
+        packetDirection: direction,
+      });
 
   const validation = validateInformationSplit(unitIds, split);
   if (!validation.ok && args.failOnIncompleteUnion !== false) {
@@ -460,9 +442,50 @@ export function assignProblemInformation(args: {
   const sharedUnits = pick(split.sharedIds);
   const aOnly = pick(split.agentAOnlyIds);
   const bOnly = pick(split.agentBOnlyIds);
+  const isFullInformation =
+    split.agentAOnlyIds.length === 0 && split.agentBOnlyIds.length === 0;
+
+  const unitsWithRealized: InformationUnit[] = structure.units.map((unit) => {
+    let realizedVisibility: InformationRealizedVisibility =
+      (unit.originalVisibility as InformationRealizedVisibility | undefined) ??
+      (unit.visibilityCategory as InformationRealizedVisibility | undefined) ??
+      "shared";
+    if (split.sharedIds.includes(unit.id)) {
+      realizedVisibility = "shared";
+    } else if (split.agentAOnlyIds.includes(unit.id)) {
+      realizedVisibility = "a_private";
+    } else if (split.agentBOnlyIds.includes(unit.id)) {
+      realizedVisibility = "b_private";
+    }
+    return { ...unit, realizedVisibility };
+  });
+
+  const citationFooter = [
+    "When you SET or REVISE a proposition based on packet evidence, include",
+    'sourceInformationIds with the bracket ids (for example ["fact_3"]).',
+    "basis / derived_from cites shared proposition versions only (for example pv-3).",
+    "sourceInformationIds and basis are separate provenance channels.",
+    "Only cite ids from the evidence sections above — never invent partner-only ids.",
+  ];
 
   const formatAgentView = (agentId: AgentId, packetIds: readonly string[]) => {
     const packet = pick(packetIds);
+    if (isFullInformation) {
+      return [
+        structure.sharedContext,
+        "",
+        "FULL INFORMATION",
+        "All evidence is visible to both agents.",
+        "",
+        formatInformationPacket(
+          sharedUnits,
+          "SHARED INFORMATION (both agents)",
+        ),
+        "",
+        ...citationFooter,
+        `Visible units this turn: ${packet.map((u) => u.id).join(", ") || "(none)"}.`,
+      ].join("\n");
+    }
     const sharedSection = formatInformationPacket(
       sharedUnits,
       "SHARED INFORMATION (both agents)",
@@ -480,17 +503,33 @@ export function assignProblemInformation(args: {
       "",
       privateSection,
       "",
-      "When you SET or REVISE a proposition based on packet evidence, include",
-      'sourceInformationIds with the bracket ids (for example ["fact_3"]).',
-      "basis / derived_from cites shared proposition versions only (for example pv-3).",
-      "sourceInformationIds and basis are separate provenance channels.",
-      "Only cite ids from the SHARED or PRIVATE sections above — never invent partner-only ids.",
+      ...citationFooter,
       `Visible units this turn: ${packet.map((u) => u.id).join(", ") || "(none)"}.`,
     ].join("\n");
   };
 
   const problemTextA = formatAgentView("agent_a", split.agentAIds);
   const problemTextB = formatAgentView("agent_b", split.agentBIds);
+
+  const hpWarnings: string[] = [];
+  if (treatment) {
+    hpWarnings.push(`hidden_profile_condition=${treatment.condition}`);
+    if (treatment.condition === "full") {
+      hpWarnings.push(
+        "FULL INFORMATION: all units visible to both agents (private promotion rate = 1).",
+      );
+    } else if (treatment.condition === "authored_distributed") {
+      hpWarnings.push(
+        "AUTHORED DISTRIBUTED: original HiddenBench private packets; no private units promoted.",
+      );
+    } else {
+      hpWarnings.push(
+        `PARTIAL PROMOTION: A ${treatment.promotedAtoSharedCount}/${treatment.authoredAPrivateCount} ` +
+          `B ${treatment.promotedBtoSharedCount}/${treatment.authoredBPrivateCount} ` +
+          `originally-private units promoted to shared (rate=${treatment.privatePromotionRate}).`,
+      );
+    }
+  }
 
   const assignment: InformationAssignment = {
     overlapRequested: split.overlapRequested,
@@ -504,10 +543,23 @@ export function assignProblemInformation(args: {
     agentAPacketText: problemTextA,
     agentBPacketText: problemTextB,
     sharedContextText: structure.sharedContext,
-    units: structure.units,
+    units: unitsWithRealized,
     splitSeed: args.splitSeed,
     assignmentMode: args.assignmentMode ?? "balanced-cover",
     packetDirection: direction,
+    ...(treatment
+      ? {
+          hiddenProfileTreatment: treatment,
+          originalSharedIds: treatment.originalSharedIds,
+          originalAPrivateIds: treatment.originalAPrivateIds,
+          originalBPrivateIds: treatment.originalBPrivateIds,
+          promotedFromAToSharedIds: treatment.promotedFromAToSharedIds,
+          promotedFromBToSharedIds: treatment.promotedFromBToSharedIds,
+          realizedSharedIds: treatment.realizedSharedIds,
+          realizedAPrivateIds: treatment.realizedAPrivateIds,
+          realizedBPrivateIds: treatment.realizedBPrivateIds,
+        }
+      : {}),
     diagnostics: {
       unionCoverage: validation.ok ? 1 : 0,
       packetSizeA: split.agentAIds.length,
@@ -518,7 +570,7 @@ export function assignProblemInformation(args: {
       missingRequiredUnitIds: unitIds.filter(
         (id) => !split.agentAIds.includes(id) && !split.agentBIds.includes(id),
       ),
-      warnings: validation.warnings,
+      warnings: [...validation.warnings, ...hpWarnings],
       jointlySufficient: validation.ok,
     },
   };
@@ -534,15 +586,27 @@ export function assignProblemInformation(args: {
 /**
  * Build the split seed for one problem within a run draw.
  * Policy values must never enter this seed.
+ *
+ * For Hidden Profile nesting across overlap levels, pass
+ * `nestAcrossOverlap: true` (omits o= from the seed) or use
+ * `buildHiddenProfilePromotionSeed` separately.
  */
 export function buildInformationSplitSeed(args: {
   problemId: string;
   overlapRequested: number;
   /** Random nonce drawn once per run (or per conversation). */
   drawNonce: string;
+  /** When true, omit overlap so HP promotion order nests across o. */
+  nestAcrossOverlap?: boolean;
 }): string {
-  const overlap = args.overlapRequested.toFixed(2);
   const nonce = args.drawNonce.trim() || "draw";
+  if (args.nestAcrossOverlap) {
+    return buildHiddenProfilePromotionSeed({
+      problemId: args.problemId,
+      drawNonce: nonce,
+    });
+  }
+  const overlap = args.overlapRequested.toFixed(2);
   return `info-split|${args.problemId}|o=${overlap}|draw=${nonce}`;
 }
 

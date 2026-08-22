@@ -17,10 +17,10 @@ export type ReasoningSubjectSource = "task" | "agent";
 
 /**
  * One independently revisable unit of reasoning state.
- * Crossword: a clue. Moral: a consideration. Proof: a goal, assumption, lemma,
- * or conclusion. Task adapters seed known subjects; agents may conservatively
- * introduce new ones on SET. The original task prompt and the final answer
- * are not subjects.
+ * Crossword: a clue. Moral: a consideration. Hidden Profile: an agent-created
+ * decision-relevant consideration (not a seeded option/evidence lane).
+ * Task adapters seed known subjects; agents may conservatively introduce new
+ * ones on SET. The original task prompt and the final answer are not subjects.
  */
 export type ReasoningSubject = {
   id: string;

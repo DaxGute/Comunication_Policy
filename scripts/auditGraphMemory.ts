@@ -1,7 +1,7 @@
 /**
  * Fresh graph-memory working-state audit.
  *
- * Runs 3 crossword + 3 moral + 3 proof conversations and prints persistence
+ * Runs 3 crossword + 3 moral + 3 hidden-profile conversations and prints persistence
  * diagnostics plus enough transcript/graph evidence to classify capture.
  *
  * Usage: npm run audit:graph-memory
@@ -40,9 +40,9 @@ const TARGETS: Target[] = [
   { category: "moral_philosophical", id: "reddit_ethics_0034" },
   { category: "moral_philosophical", id: "reddit_ethics_0001" },
   { category: "moral_philosophical", id: "reddit_ethics_0005" },
-  { category: "proof", id: "proofsolver_0001" },
-  { category: "proof", id: "proofsolver_0002" },
-  { category: "proof", id: "proofsolver_0003" },
+  { category: "hidden_profile", id: "hp_hiring_complementary" },
+  { category: "hidden_profile", id: "hp_route_conflicting" },
+  { category: "hidden_profile", id: "hp_candidate_classic" },
 ];
 
 function loadEnvLocal(): void {

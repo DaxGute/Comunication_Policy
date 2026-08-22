@@ -18,10 +18,13 @@ import {
   type TurnScopeDiagnostics,
 } from "../../reasoning";
 import type { CrosswordSpec } from "../../problems/crossword/types";
+import type { HiddenProfileSpec } from "../../problems/hidden_profile/types";
 import type { MoralSpec } from "../../problems/moral/types";
 import { CrosswordPreview } from "../crossword/CrosswordBoard";
 import { MultiAgentEvaluationPanel } from "../evaluation/MultiAgentEvaluationPanel";
 import { ReasoningGraphView } from "../graph/ReasoningGraph";
+import { HiddenProfilePreview } from "../hiddenProfile/HiddenProfilePreview";
+import { InformationFlowInspector } from "../hiddenProfile/InformationFlowInspector";
 import { MoralPreview } from "../moral/MoralPreview";
 import { InlineEditableText } from "../ui/InlineEditableText";
 import { TextPreviewModal } from "../ui/TextPreviewModal";
@@ -33,10 +36,10 @@ import {
 } from "../../runtime/renderModelRequest";
 import {
   CrosswordMetrics,
+  HiddenProfileMetrics,
+  HiddenProfileResultDetails,
   MoralOpenMetrics,
   MoralResultDetails,
-  ProofOpenMetrics,
-  ProofResultDetails,
   ProblemResultDetails,
 } from "./problemMetrics";
 import { crosswordPredictedGrid, resolveCrosswordDetails } from "./crosswordDetails";
@@ -54,6 +57,7 @@ export const TranscriptView = memo(function TranscriptView({
   onRenameProblem,
   crossword,
   moral,
+  hiddenProfile,
   tab,
   onTabChange,
   speakingAgentId,
@@ -71,6 +75,7 @@ export const TranscriptView = memo(function TranscriptView({
   onRenameProblem: InspectorProps["onRenameProblem"];
   crossword?: CrosswordSpec;
   moral?: MoralSpec;
+  hiddenProfile?: HiddenProfileSpec;
   tab: ProblemPaneTab;
   onTabChange: (tab: ProblemPaneTab) => void;
   speakingAgentId?: AgentId;
@@ -97,7 +102,11 @@ export const TranscriptView = memo(function TranscriptView({
     Boolean(moral) ||
     evaluation?.details?.grader === "moral_open_ended" ||
     run.config.problemCategory === "moral_philosophical";
-  const isProof = evaluation?.details?.grader === "proof_collaborative";
+  const isHiddenProfile =
+    Boolean(hiddenProfile) ||
+    evaluation?.details?.grader === "hidden_profile" ||
+    run.config.problemCategory === "hidden_profile";
+  const usesEndogenousFinalization = isMoral || isHiddenProfile;
   const predictedGrid = useMemo(
     () => crosswordPredictedGrid({ crosswordDetails, evaluation }),
     [crosswordDetails, evaluation],
@@ -123,7 +132,7 @@ export const TranscriptView = memo(function TranscriptView({
     ],
   );
   const turnScopesByTurn = useMemo(() => {
-    if (!isMoral) return new Map<number, TurnScopeDiagnostics>();
+    if (!usesEndogenousFinalization) return new Map<number, TurnScopeDiagnostics>();
     const scopes =
       conversation.reasoningDiagnostics?.collaboration?.turnScopes ??
       computeTurnScopes(
@@ -141,7 +150,7 @@ export const TranscriptView = memo(function TranscriptView({
       );
     return new Map(scopes.map((scope) => [scope.turnIndex, scope]));
   }, [
-    isMoral,
+    usesEndogenousFinalization,
     conversation.reasoningDiagnostics?.collaboration?.turnScopes,
     conversation.messages,
     reasoningGraph,
@@ -273,24 +282,43 @@ export const TranscriptView = memo(function TranscriptView({
               </div>
             ) : null}
           </>
+        ) : hiddenProfile ? (
+          <>
+            <HiddenProfilePreview
+              spec={hiddenProfile}
+              selected={
+                typeof evaluation?.details?.selected === "string"
+                  ? evaluation.details.selected
+                  : evaluation?.finalAnswer
+              }
+              gold={
+                typeof evaluation?.details?.goldAnswer === "string"
+                  ? evaluation.details.goldAnswer
+                  : hiddenProfile.goldAnswer
+              }
+              correct={
+                typeof evaluation?.details?.correct === "boolean"
+                  ? evaluation.details.correct
+                  : undefined
+              }
+            />
+            {hasProblemTokenUsage || evaluation ? (
+              <div className="results-stats-row">
+                {evaluation ? (
+                  <HiddenProfileMetrics
+                    evaluation={evaluation}
+                    messages={conversation.messages}
+                  />
+                ) : null}
+                {problemTokenUsage}
+              </div>
+            ) : null}
+          </>
         ) : (
           <pre className="transcript__problem mono">
             {conversation.problemText}
           </pre>
         )}
-        {!crossword &&
-        !moral &&
-        (hasProblemTokenUsage || (evaluation && isProof)) ? (
-          <div className="results-stats-row">
-            {evaluation && isProof ? (
-              <ProofOpenMetrics
-                evaluation={evaluation}
-                messages={conversation.messages}
-              />
-            ) : null}
-            {problemTokenUsage}
-          </div>
-        ) : null}
       </header>
 
       {isIncompleteConversation(conversation) ? (
@@ -358,10 +386,13 @@ export const TranscriptView = memo(function TranscriptView({
             {evaluation && isMoral ? (
               <MoralResultDetails evaluation={evaluation} />
             ) : null}
-            {evaluation && isProof ? (
-              <ProofResultDetails evaluation={evaluation} />
+            {evaluation && isHiddenProfile ? (
+              <HiddenProfileResultDetails evaluation={evaluation} />
             ) : null}
-            {evaluation && !isCrossword && !isMoral && !isProof ? (
+            {evaluation &&
+            !isCrossword &&
+            !isMoral &&
+            !isHiddenProfile ? (
               <ProblemResultDetails evaluation={evaluation} />
             ) : null}
             <MultiAgentEvaluationPanel
@@ -563,7 +594,7 @@ export const TranscriptView = memo(function TranscriptView({
                             <strong>
                               Turn {message.turnIndex} · {agentLabel}
                             </strong>
-                            {isMoral ? (
+                            {usesEndogenousFinalization ? (
                               <span className="transcript__msg-protocol muted">
                                 {message.materialGraphChange
                                   ? "Graph changed"
@@ -576,7 +607,7 @@ export const TranscriptView = memo(function TranscriptView({
                                   : ""}
                               </span>
                             ) : null}
-                            {isMoral && turnScope ? (
+                            {usesEndogenousFinalization && turnScope ? (
                               <span className="transcript__msg-scope muted mono">
                                 created {turnScope.considerationsCreated} ·
                                 revised {turnScope.considerationsRevised} ·
@@ -669,7 +700,8 @@ export const TranscriptView = memo(function TranscriptView({
                     </li>
                   );
                 })}
-                {isMoral && conversation.stoppedReason === "final_answer" ? (
+                {usesEndogenousFinalization &&
+                conversation.stoppedReason === "final_answer" ? (
                   <li className="transcript__msg transcript__msg--protocol">
                     <div className="transcript__convergence">
                       CONVERGED · FINAL SYNTHESIS
@@ -700,9 +732,14 @@ export const TranscriptView = memo(function TranscriptView({
         ) : null}
 
         {tab === "information" ? (
-          <InformationAssignmentPanel
-            assignment={conversation.informationAssignment}
-          />
+          <>
+            <InformationAssignmentPanel
+              assignment={conversation.informationAssignment}
+            />
+            {isHiddenProfile ? (
+              <InformationFlowInspector conversation={conversation} />
+            ) : null}
+          </>
         ) : null}
       </div>
 

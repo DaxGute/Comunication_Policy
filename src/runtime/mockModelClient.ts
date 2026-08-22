@@ -57,12 +57,15 @@ export class MockModelClient implements ModelClient {
 
     // Final turns produce a mock answer so evaluation plumbing can run.
     // For crossword, intentionally miss ~1/5 so the grader's incorrect path is visible.
-    // Moral: converge via readyToFinalize handshake, then finalize.
-    const moralClosing =
-      (problem.kind === "moral" || Boolean(problem.moral)) && turnIndex >= 4;
+    // Moral + Hidden Profile: converge via readyToFinalize handshake, then finalize.
+    const usesEndogenousFinalization =
+      problem.kind === "moral" ||
+      Boolean(problem.moral) ||
+      problem.kind === "hidden_profile" ||
+      Boolean(problem.hiddenProfile);
+    const endogenousClosing = usesEndogenousFinalization && turnIndex >= 4;
     const isClosing =
-      moralClosing ||
-      (!(problem.kind === "moral" || problem.moral) && turnIndex >= 3);
+      endogenousClosing || (!usesEndogenousFinalization && turnIndex >= 3);
     let answerLine = "";
     if (isClosing) {
       if (problem.kind === "crossword_puzzle" && problem.crossword) {
@@ -83,15 +86,17 @@ export class MockModelClient implements ModelClient {
           "DOWN",
           ...down.map(lineFor),
         ].join("\n");
-      } else if (problem.kind === "proof" && problem.proof) {
-        const shouldMiss = problem.proof.sourceIndex % 5 === 0;
-        const reference = problem.proof.referenceProof;
-        const mockProof = shouldMiss
-          ? "Suppose the claim holds. We omit a key step and conclude without justification. QED"
-          : reference.length > 400
-            ? `${reference.slice(0, 397).trimEnd()}…`
-            : reference;
-        answerLine = `\nFINAL_ANSWER:\n${mockProof}`;
+      } else if (
+        problem.kind === "hidden_profile" ||
+        problem.hiddenProfile
+      ) {
+        const gold = problem.hiddenProfile?.goldAnswer ?? problem.expectedAnswer;
+        const shouldMiss =
+          (problem.hiddenProfile?.sourceId.length ?? 0) % 5 === 0;
+        const options = problem.hiddenProfile?.options ?? [];
+        const wrong =
+          options.find((option) => option !== gold) ?? "unresolved";
+        answerLine = `\nFINAL_ANSWER: ${shouldMiss ? wrong : gold ?? "unresolved"}`;
       } else if (problem.kind === "moral" || problem.moral) {
         const q = problem.moral?.question ?? "the dilemma";
         const issues = problem.moral?.issues?.slice(0, 2).join("; ");
@@ -111,9 +116,11 @@ export class MockModelClient implements ModelClient {
       familiarityNote,
       !isClosing && problem.kind === "crossword_puzzle"
         ? `If 1-Across crosses 1-Down, those shared letters must agree — inviting ${other} to test candidates against crossings.`
-        : !isClosing && problem.kind === "proof"
-          ? `I'll propose a proof strategy and ask ${other} to stress-test the critical steps before we lock a write-up.`
-          : null,
+        : null,
+      !isClosing &&
+      (problem.kind === "hidden_profile" || problem.hiddenProfile)
+        ? `I'll surface the decision-relevant facts I can see and ask ${other} what their packet implies for the options.`
+        : null,
       !isClosing && (problem.kind === "moral" || problem.moral)
         ? `On the other hand, a counterargument from ${other} could surface a principle trade-off we have not settled — uncertainty remains.`
         : null,
@@ -125,6 +132,14 @@ export class MockModelClient implements ModelClient {
       .join("\n");
 
     const moralSubjectId = "moral:responsibility";
+    const aPrivateFirst =
+      problem.hiddenProfile?.information.find((u) => u.visibility === "a_private")
+        ?.id;
+    const bPrivateFirst =
+      problem.hiddenProfile?.information.find((u) => u.visibility === "b_private")
+        ?.id;
+    const privateCite =
+      agentId === "agent_a" ? aPrivateFirst : bPrivateFirst;
     const reasoningMutations: Array<Record<string, unknown>> =
       turnIndex === 1
         ? problem.kind === "crossword_puzzle" && problem.crossword
@@ -139,20 +154,41 @@ export class MockModelClient implements ModelClient {
               {
                 type: "SET",
                 subjectId:
-                  problem.category === "proof" ? "proof:goal" : moralSubjectId,
+                  problem.category === "hidden_profile"
+                    ? "decision:leading_option"
+                    : moralSubjectId,
                 content: `Working hypothesis for "${problem.title}".`,
                 ...(problem.kind === "moral" || problem.moral
                   ? { subjectLabel: "Responsibility" }
-                  : {}),
+                  : problem.kind === "hidden_profile" || problem.hiddenProfile
+                    ? {
+                        subjectLabel: "Leading option",
+                        ...(privateCite
+                          ? { sourceInformationIds: [privateCite] }
+                          : {}),
+                      }
+                    : {}),
               },
             ]
-        : turnIndex === 2 && (problem.kind === "moral" || Boolean(problem.moral))
+        : turnIndex === 2 && usesEndogenousFinalization
           ? [
               {
                 type: "REVISE",
-                subjectId: moralSubjectId,
+                subjectId:
+                  problem.kind === "hidden_profile" || problem.hiddenProfile
+                    ? "decision:leading_option"
+                    : moralSubjectId,
                 fromVersionId: "pv-1",
                 after: `Qualified working hypothesis for "${problem.title}".`,
+                ...(problem.kind === "hidden_profile" || problem.hiddenProfile
+                  ? privateCite
+                    ? {
+                        // Partner uptake path: B cites A's private id only if it
+                        // somehow appears — mock keeps owner citations only.
+                        sourceInformationIds: [privateCite],
+                      }
+                    : {}
+                  : {}),
               },
             ]
           : [];
@@ -161,7 +197,7 @@ export class MockModelClient implements ModelClient {
       message,
       mutations: reasoningMutations,
     };
-    if (problem.kind === "moral" || problem.moral) {
+    if (usesEndogenousFinalization) {
       // Mutual readiness on turns 2–3 (no material change on turn 3), then finalize.
       payload.readyToFinalize = turnIndex >= 3 && reasoningMutations.length === 0;
     }
@@ -172,7 +208,7 @@ export class MockModelClient implements ModelClient {
         text: answerText,
         supportingNodeIds: [],
       };
-      if (problem.kind === "moral" || problem.moral) {
+      if (usesEndogenousFinalization) {
         payload.finalBasis = ["pv-1"];
         payload.readyToFinalize = true;
       }

@@ -14,9 +14,9 @@ import {
 import type { MultiAgentEvaluation } from "../evaluation/types";
 import { postHocProfileFor } from "../evaluation/posthoc/registry";
 import {
-  clampInformationOverlap,
-  snapInformationOverlap,
-} from "../information/split";
+  clampOverlapForCategory,
+  snapOverlapForCategory,
+} from "../information";
 import type { ExperimentRun, RunConfig } from "./types";
 
 /** Legacy persisted shape may include `model` instead of `runModel`. */
@@ -103,13 +103,18 @@ export function normalizeRunConfig(
     // preserved as an active runtime mode.
     moralSubjectInitialization: "agent-created",
     moralSubjectSeeding: "agent-created",
-    informationOverlap: snapInformationOverlap(
-      clampInformationOverlap(
+    informationOverlap: snapOverlapForCategory(
+      clampOverlapForCategory(
         typeof parsed.informationOverlap === "number"
           ? parsed.informationOverlap
           : (defaults.informationOverlap ?? 1),
+        parsed.problemCategory ?? defaults.problemCategory,
       ),
+      parsed.problemCategory ?? defaults.problemCategory,
     ),
+    problemIds: Array.isArray(parsed.problemIds)
+      ? parsed.problemIds.filter((id): id is string => typeof id === "string")
+      : defaults.problemIds,
     informationStructure: parsed.informationStructure,
   };
 }

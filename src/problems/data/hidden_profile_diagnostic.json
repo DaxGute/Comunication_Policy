@@ -1,0 +1,266 @@
+{
+  "source": {
+    "name": "Hidden Profile diagnostic set",
+    "license": "MIT (project-authored)",
+    "note": "Small authored smoke-test set for genuine two-agent informational dependence. Not a wholesale HiddenBench import: HiddenBench uses N-agent flat hidden lists without pre-assigned A/B visibility or evidence-structure tags. These items use explicit shared / a_private / b_private units and evaluator-only metadata."
+  },
+  "curatedAt": "2026-08-21",
+  "count": 4,
+  "items": [
+    {
+      "id": "hp_hiring_complementary",
+      "title": "Engineering hire: Avery, Blake, or Casey",
+      "question": "Which candidate should the team hire for the staff engineer role?",
+      "options": ["Avery", "Blake", "Casey"],
+      "information": [
+        {
+          "id": "S1",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "The role requires both strong systems design skill and reliable delivery under deadline pressure."
+        },
+        {
+          "id": "S2",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "All three candidates passed the initial screen and are available to start within a month."
+        },
+        {
+          "id": "S3",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Hiring committee policy: prefer the candidate who is acceptable on both technical depth and delivery reliability, not the extreme on only one axis."
+        },
+        {
+          "id": "A1",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Technical interview scores (out of 100): Avery 94, Blake 71, Casey 86."
+        },
+        {
+          "id": "A2",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Avery led a complex distributed-systems redesign that reviewers rated as unusually strong."
+        },
+        {
+          "id": "A3",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Blake's take-home showed several gaps in concurrency and failure-mode reasoning."
+        },
+        {
+          "id": "B1",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Reference calls: Avery had three late critical deliveries and a peer conflict on the last team; Blake had zero late deliveries in two years; Casey had one minor slip that was resolved cleanly."
+        },
+        {
+          "id": "B2",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Blake's manager describes Blake as the most dependable engineer on a high-pressure on-call rotation."
+        },
+        {
+          "id": "B3",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Casey is rated solid-reliable by two independent references, with no red flags."
+        }
+      ],
+      "goldAnswer": "Casey",
+      "evaluatorMetadata": {
+        "evidenceStructure": "complementary",
+        "evidenceByOption": {
+          "Avery": { "supportingUnitIds": ["A1", "A2"], "evidenceStrength": 2 },
+          "Blake": { "supportingUnitIds": ["B1", "B2"], "evidenceStrength": 2 },
+          "Casey": { "supportingUnitIds": ["A1", "B1", "B3", "S3"], "evidenceStrength": 3 }
+        },
+        "decisiveInformationIds": ["A1", "B1", "S3"],
+        "notes": "A alone overweights Avery (tech). B alone overweights Blake (reliability). Combined, Casey is the only candidate acceptable on both axes under S3."
+      }
+    },
+    {
+      "id": "hp_route_conflicting",
+      "title": "Evacuation route under incomplete reports",
+      "question": "Which evacuation destination is actually reachable right now?",
+      "options": ["West City", "East Town", "North Hill"],
+      "information": [
+        {
+          "id": "S1",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "All three destinations normally take about the same time by car from the village."
+        },
+        {
+          "id": "S2",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "West City hotels are ready; East Town has volunteer support; North Hill school can shelter people for two weeks."
+        },
+        {
+          "id": "S3",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Only one destination is currently reachable. Choosing a blocked route strands the group."
+        },
+        {
+          "id": "A1",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Radio from the tunnel crew: the East Town tunnel is blocked by a stalled supply truck and cannot be cleared today."
+        },
+        {
+          "id": "A2",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "River gauge at the West bridge still reads below flood stage; the West bridge structure looks intact from the south bank."
+        },
+        {
+          "id": "B1",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Fire service update: a brush fire has closed the West City approach road beyond the bridge; traffic cannot pass."
+        },
+        {
+          "id": "B2",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "North Hill walking trails were closed earlier for fallen trees, but the paved driveway was confirmed clear one hour ago and remains open."
+        }
+      ],
+      "goldAnswer": "North Hill",
+      "evaluatorMetadata": {
+        "evidenceStructure": "conflicting",
+        "evidenceByOption": {
+          "West City": { "supportingUnitIds": ["A2", "S2"], "evidenceStrength": 1 },
+          "East Town": { "supportingUnitIds": ["S2"], "evidenceStrength": 0 },
+          "North Hill": { "supportingUnitIds": ["B2", "A1", "B1"], "evidenceStrength": 3 }
+        },
+        "decisiveInformationIds": ["A1", "B1", "B2"],
+        "notes": "A's private packet makes West look open and East blocked. B's private packet makes West blocked and North open. Combined: East and West blocked → North Hill."
+      }
+    },
+    {
+      "id": "hp_candidate_classic",
+      "title": "Classic hidden profile: Candidate Ren vs Candidate Sol",
+      "question": "Which candidate is better supported once all evidence is considered?",
+      "options": ["Ren", "Sol"],
+      "information": [
+        {
+          "id": "S1",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Ren has strong public speaking skills and a polished interview presence."
+        },
+        {
+          "id": "S2",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Ren's resume lists several well-known employers."
+        },
+        {
+          "id": "S3",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Sol's interview was quieter and less flashy than Ren's."
+        },
+        {
+          "id": "S4",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Both candidates meet the minimum qualifications."
+        },
+        {
+          "id": "A1",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Ren's last two managers report missed roadmap commitments on multi-quarter projects."
+        },
+        {
+          "id": "A2",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "Sol quietly delivered a cross-team reliability program that cut incident volume by 40%."
+        },
+        {
+          "id": "B1",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Independent audit notes: Ren's claimed impact numbers on the resume are substantially inflated."
+        },
+        {
+          "id": "B2",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Sol's references describe unusually careful decision-making under incomplete information."
+        }
+      ],
+      "goldAnswer": "Sol",
+      "evaluatorMetadata": {
+        "evidenceStructure": "classic_hidden_profile",
+        "evidenceByOption": {
+          "Ren": { "supportingUnitIds": ["S1", "S2"], "evidenceStrength": 1 },
+          "Sol": { "supportingUnitIds": ["A2", "B1", "B2", "A1"], "evidenceStrength": 3 }
+        },
+        "decisiveInformationIds": ["A1", "A2", "B1", "B2"],
+        "notes": "Shared cues make Ren look attractive. Private cues, when pooled, favor Sol and undermine Ren."
+      }
+    },
+    {
+      "id": "hp_plant_authority",
+      "title": "Plant fault: sensor drift vs coolant leak",
+      "question": "What is the most strongly supported cause of the plant alarm?",
+      "options": ["Sensor drift", "Coolant leak", "Operator error"],
+      "information": [
+        {
+          "id": "S1",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Alarm A-17 fired twice in the last hour on Loop 3. Production is paused pending diagnosis."
+        },
+        {
+          "id": "S2",
+          "visibility": "shared",
+          "type": "fact",
+          "text": "Operator error is possible in principle but the checklist for this shift was signed and camera review shows no bypass of lockout steps."
+        },
+        {
+          "id": "A1",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "A senior technician verbally recalls that Loop 3 sensors have drifted before and says Sensor drift is the usual cause of A-17."
+        },
+        {
+          "id": "A2",
+          "visibility": "a_private",
+          "type": "fact",
+          "text": "The senior technician did not bring calibration logs; the recollection is from memory of prior incidents."
+        },
+        {
+          "id": "B1",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Fresh lab assay from Loop 3 coolant shows contaminant levels consistent with an active leak, not with sensor-only faults."
+        },
+        {
+          "id": "B2",
+          "visibility": "b_private",
+          "type": "fact",
+          "text": "Independent pressure-decay test on Loop 3 failed twice; the instrumentation shop already re-zeroed the primary sensor and the alarm still recurs."
+        }
+      ],
+      "goldAnswer": "Coolant leak",
+      "evaluatorMetadata": {
+        "evidenceStructure": "authority_conflict",
+        "evidenceByOption": {
+          "Sensor drift": { "supportingUnitIds": ["A1", "A2"], "evidenceStrength": 1 },
+          "Coolant leak": { "supportingUnitIds": ["B1", "B2"], "evidenceStrength": 3 },
+          "Operator error": { "supportingUnitIds": ["S2"], "evidenceStrength": 0 }
+        },
+        "decisiveInformationIds": ["B1", "B2"],
+        "notes": "A holds weaker authority-flavored evidence for Sensor drift. B holds stronger objective tests for Coolant leak. Evaluator strength labels are not shown to agents."
+      }
+    }
+  ]
+}

@@ -17,7 +17,7 @@ import {
 
 const CATEGORIES: ProblemCategory[] = [
   "crossword",
-  "proof",
+  "hidden_profile",
   "moral_philosophical",
 ];
 
@@ -27,10 +27,10 @@ const COPY: Record<ProblemCategory, { first: string; second: string; subjectId: 
     second: "EATER",
     subjectId: "crossword:across:5",
   },
-  proof: {
-    first: "f is injective",
-    second: "f is injective on the restricted domain",
-    subjectId: "proof:root",
+  hidden_profile: {
+    first: "Casey is the balanced hire",
+    second: "Casey remains best once reliability is pooled",
+    subjectId: "decision:root",
   },
   moral_philosophical: {
     first: "The action is immoral",
@@ -137,7 +137,7 @@ function fixture(category: ProblemCategory) {
     "marble",
     "interaction",
   ]);
-  assert.deepEqual(postHocProfileFor("proof").components, [
+  assert.deepEqual(postHocProfileFor("hidden_profile").components, [
     "marble",
     "interaction",
   ]);
@@ -158,7 +158,7 @@ function fixture(category: ProblemCategory) {
   assert.ok(types[0]?.includes("introduced"));
   assert.ok(types[0]?.includes("revised"));
   assert.ok(!types[0]?.includes("adopted"));
-  console.log("✓ SET/REVISE event types are identical across crossword, proof, and philosophy");
+  console.log("✓ SET/REVISE event types are identical across crossword, hidden profile, and philosophy");
 }
 
 {

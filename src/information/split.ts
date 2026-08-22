@@ -75,7 +75,8 @@ export function snapInformationOverlap(
   return best;
 }
 
-function seededShuffle<T>(items: readonly T[], seed: string): T[] {
+/** Deterministic Fisher–Yates shuffle (stable under the same seed string). */
+export function seededShuffle<T>(items: readonly T[], seed: string): T[] {
   const out = [...items];
   const rand = mulberry32(hashStringToSeed(seed));
   for (let i = out.length - 1; i > 0; i -= 1) {

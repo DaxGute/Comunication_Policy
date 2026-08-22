@@ -139,6 +139,18 @@ export type ProblemConversation = {
   informationAssignment?: InformationAssignment;
   /** Deterministic private-info flow metrics (post-run). */
   informationFlowMetrics?: InformationFlowMetrics;
+  /**
+   * Hidden Profile evaluator-only evidence-quality metrics.
+   * Strength labels never enter agent prompts.
+   */
+  evidenceQualityMetrics?: {
+    strongerEvidenceSurvived: boolean | null;
+    weakerEvidenceSurvived: boolean | null;
+    incorrectOptionPersistence: boolean | null;
+    revisionTowardStrongerEvidence: number | null;
+    revisionTowardWeakerEvidence: number | null;
+    finalDecisionFollowedStrongerEvidence: boolean | null;
+  };
   messages: ConversationMessage[];
   finalAnswer?: string;
   /**
@@ -262,12 +274,18 @@ export type RunConfig = {
     | "none"
     | "explicit-task-only";
   /**
-   * Information overlap ∈ [0.5, 1.0].
-   * 1.0 = identical packets; 0.5 = fully partitioned when feasible.
+   * Information overlap control.
+   * Crossword / moral: ∈ [0.5, 1.0] (1 = identical packets; 0.5 = partitioned).
+   * Hidden Profile: ∈ [0, 1] (0 = authored distributed; 1 = full;
+   * intermediate = fraction of originally-private units promoted to shared).
    * Orthogonal to communication policy (trust / authority / familiarity).
-   * Each run draws a fresh random partition (snapshotted on the conversation).
    */
   informationOverlap?: number;
+  /**
+   * Exact problem IDs to run (paired sweeps / scripts). When set, overrides
+   * random sampling. Order is preserved. Snapshotted on the run.
+   */
+  problemIds?: string[];
   /** Snapshotted information-structure metadata for the run (includes draw nonce). */
   informationStructure?: InformationStructureConfig;
 };

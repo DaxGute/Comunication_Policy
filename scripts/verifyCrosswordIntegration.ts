@@ -91,7 +91,7 @@ async function main() {
   verifyPromptLeak();
   await runCategory("crossword");
   await runCategory("moral_philosophical");
-  await runCategory("proof");
+  await runCategory("hidden_profile");
   console.log("\nintegration OK");
 }
 

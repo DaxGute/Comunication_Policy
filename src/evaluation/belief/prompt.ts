@@ -179,19 +179,16 @@ export function buildVerifierBlock(options: {
     );
   }
 
-  const proof = options.problem?.proof;
-  if (proof?.referenceProof) {
+  const hiddenProfile = options.problem?.hiddenProfile;
+  if (hiddenProfile?.goldAnswer) {
     hasObjectiveGold = true;
-    const ref =
-      proof.referenceProof.length > 3500
-        ? `${proof.referenceProof.slice(0, 3500)}\n…[truncated]`
-        : proof.referenceProof;
     parts.push(
       [
-        "REFERENCE PROOF (evaluation-only; agents did not see this):",
-        ref,
-        "Mark steps/claims that contradict this reference or are mathematically wrong as incorrect.",
-        "Mark steps that match the valid argument as correct. Speculative strategy talk may be uncertain.",
+        "HIDDEN PROFILE GOLD (evaluation-only; agents did not see this):",
+        `Correct option: ${hiddenProfile.goldAnswer}`,
+        `Options: ${hiddenProfile.options.join(" | ")}`,
+        "Mark option selections that disagree with the gold option as incorrect.",
+        "Do not expose evidence-structure labels or private-unit ownership to the belief narrative.",
       ].join("\n"),
     );
   }

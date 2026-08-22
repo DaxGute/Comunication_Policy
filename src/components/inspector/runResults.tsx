@@ -738,27 +738,25 @@ export function EvaluationSummary({ run }: { run: ExperimentRun }) {
     );
   }
 
-  const proofProblems = graded.filter(
-    (p) =>
-      p.details?.grader === "proof_collaborative" ||
-      p.details?.grader === "proof",
+  const hiddenProfileProblems = graded.filter(
+    (p) => p.details?.grader === "hidden_profile",
   );
-  if (proofProblems.length > 0) {
-    const submit = meanSd(
-      proofProblems.map((p) => (p.label === "proof_submitted" ? 1 : 0)),
+  if (hiddenProfileProblems.length > 0) {
+    const accuracy = meanSd(
+      hiddenProfileProblems.map((p) => (p.label === "correct" ? 1 : 0)),
     );
     return (
       <MetricsBlock
         rows={[
           {
-            label: "Proof submit rate",
-            mean: formatPct(submit.mean) ?? "—",
-            sd: formatPctSd(submit.sd),
+            label: "Hidden Profile accuracy",
+            mean: formatPct(accuracy.mean) ?? "—",
+            sd: formatPctSd(accuracy.sd),
           },
           {
-            label: "Proofs submitted",
+            label: "Correct decisions",
             mean: String(
-              proofProblems.filter((p) => p.label === "proof_submitted").length,
+              hiddenProfileProblems.filter((p) => p.label === "correct").length,
             ),
             sd: "—",
           },

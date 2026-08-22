@@ -616,7 +616,7 @@ function testPromptHidesPolicySliders() {
       },
       agentPrompts: { agentA: "A", agentB: "B" },
       config: {
-        problemCategory: "proof",
+        problemCategory: "hidden_profile",
         problemCount: 1,
         runModel: "mock",
         runReasoningEffort: "low",

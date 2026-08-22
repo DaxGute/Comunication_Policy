@@ -16,8 +16,9 @@ import {
   buildInformationSplitSeed,
   computeInformationFlowMetrics,
   createInformationDrawNonce,
-  snapInformationOverlap,
+  snapOverlapForCategory,
 } from "../information";
+import { computeHiddenProfileEvidenceQualityMetrics } from "../evaluation/hiddenProfile/evidenceQuality";
 import { calculateModelCost } from "../models/cost";
 import { normalizeUsage, sumUsage } from "../models/usage";
 import { taskReasoningAdapterFor } from "../problems/adapters/registry";
@@ -55,8 +56,13 @@ export async function runProblem(args: {
   const agentA = agentDefinitionFromPrompt("agent_a", prompts.agentA);
   const agentB = agentDefinitionFromPrompt("agent_b", prompts.agentB);
 
-  const overlapRequested = snapInformationOverlap(
+  const isHiddenProfile =
+    problem.category === "hidden_profile" ||
+    problem.kind === "hidden_profile" ||
+    Boolean(problem.hiddenProfile);
+  const overlapRequested = snapOverlapForCategory(
     config.informationOverlap ?? 1,
+    config.problemCategory ?? problem.category,
   );
   const drawNonce =
     config.informationStructure?.splitSeed?.trim() ||
@@ -65,20 +71,28 @@ export async function runProblem(args: {
     problemId: problem.id,
     overlapRequested,
     drawNonce,
+    nestAcrossOverlap: isHiddenProfile,
   });
 
   const assigned = assignProblemInformation({
     problem,
     overlapRequested,
     splitSeed,
+    promotionSeed: isHiddenProfile ? splitSeed : undefined,
   });
 
+  const treatment = assigned.assignment.hiddenProfileTreatment;
   console.info(
     `[info-asymmetry] problem=${problem.id} overlap=${overlapRequested} ` +
       `units=${assigned.assignment.totalUnits} shared=${assigned.assignment.sharedUnitIds.length} ` +
       `aOnly=${assigned.assignment.agentAOnlyUnitIds.length} ` +
       `bOnly=${assigned.assignment.agentBOnlyUnitIds.length} ` +
-      `realized=${assigned.assignment.overlapRealized.toFixed(2)}`,
+      `realized=${assigned.assignment.overlapRealized.toFixed(2)}` +
+      (treatment
+        ? ` promoteA=${treatment.promotedAtoSharedCount}/${treatment.authoredAPrivateCount}` +
+          ` promoteB=${treatment.promotedBtoSharedCount}/${treatment.authoredBPrivateCount}` +
+          ` condition=${treatment.condition}`
+        : ""),
   );
 
   const result = await runInteractionLoop({
@@ -287,6 +301,13 @@ export async function runProblem(args: {
   conversation.conversationEfficiency =
     deriveConversationEfficiency(conversation);
   conversation.informationFlowMetrics =
-    computeInformationFlowMetrics(conversation);
+    computeInformationFlowMetrics(conversation, problem);
+  if (problem.hiddenProfile) {
+    conversation.evidenceQualityMetrics =
+      computeHiddenProfileEvidenceQualityMetrics(
+        conversation,
+        problem.hiddenProfile,
+      );
+  }
   return conversation;
 }

@@ -88,7 +88,7 @@ function evaluate(graph: ReasoningGraph, convo: ProblemConversation) {
     "marble",
     "interaction",
   ]);
-  assert.deepEqual(postHocProfileFor("proof").components, [
+  assert.deepEqual(postHocProfileFor("hidden_profile").components, [
     "marble",
     "interaction",
   ]);

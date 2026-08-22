@@ -25,7 +25,6 @@ import {
   versionPublicRef,
   versionsInCreationOrder,
   type CollaborationDiagnostics,
-  type GraphLayoutEdge,
   type GraphLayoutNode,
   type MoralSynthesisDiagnostics,
   type PropositionVersion,
@@ -45,9 +44,24 @@ type Props = {
   onSelectNode?: (nodeId: string | undefined, messageId?: string) => void;
 };
 
-const MIN_ZOOM = 0.5;
+const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
+
+function freezeTurnLabel(freezeType?: string): string {
+  switch (freezeType) {
+    case "local_loop":
+      return "Freeze · local loop";
+    case "semantic_stall_repeated_state":
+      return "Freeze · repeated state";
+    case "semantic_stall_state_cycle":
+      return "Freeze · state cycle";
+    case "semantic_stall_no_state_change":
+      return "Freeze · no state change";
+    default:
+      return "Freeze detected";
+  }
+}
 
 function graphFromConversation(
   conversation: ProblemConversation,
@@ -153,7 +167,6 @@ export function ReasoningGraphView({
   const [isPanning, setIsPanning] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [hoverEdge, setHoverEdge] = useState<GraphLayoutEdge | undefined>();
   const [pickedNodeId, setPickedNodeId] = useState<string | undefined>();
   const live = conversation?.status === "running";
 
@@ -286,6 +299,11 @@ export function ReasoningGraphView({
     ? (layout.nodes.find((node) => node.id === focusedNodeId)?.version ??
       graph.versions.find((version) => version.id === focusedNodeId))
     : undefined;
+  const detailOpen = Boolean(selectedVersion) || selectedTurn !== undefined;
+  const freezeDetectedTurn =
+    conversation?.reasoningDiagnostics?.solverProgress?.freezeDetectedTurn;
+  const freezeType =
+    conversation?.reasoningDiagnostics?.solverProgress?.freezeType;
 
   const selectVersion = (nodeId: string | undefined, messageId?: string) => {
     setPickedNodeId(nodeId);
@@ -301,6 +319,7 @@ export function ReasoningGraphView({
     considerationGraph ? "reasoning-graph--considerations" : "",
     compact && !expanded ? "reasoning-graph--compact" : "",
     expanded ? "reasoning-graph--expanded" : "",
+    detailOpen ? "reasoning-graph--detail-open" : "reasoning-graph--canvas-only",
   ]
     .filter(Boolean)
     .join(" ");
@@ -486,6 +505,11 @@ export function ReasoningGraphView({
                 suppressNodeClickRef.current = true;
                 selectVersion(undefined, message.id);
               }
+              return;
+            }
+            if (detailOpen) {
+              suppressNodeClickRef.current = true;
+              selectVersion(undefined);
             }
           }}
           onPointerCancel={(event) => {
@@ -540,48 +564,67 @@ export function ReasoningGraphView({
                   ) : null}
                 </g>
               ))}
-              {layout.turnBands.map((band) => (
-                <g
-                  key={band.turnIndex}
-                  className={[
-                    "reasoning-turn-guide",
-                    band.persistentChange === false
-                      ? "reasoning-turn-guide--empty"
-                      : "",
-                    selectedTurn === band.turnIndex
-                      ? "reasoning-turn-guide--selected"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <line
-                    x1={band.x + band.width / 2}
-                    y1={48}
-                    x2={band.x + band.width / 2}
-                    y2={layout.height - 8}
-                  />
-                  <rect
-                    className="reasoning-turn-guide__hit"
-                    data-turn-index={band.turnIndex}
-                    x={band.x - 8}
-                    y={4}
-                    width={band.width + 16}
-                    height={44}
-                    rx={6}
-                    style={{ pointerEvents: "all", cursor: "pointer" }}
-                  />
-                  <text x={band.x} y={18}>
-                    Turn {band.turnIndex}
-                    {band.agentId ? ` · ${agentLabel(band.agentId)}` : ""}
-                  </text>
-                  {band.persistentChange === false ? (
-                    <text className="reasoning-turn-guide__empty" x={band.x} y={34}>
-                      No persistent change
+              {layout.turnBands.map((band) => {
+                const isFreezeTurn =
+                  freezeDetectedTurn !== undefined &&
+                  band.turnIndex === freezeDetectedTurn;
+                const secondaryLabel = isFreezeTurn
+                  ? freezeTurnLabel(freezeType)
+                  : band.persistentChange === false
+                    ? "No persistent change"
+                    : undefined;
+                return (
+                  <g
+                    key={band.turnIndex}
+                    className={[
+                      "reasoning-turn-guide",
+                      band.persistentChange === false
+                        ? "reasoning-turn-guide--empty"
+                        : "",
+                      isFreezeTurn ? "reasoning-turn-guide--freeze" : "",
+                      selectedTurn === band.turnIndex
+                        ? "reasoning-turn-guide--selected"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <line
+                      x1={band.x + band.width / 2}
+                      y1={48}
+                      x2={band.x + band.width / 2}
+                      y2={layout.height - 8}
+                    />
+                    <rect
+                      className="reasoning-turn-guide__hit"
+                      data-turn-index={band.turnIndex}
+                      x={band.x - 8}
+                      y={4}
+                      width={band.width + 16}
+                      height={44}
+                      rx={6}
+                      style={{ pointerEvents: "all", cursor: "pointer" }}
+                    />
+                    <text x={band.x} y={18}>
+                      Turn {band.turnIndex}
+                      {band.agentId ? ` · ${agentLabel(band.agentId)}` : ""}
                     </text>
-                  ) : null}
-                </g>
-              ))}
+                    {secondaryLabel ? (
+                      <text
+                        className={
+                          isFreezeTurn
+                            ? "reasoning-turn-guide__freeze"
+                            : "reasoning-turn-guide__empty"
+                        }
+                        x={band.x}
+                        y={34}
+                      >
+                        {secondaryLabel}
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
               {layout.edges.map((edge) => {
                 if (edge.kind === "final_synthesis") return null;
                 const from = layout.nodes.find((node) => node.id === edge.from);
@@ -605,8 +648,6 @@ export function ReasoningGraphView({
                         ? "reasoning-edge--derived-from"
                         : "reasoning-edge--revises",
                     ].join(" ")}
-                    onMouseEnter={() => setHoverEdge(edge)}
-                    onMouseLeave={() => setHoverEdge(undefined)}
                   >
                     <path d={path} markerEnd="url(#reasoning-arrow)" />
                     <title>
@@ -656,42 +697,25 @@ export function ReasoningGraphView({
             </svg>
           )}
         </div>
-        <aside
-          className={[
-            "reasoning-detail",
-            !selectedVersion && selectedTurn === undefined
-              ? "reasoning-detail--empty"
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-        >
-          {selectedVersion ? (
-            <VersionDetail
-              graph={graph}
-              version={selectedVersion}
-              consideration={considerationGraph}
-              assignment={conversation.informationAssignment}
-            />
-          ) : selectedTurn !== undefined ? (
-            <MemoryAtTurn
-              graph={graph}
-              conversation={conversation}
-              turn={selectedTurn}
-              coverage={turnCoverage}
-            />
-          ) : (
-            <p className="muted">
-              {hoverEdge
-                ? hoverEdge.kind === "revises"
-                  ? `Revises ${hoverEdge.from} → ${hoverEdge.to}`
-                  : `Derived from ${hoverEdge.from} → ${hoverEdge.to}`
-                : considerationGraph
-                  ? "Select a consideration version or a turn. Use Memory for the shared-state dump."
-                  : "Select a version or a turn. Use Memory for the shared-state dump."}
-            </p>
-          )}
-        </aside>
+        {detailOpen ? (
+          <aside className="reasoning-detail">
+            {selectedVersion ? (
+              <VersionDetail
+                graph={graph}
+                version={selectedVersion}
+                consideration={considerationGraph}
+                assignment={conversation.informationAssignment}
+              />
+            ) : selectedTurn !== undefined ? (
+              <MemoryAtTurn
+                graph={graph}
+                conversation={conversation}
+                turn={selectedTurn}
+                coverage={turnCoverage}
+              />
+            ) : null}
+          </aside>
+        ) : null}
       </div>
 
       <div className="reasoning-graph__footer">

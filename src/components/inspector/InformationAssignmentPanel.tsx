@@ -9,6 +9,7 @@ function UnitList(props: {
   title: string;
   ids: string[];
   unitsById: Map<string, { id: string; text: string }>;
+  badgeForId?: (id: string) => string | undefined;
 }) {
   return (
     <section className="info-assignment__section">
@@ -19,9 +20,13 @@ function UnitList(props: {
         <ul className="info-assignment__list">
           {props.ids.map((id) => {
             const unit = props.unitsById.get(id);
+            const badge = props.badgeForId?.(id);
             return (
               <li key={id}>
                 <code className="mono">{id}</code>
+                {badge ? (
+                  <span className="info-assignment__badge muted">{badge}</span>
+                ) : null}
                 {unit ? (
                   <span className="info-assignment__text">{unit.text}</span>
                 ) : null}
@@ -56,6 +61,9 @@ export const InformationAssignmentPanel = memo(
     );
     const requestedPct = Math.round(assignment.overlapRequested * 100);
     const realizedPct = Math.round(assignment.overlapRealized * 100);
+    const treatment = assignment.hiddenProfileTreatment;
+    const promotedA = new Set(treatment?.promotedFromAToSharedIds ?? []);
+    const promotedB = new Set(treatment?.promotedFromBToSharedIds ?? []);
 
     return (
       <div className="info-assignment">
@@ -63,11 +71,34 @@ export const InformationAssignmentPanel = memo(
           <p>
             Requested overlap: <strong className="mono">{requestedPct}%</strong>
             {" · "}
-            Realized overlap: <strong className="mono">{realizedPct}%</strong>
+            {treatment ? (
+              <>
+                Private promotion rate:{" "}
+                <strong className="mono">{realizedPct}%</strong>
+              </>
+            ) : (
+              <>
+                Realized overlap: <strong className="mono">{realizedPct}%</strong>
+              </>
+            )}
             {" · "}
             Units: <strong className="mono">{assignment.totalUnits}</strong>
           </p>
           <p className="muted mono">seed={assignment.splitSeed}</p>
+          {treatment ? (
+            <p className="mono">
+              condition={treatment.condition}
+              {" · "}
+              promoted A {treatment.promotedAtoSharedCount}/
+              {treatment.authoredAPrivateCount}
+              {" · "}
+              B {treatment.promotedBtoSharedCount}/
+              {treatment.authoredBPrivateCount}
+              {" · "}
+              remaining private A {treatment.realizedAPrivateCount} · B{" "}
+              {treatment.realizedBPrivateCount}
+            </p>
+          ) : null}
           {assignment.diagnostics?.warnings?.length ? (
             <p className="info-assignment__warn">
               {assignment.diagnostics.warnings.join(" · ")}
@@ -75,21 +106,68 @@ export const InformationAssignmentPanel = memo(
           ) : null}
         </header>
 
-        <UnitList
-          title="SHARED"
-          ids={assignment.sharedUnitIds}
-          unitsById={unitsById}
-        />
-        <UnitList
-          title="AGENT A ONLY"
-          ids={assignment.agentAOnlyUnitIds}
-          unitsById={unitsById}
-        />
-        <UnitList
-          title="AGENT B ONLY"
-          ids={assignment.agentBOnlyUnitIds}
-          unitsById={unitsById}
-        />
+        {treatment ? (
+          <>
+            <UnitList
+              title="ORIGINALLY SHARED"
+              ids={treatment.originalSharedIds}
+              unitsById={unitsById}
+            />
+            <UnitList
+              title="ORIGINALLY A-PRIVATE"
+              ids={treatment.originalAPrivateIds}
+              unitsById={unitsById}
+              badgeForId={(id) =>
+                promotedA.has(id)
+                  ? "promoted → shared"
+                  : "still A-only"
+              }
+            />
+            <UnitList
+              title="ORIGINALLY B-PRIVATE"
+              ids={treatment.originalBPrivateIds}
+              unitsById={unitsById}
+              badgeForId={(id) =>
+                promotedB.has(id)
+                  ? "promoted → shared"
+                  : "still B-only"
+              }
+            />
+            <UnitList
+              title="REALIZED SHARED (agent access)"
+              ids={assignment.sharedUnitIds}
+              unitsById={unitsById}
+            />
+            <UnitList
+              title="REALIZED A-ONLY"
+              ids={assignment.agentAOnlyUnitIds}
+              unitsById={unitsById}
+            />
+            <UnitList
+              title="REALIZED B-ONLY"
+              ids={assignment.agentBOnlyUnitIds}
+              unitsById={unitsById}
+            />
+          </>
+        ) : (
+          <>
+            <UnitList
+              title="SHARED"
+              ids={assignment.sharedUnitIds}
+              unitsById={unitsById}
+            />
+            <UnitList
+              title="AGENT A ONLY"
+              ids={assignment.agentAOnlyUnitIds}
+              unitsById={unitsById}
+            />
+            <UnitList
+              title="AGENT B ONLY"
+              ids={assignment.agentBOnlyUnitIds}
+              unitsById={unitsById}
+            />
+          </>
+        )}
 
         <p className="muted">
           Agent A sees {assignment.agentAUnitIds.length}/{assignment.totalUnits}

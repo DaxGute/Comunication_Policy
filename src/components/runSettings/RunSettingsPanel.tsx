@@ -88,6 +88,9 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
     ],
   );
 
+  const poolSize = getProblemsForCategory(config.problemCategory).length;
+  const maxProblemCount = Math.max(1, poolSize);
+
   const hoveredRun = activeRuns.find((r) => r.id === tooltipAnchor?.runId);
   const hoveredConfig = hoveredRun?.config;
   const hoveredPolicy = hoveredRun?.policy;
@@ -165,11 +168,25 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
                 <span>Problem category</span>
                 <select
                   value={config.problemCategory}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const problemCategory = e.target
+                      .value as ProblemCategory;
+                    const nextPool = getProblemsForCategory(problemCategory)
+                      .length;
+                    const rawOverlap = config.informationOverlap ?? 1;
+                    const informationOverlap =
+                      problemCategory === "hidden_profile"
+                        ? Math.min(1, Math.max(0, rawOverlap))
+                        : Math.min(1, Math.max(0.5, rawOverlap));
                     onConfigChange({
-                      problemCategory: e.target.value as ProblemCategory,
-                    })
-                  }
+                      problemCategory,
+                      informationOverlap,
+                      problemCount: Math.min(
+                        config.problemCount,
+                        Math.max(1, nextPool),
+                      ),
+                    });
+                  }}
                 >
                   {PROBLEM_CATEGORIES.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -207,14 +224,13 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
                 <span className="field__top">
                   <span>Number of problems</span>
                   <span className="field__top-note muted">
-                    (Total:{" "}
-                    {getProblemsForCategory(config.problemCategory).length})
+                    (pool: {poolSize})
                   </span>
                 </span>
                 <NumberStepper
                   min={1}
-                  max={150}
-                  value={config.problemCount}
+                  max={maxProblemCount}
+                  value={Math.min(config.problemCount, maxProblemCount)}
                   onChange={(problemCount) => onConfigChange({ problemCount })}
                 />
               </label>
@@ -239,7 +255,7 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
                 <input
                   className="range"
                   type="range"
-                  min={50}
+                  min={config.problemCategory === "hidden_profile" ? 0 : 50}
                   max={100}
                   step={5}
                   value={Math.round((config.informationOverlap ?? 1) * 100)}
@@ -251,9 +267,32 @@ export const RunSettingsPanel = memo(function RunSettingsPanel({
                   aria-valuetext={`${Math.round((config.informationOverlap ?? 1) * 100)} percent overlap`}
                 />
                 <span className="slider-field__hint muted">
-                  50% Fully partitioned · 70% Partial overlap · 100% Same
-                  information
+                  {config.problemCategory === "hidden_profile" ? (
+                    <>
+                      Hidden Profile: 0% = authored distributed (max asymmetry) ·
+                      intermediate = promote that fraction of originally-private
+                      evidence into shared · 100% = full information. Authored
+                      shared facts always stay shared.
+                    </>
+                  ) : (
+                    "50% Fully partitioned · 70% Partial overlap · 100% Same information"
+                  )}
                 </span>
+                {config.problemCategory === "hidden_profile" ? (
+                  <span className="slider-field__hint mono">
+                    {(() => {
+                      const o = config.informationOverlap ?? 1;
+                      if (o >= 0.999) return "Full information — all evidence visible to both agents.";
+                      if (o <= 0) return "Authored HiddenBench distributed profile.";
+                      // Typical dyad: ~2 A-private + ~2 B-private
+                      const promote = (n: number) =>
+                        Math.min(n, Math.max(0, Math.round(o * n)));
+                      const a = promote(2);
+                      const b = promote(2);
+                      return `Example (2+2 private): promote A ${a}/2 · B ${b}/2 · remaining private A ${2 - a} · B ${2 - b}`;
+                    })()}
+                  </span>
+                ) : null}
               </label>
             </div>
           ) : null}

@@ -1,9 +1,9 @@
 /**
- * Moral finalization eligibility.
+ * Endogenous finalization eligibility (Moral + Hidden Profile).
  *
  * Reasoning-phase FINAL_ANSWER is blocked until mutual readyToFinalize
- * against the same graph fingerprint. Crossword and proof keep existing
- * stop-on-FINAL_ANSWER behavior.
+ * against the same graph fingerprint. Crossword keeps existing task readiness;
+ * Hidden Profile follows the same empty-graph endogenous path as Moral.
  */
 import type { AgentId } from "../agents/types";
 import type { ProblemCategory } from "../problems/types";
@@ -51,7 +51,7 @@ export const AWAITING_FINALIZER_FEEDBACK = [
   "",
   "Shared reasoning has converged. The designated finalizing agent will",
   "produce the FINAL SYNTHESIS — the first comprehensive treatment of the",
-  "entire dilemma — from the active considerations.",
+  "problem — from the active considerations.",
   "Do not emit FINAL_ANSWER on this turn unless you are that agent.",
   "If you must revise persistent state, do so — readiness will reset.",
 ].join("\n");
@@ -92,7 +92,7 @@ export function finalizationPhaseCue(finalizerId: AgentId): string {
     "FINALIZATION PHASE",
     "",
     `Shared reasoning has converged. You (${who}) are designated to synthesize.`,
-    "This is the first point at which you should attempt a comprehensive treatment of the entire dilemma.",
+    "This is the first point at which you should attempt a comprehensive treatment of the whole problem.",
     "Construct FINAL_ANSWER from CURRENT SHARED REASONING STATE only.",
     "Do not introduce important new reasoning that is absent from active considerations;",
     "if something essential is missing, SET or REVISE it first (this resets readiness).",
@@ -113,7 +113,12 @@ export function evaluateMoralFinalization(args: {
   currentFingerprint?: string;
 }): FinalizationDecision {
   if (!args.extractedFinalAnswer?.trim()) return { ok: true };
-  if (args.category !== "moral_philosophical") return { ok: true };
+  if (
+    args.category !== "moral_philosophical" &&
+    args.category !== "hidden_profile"
+  ) {
+    return { ok: true };
+  }
 
   const other: AgentId = args.speaker === "agent_a" ? "agent_b" : "agent_a";
   const partnerSpoke = args.messages.some(

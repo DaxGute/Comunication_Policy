@@ -85,12 +85,12 @@ assert.doesNotMatch(
     layersA.policy,
     layersA.protocol,
   ].join("\n"),
-  /crossword|dilemma|proof/i,
+  /crossword|dilemma|hidden profile/i,
 );
 assert.match(layersA.reasoning, /crossword:across:N/);
 assert.match(layersA.reasoning, /Cite basis using version ids only/);
 assert.match(layersA.reasoning, /readyToFinalize/);
-assert.match(layersA.reasoning, /Proof subjects include/);
+assert.match(layersA.reasoning, /Hidden Profile graph starts empty/);
 assert.match(layersA.reasoning, /Do not store the dilemma/);
 assert.match(layersA.reasoning, /considerations only/);
 assert.match(layersA.reasoning, /shared moral graph starts empty/);

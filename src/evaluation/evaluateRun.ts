@@ -1,5 +1,5 @@
 /**
- * Task graders for a completed run (crossword / moral / proof).
+ * Task graders for a completed run (crossword / moral / hidden profile).
  *
  * Post-hoc MARBLE + universal interaction evaluation is orchestrator.ts, not this module.
  */
@@ -30,10 +30,8 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
   const moral = included.filter(
     (p) => p.details?.grader === "moral_open_ended",
   );
-  const proof = included.filter(
-    (p) =>
-      p.details?.grader === "proof_collaborative" ||
-      p.details?.grader === "proof",
+  const hiddenProfile = included.filter(
+    (p) => p.details?.grader === "hidden_profile",
   );
   const avgTurns =
     completed === 0
@@ -91,13 +89,14 @@ export function evaluateRun(run: ExperimentRun): EvaluationResult {
     summary.grader = "moral (open-ended; no gold answer)";
   }
 
-  if (proof.length > 0) {
-    const submitted = proof.filter((p) => p.label === "proof_submitted").length;
-    summary.proofProblems = proof.length;
-    summary.proofsSubmitted = submitted;
-    summary.proofSubmitRate = Number((submitted / proof.length).toFixed(3));
-    summary.grader =
-      "proof (collaborative write-up; reference not scored)";
+  if (hiddenProfile.length > 0) {
+    const correct = hiddenProfile.filter((p) => p.label === "correct").length;
+    summary.hiddenProfileProblems = hiddenProfile.length;
+    summary.hiddenProfileCorrect = correct;
+    summary.hiddenProfileAccuracy = Number(
+      (correct / hiddenProfile.length).toFixed(3),
+    );
+    summary.grader = "hidden_profile (option accuracy vs gold)";
   }
 
   if (withScores.length > 0) {

@@ -171,26 +171,41 @@ function apply(
       sourceIndex: 0,
     },
   };
-  const proof: Problem = {
-    id: "proof-subjects",
-    category: "proof",
-    kind: "proof",
-    title: "Proof subjects",
-    text: "Prove the claim.",
-    proof: {
-      question: "Prove the claim.",
-      referenceProof: "QED",
-      source: "proofsolver",
-      sourceIndex: 0,
+  const hiddenProfile: Problem = {
+    id: "hp-subjects",
+    category: "hidden_profile",
+    kind: "hidden_profile",
+    title: "Hidden Profile subjects",
+    text: "Choose an option.",
+    hiddenProfile: {
+      title: "Hidden Profile subjects",
+      question: "Which option?",
+      options: ["X", "Y"],
+      information: [
+        { id: "S1", visibility: "shared", text: "Shared cue." },
+        { id: "A1", visibility: "a_private", text: "A private cue." },
+        { id: "B1", visibility: "b_private", text: "B private cue." },
+      ],
+      goldAnswer: "Y",
+      evaluatorMetadata: {
+        evidenceStructure: "complementary",
+        evidenceByOption: {
+          X: { supportingUnitIds: ["A1"] },
+          Y: { supportingUnitIds: ["B1"] },
+        },
+        decisiveInformationIds: ["A1", "B1"],
+      },
+      source: "diagnostic",
+      sourceId: "hp-subjects",
     },
   };
   const moralIds = seedGraphForProblem(
     moral,
     taskReasoningAdapterFor(moral),
   ).subjects.map((subject) => subject.id);
-  const proofIds = seedGraphForProblem(
-    proof,
-    taskReasoningAdapterFor(proof),
+  const hiddenProfileIds = seedGraphForProblem(
+    hiddenProfile,
+    taskReasoningAdapterFor(hiddenProfile),
   ).subjects.map((subject) => subject.id);
   assert.equal(moralIds.length, 0);
   assert.ok(!moralIds.includes("moral:question"));
@@ -211,10 +226,7 @@ function apply(
     ).subjects.length,
     0,
   );
-  assert.ok(proofIds.includes("proof:goal"));
-  assert.ok(proofIds.includes("proof:lemma:1"));
-  assert.ok(proofIds.includes("proof:assumption:1"));
-  assert.ok(proofIds.includes("proof:conclusion"));
+  assert.equal(hiddenProfileIds.length, 0);
 }
 
 console.log("ok — lineage: stable crossword subjects, Aug 19 replay, revision layout");

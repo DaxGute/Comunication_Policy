@@ -3,7 +3,7 @@
  *
  * Every task type uses MARBLE + the universal interaction evaluator.
  * Belief/moral records on retryFrom are preserved for legacy loads; they are
- * not recomputed. Task graders (crossword/moral/proof) live in evaluateRun.
+ * not recomputed. Task graders (crossword/moral/hidden_profile) live in evaluateRun.
  */
 import { resolveRunModel } from "../experiment/configAccessors";
 import type { ExperimentRun, ProblemConversation } from "../experiment/types";

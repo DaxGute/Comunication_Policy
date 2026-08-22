@@ -41,7 +41,7 @@ import type { ReasoningGraphDiagnostics } from "../reasoning/diagnostics";
 export const VALID_CATEGORIES = new Set<ProblemCategory>([
   "crossword",
   "moral_philosophical",
-  "proof",
+  "hidden_profile",
 ]);
 
 const VALID_STATUSES = new Set([
@@ -460,6 +460,10 @@ function parseConversation(raw: unknown): ProblemConversation | undefined {
     informationFlowMetrics:
       c.informationFlowMetrics && typeof c.informationFlowMetrics === "object"
         ? (c.informationFlowMetrics as ProblemConversation["informationFlowMetrics"])
+        : undefined,
+    evidenceQualityMetrics:
+      c.evidenceQualityMetrics && typeof c.evidenceQualityMetrics === "object"
+        ? (c.evidenceQualityMetrics as ProblemConversation["evidenceQualityMetrics"])
         : undefined,
     messages,
     finalAnswer: typeof c.finalAnswer === "string" ? c.finalAnswer : undefined,
